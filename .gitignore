@@ -1,0 +1,7 @@
+target/
+*.db
+dependency-reduced-pom.xml
+.env
+.vscode/
+.idea/
+*.log
