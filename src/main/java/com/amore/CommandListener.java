@@ -288,26 +288,28 @@ public class CommandListener extends ListenerAdapter {
     }
 
     private String attachImage(MessageCreateBuilder builder, Attachment attachment) throws Exception {
-        if (attachment == null) {
-            return null;
-        }
-
-        if (!attachment.isImage()) {
-            throw new IllegalArgumentException("The uploaded file is not a valid image.");
-        }
-
-        if (attachment.getSize() > 8 * 1024 * 1024) {
-            throw new IllegalArgumentException("Image is too large. Maximum size is 8 MB.");
-        }
-
-        String safeFileName = sanitizeFileName(attachment.getFileName());
-
-        try (InputStream in = attachment.getProxy().download().join()) {
-            builder.addFiles(FileUpload.fromData(in, safeFileName));
-        }
-
-        return "attachment://" + safeFileName;
+    if (attachment == null) {
+        return null;
     }
+
+    if (!attachment.isImage()) {
+        throw new IllegalArgumentException("The uploaded file is not a valid image.");
+    }
+
+    if (attachment.getSize() > 8 * 1024 * 1024) {
+        throw new IllegalArgumentException("Image is too large. Maximum size is 8 MB.");
+    }
+
+    String safeFileName = sanitizeFileName(attachment.getFileName());
+    byte[] data;
+
+    try (InputStream in = attachment.getProxy().download().join()) {
+        data = in.readAllBytes();
+    }
+
+    builder.addFiles(FileUpload.fromData(data, safeFileName));
+    return "attachment://" + safeFileName;
+}
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
