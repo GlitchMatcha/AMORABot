@@ -629,7 +629,7 @@ public class CommandListener extends ListenerAdapter {
                 } catch (NumberFormatException ignored) {
                     maxSlots = 0;
                 }
-                String slotDisplay = maxSlots <= 0 ? String.valueOf(maxSlots) : slotsInput;
+                String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
                 String description = readDescription(event);
 
                 event.deferReply(true).queue();
@@ -1058,7 +1058,9 @@ public class CommandListener extends ListenerAdapter {
             String partyValue = partyField[1];
             int current = parsePartyCurrent(partyName);
             String maxStr = parsePartyMax(partyName);
-            int max = maxStr.equalsIgnoreCase("Unlimited") ? Integer.MAX_VALUE : Integer.parseInt(maxStr);
+           int max = maxStr.equalsIgnoreCase("Unlimited")
+        ? Integer.MAX_VALUE
+        : Integer.parseInt(maxStr);
             String userMention = event.getUser().getAsMention();
 
             if (partyValue.contains(userMention)) {
