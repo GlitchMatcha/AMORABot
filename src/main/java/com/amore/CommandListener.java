@@ -386,7 +386,7 @@ public class CommandListener extends ListenerAdapter {
             .setTitle("✦ CURATED COLLECTION BINDER ✦")
             .setDescription(
             "Viewing the private archive of " + event.getUser().getAsMention() + ".\n\n" +
-            inventoryDisplay +
+            buildInventoryDisplay(rawInventory) +
             "\n*Every entry here is a small piece of your AMORA story.*"
         )
             .setThumbnail(event.getUser().getEffectiveAvatarUrl())
