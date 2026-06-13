@@ -1145,99 +1145,120 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
 
         if (componentId.equals("bjoin_button")) {
-            MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
-            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-            String[] partyField = getPartyField(oldEmbed);
-            int fieldIndex = getPartyFieldIndex(oldEmbed);
-            if (partyField == null || fieldIndex == -1) {
-                event.reply("❌ Party field missing.").setEphemeral(true).queue();
-                return;
-            }
+    if (!event.getChannel().getType().isThread()) {
+        event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+        return;
+    }
 
-            String partyName = partyField[0];
-            String partyValue = partyField[1];
-            int current = parsePartyCurrent(partyName);
-            String maxStr = parsePartyMax(partyName);
-            int max = maxStr.equalsIgnoreCase("Unlimited")
-                    ? Integer.MAX_VALUE
-                    : Integer.parseInt(maxStr);
-            String userMention = event.getUser().getAsMention();
+    ThreadChannel thread = event.getChannel().asThreadChannel();
 
-            if (partyValue.contains(userMention)) {
-                event.reply("❌ You are already in the party!").setEphemeral(true).queue();
-                return;
-            }
-            if (current >= max) {
-                event.reply("❌ This party is full!").setEphemeral(true).queue();
-                return;
-            }
+    event.deferReply(true).queue(hook -> thread.retrieveStartMessage().queue(startMsg -> {
+        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
 
-            partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
-            current++;
-            newEmbed.getFields().remove(fieldIndex);
-            newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
-            newEmbed.setColor(Color.YELLOW);
-
-            Button joinButton = current >= max
-                    ? Button.success("bjoin_button", "✋ Join Quest").asDisabled()
-                    : Button.success("bjoin_button", "✋ Join Quest");
-
-            event.reply("✅ You have successfully joined the party!").setEphemeral(true).queue();
-            event.getMessage().editMessageEmbeds(newEmbed.build())
-                    .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
-                    .queue();
+        String[] partyField = getPartyField(oldEmbed);
+        int fieldIndex = getPartyFieldIndex(oldEmbed);
+        if (partyField == null || fieldIndex == -1) {
+            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
             return;
         }
 
-        if (componentId.equals("bleave_button")) {
-            MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
-            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-            String[] partyField = getPartyField(oldEmbed);
-            int fieldIndex = getPartyFieldIndex(oldEmbed);
-            if (partyField == null || fieldIndex == -1) {
-                event.reply("❌ Party field missing.").setEphemeral(true).queue();
-                return;
-            }
+        String partyName = partyField[0];
+        String partyValue = partyField[1];
+        int current = parsePartyCurrent(partyName);
+        String maxStr = parsePartyMax(partyName);
+        int max = maxStr.equalsIgnoreCase("Unlimited")
+                ? Integer.MAX_VALUE
+                : Integer.parseInt(maxStr);
+        String userMention = event.getUser().getAsMention();
 
-            String partyName = partyField[0];
-            String partyValue = partyField[1];
-            int current = parsePartyCurrent(partyName);
-            String maxStr = parsePartyMax(partyName);
-            String userMention = event.getUser().getAsMention();
-
-            if (!partyValue.contains(userMention)) {
-                event.reply("❌ You are not in the party!").setEphemeral(true).queue();
-                return;
-            }
-
-            partyValue = partyValue.replace(userMention + "\n", "")
-                    .replace("\n" + userMention, "")
-                    .replace(userMention, "");
-            if (partyValue.trim().isEmpty()) {
-                partyValue = "None";
-            }
-            current--;
-            newEmbed.getFields().remove(fieldIndex);
-            newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
-
-            if (current == 0) {
-                newEmbed.setColor(new Color(255, 69, 0));
-            }
-
-            event.reply("✅ You have left the party.").setEphemeral(true).queue();
-            event.getMessage().editMessageEmbeds(newEmbed.build())
-                    .setActionRow(Button.success("bjoin_button", "✋ Join Quest"),
-                            Button.danger("bleave_button", "🛑 Leave Quest"))
-                    .queue();
+        if (partyValue.contains(userMention)) {
+            hook.sendMessage("❌ You are already in the party!").setEphemeral(true).queue();
+            return;
+        }
+        if (current >= max) {
+            hook.sendMessage("❌ This party is full!").setEphemeral(true).queue();
             return;
         }
 
-        if (componentId.startsWith("buy_")) {
-            String[] parts = componentId.split("_", 3);
-            if (parts.length < 3) {
-                event.reply("❌ Invalid purchase payload.").setEphemeral(true).queue();
-                return;
-            }
+        partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
+        current++;
+
+        newEmbed.getFields().remove(fieldIndex);
+        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+        newEmbed.setColor(Color.YELLOW);
+
+        Button joinButton = current >= max
+                ? Button.success("bjoin_button", "✋ Join Quest").asDisabled()
+                : Button.success("bjoin_button", "✋ Join Quest");
+
+        startMsg.editMessageEmbeds(newEmbed.build())
+                .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
+                .queue(
+                        success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
+                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                );
+    }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue()));
+    return;
+}
+
+if (componentId.equals("bleave_button")) {
+    if (!event.getChannel().getType().isThread()) {
+        event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+        return;
+    }
+
+    ThreadChannel thread = event.getChannel().asThreadChannel();
+
+    event.deferReply(true).queue(hook -> thread.retrieveStartMessage().queue(startMsg -> {
+        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+
+        String[] partyField = getPartyField(oldEmbed);
+        int fieldIndex = getPartyFieldIndex(oldEmbed);
+        if (partyField == null || fieldIndex == -1) {
+            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
+            return;
+        }
+
+        String partyName = partyField[0];
+        String partyValue = partyField[1];
+        int current = parsePartyCurrent(partyName);
+        String maxStr = parsePartyMax(partyName);
+        String userMention = event.getUser().getAsMention();
+
+        if (!partyValue.contains(userMention)) {
+            hook.sendMessage("❌ You are not in the party!").setEphemeral(true).queue();
+            return;
+        }
+
+        partyValue = partyValue.replace(userMention + "\n", "")
+                .replace("\n" + userMention, "")
+                .replace(userMention, "");
+
+        if (partyValue.trim().isEmpty()) {
+            partyValue = "None";
+        }
+
+        current--;
+
+        newEmbed.getFields().remove(fieldIndex);
+        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+
+        if (current == 0) {
+            newEmbed.setColor(new Color(255, 69, 0));
+        }
+
+        startMsg.editMessageEmbeds(newEmbed.build())
+                .setActionRow(Button.success("bjoin_button", "✋ Join Quest"),
+                        Button.danger("bleave_button", "🛑 Leave Quest"))
+                .queue(
+                        success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
+                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                );
+        }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue()));
+        return;
+    }
 
             int price = Integer.parseInt(parts[1]);
             String itemName = decodeItem(parts[2]);
