@@ -1,0 +1,6 @@
+com/amore/App.class
+com/amore/DatabaseManager.class
+com/amore/CommandListener$TradeData.class
+com/amore/ChatListener.class
+com/amore/CommandListener$TradeSetup.class
+com/amore/CommandListener.class
