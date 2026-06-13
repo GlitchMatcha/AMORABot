@@ -288,28 +288,28 @@ public class CommandListener extends ListenerAdapter {
     }
 
     private String attachImage(MessageCreateBuilder builder, Attachment attachment) throws Exception {
-    if (attachment == null) {
-        return null;
+        if (attachment == null) {
+            return null;
+        }
+
+        if (!attachment.isImage()) {
+            throw new IllegalArgumentException("The uploaded file is not a valid image.");
+        }
+
+        if (attachment.getSize() > 8 * 1024 * 1024) {
+            throw new IllegalArgumentException("Image is too large. Maximum size is 8 MB.");
+        }
+
+        String safeFileName = sanitizeFileName(attachment.getFileName());
+        byte[] data;
+
+        try (InputStream in = attachment.getProxy().download().join()) {
+            data = in.readAllBytes();
+        }
+
+        builder.addFiles(FileUpload.fromData(data, safeFileName));
+        return "attachment://" + safeFileName;
     }
-
-    if (!attachment.isImage()) {
-        throw new IllegalArgumentException("The uploaded file is not a valid image.");
-    }
-
-    if (attachment.getSize() > 8 * 1024 * 1024) {
-        throw new IllegalArgumentException("Image is too large. Maximum size is 8 MB.");
-    }
-
-    String safeFileName = sanitizeFileName(attachment.getFileName());
-    byte[] data;
-
-    try (InputStream in = attachment.getProxy().download().join()) {
-        data = in.readAllBytes();
-    }
-
-    builder.addFiles(FileUpload.fromData(data, safeFileName));
-    return "attachment://" + safeFileName;
-}
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
@@ -556,101 +556,107 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (event.getName().equals("publish")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ No clearance.").setEphemeral(true).queue();
-                return;
-            }
-            if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
-                return;
-            }
-            if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
-                event.reply("❌ SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
-                return;
-            }
-            if (!event.getOption("forum").getAsChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
-                event.reply("❌ **Access Denied:** Wrong channel!").setEphemeral(true).queue();
-                return;
-            }
+       if (event.getName().equals("publish")) {
+    if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+        event.reply("❌ No clearance.").setEphemeral(true).queue();
+        return;
+    }
+    if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+        event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+        return;
+    }
+    if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
+        event.reply("❌ SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
+        return;
+    }
+    if (!event.getOption("forum").getAsChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
+        event.reply("❌ **Access Denied:** Wrong channel!").setEphemeral(true).queue();
+        return;
+    }
 
-            String itemName = event.getOption("name").getAsString();
-            String safeName = itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
+    String itemName = event.getOption("name").getAsString();
+    String safeName = itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
 
-            if (db.shopItemExists(safeName)) {
-                event.reply("❌ Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
-                return;
+    if (db.shopItemExists(safeName)) {
+        event.reply("❌ Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
+        return;
+    }
+
+    event.deferReply(true).queue();
+    ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
+    int price = event.getOption("price").getAsInt();
+    String secretDelivery = event.getOption("delivery").getAsString();
+    String description = readDescription(event);
+    String encodedItem = encodeItem(safeName);
+    String buttonId = "buy_" + price + "_" + encodedItem;
+
+    MessageCreateBuilder builder = new MessageCreateBuilder();
+    List<MessageEmbed> embeds = new ArrayList<>();
+
+    EmbedBuilder mainEmbed = new EmbedBuilder()
+            .setColor(new Color(0, 250, 154))
+            .setTitle(itemName.toUpperCase())
+            .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
+
+    try {
+        String image1 = null;
+        String image2 = null;
+
+        if (event.getOption("file1") != null) {
+            image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
+        } else if (event.getOption("url1") != null) {
+            String url1 = event.getOption("url1").getAsString();
+            if (url1 != null && !url1.isBlank()) {
+                image1 = url1;
             }
+        }
 
-            event.deferReply(true).queue();
-            ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
-            int price = event.getOption("price").getAsInt();
-            String secretDelivery = event.getOption("delivery").getAsString();
-            String description = readDescription(event);
-            String encodedItem = encodeItem(safeName);
-            String buttonId = "buy_" + price + "_" + encodedItem;
+        if (event.getOption("file2") != null) {
+            image2 = attachImage(builder, event.getOption("file2").getAsAttachment());
+        } else if (event.getOption("url2") != null) {
+            String url2 = event.getOption("url2").getAsString();
+            if (url2 != null && !url2.isBlank()) {
+                image2 = url2;
+            }
+        }
 
-            MessageCreateBuilder builder = new MessageCreateBuilder();
-            List<MessageEmbed> embeds = new ArrayList<>();
+        if (image1 != null) {
+            mainEmbed.setImage(image1);
+        }
 
-            EmbedBuilder mainEmbed = new EmbedBuilder()
+        embeds.add(mainEmbed.build());
+
+        if (image2 != null) {
+            embeds.add(new EmbedBuilder()
                     .setColor(new Color(0, 250, 154))
-                    .setTitle(itemName.toUpperCase())
-                    .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
+                    .setImage(image2)
+                    .build());
+        }
+    } catch (Exception e) {
+        event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
+        return;
+    }
 
-            try {
-                String image1 = null;
-                String image2 = null;
+    builder.addEmbeds(embeds);
+    builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
 
-                if (event.getOption("file1") != null) {
-                    image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
-                } else if (event.getOption("url1") != null) {
-                    String url1 = event.getOption("url1").getAsString();
-                    if (url1 != null && !url1.isBlank()) {
-                        image1 = url1;
-                    }
-                }
-
-                if (event.getOption("file2") != null) {
-                    image2 = attachImage(builder, event.getOption("file2").getAsAttachment());
-                } else if (event.getOption("url2") != null) {
-                    String url2 = event.getOption("url2").getAsString();
-                    if (url2 != null && !url2.isBlank()) {
-                        image2 = url2;
-                    }
-                }
-
-                if (image1 != null) {
-                    mainEmbed.setImage(image1);
-                }
-
-                embeds.add(mainEmbed.build());
-
-                if (image2 != null) {
-                    embeds.add(new EmbedBuilder()
-                            .setColor(new Color(0, 250, 154))
-                            .setImage(image2)
-                            .build());
-                }
-            } catch (Exception e) {
-                event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
-                return;
-            }
-
-            builder.addEmbeds(embeds);
-            builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
-
-            forum.createForumPost(itemName, builder.build()).queue(success -> {
+    forum.createForumPost(itemName, builder.build()).queue(
+            success -> {
                 db.addShopItem(safeName, secretDelivery);
                 event.getHook().sendMessage("✅ Asset published!").queue();
                 sendAuditLog(event.getGuild(), "Asset Published",
                         event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `" + price + " Points`.",
                         new Color(0, 250, 154));
-            }, error -> {
-                event.getHook().sendMessage("❌ Failed to create post: " + error.getMessage()).queue();
-            });
-            return;
-        }
+            },
+            error -> {
+                error.printStackTrace();
+                event.getHook().sendMessage(
+                        "⚠️ Discord returned an upload/network error after submission. Check the forum — the shop post may already exist.")
+                        .queue();
+            }
+    );
+    return;
+}
 
         if (event.getName().equals("bounty")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
@@ -661,68 +667,76 @@ public class CommandListener extends ListenerAdapter {
             String subCommand = event.getSubcommandName();
 
             if ("post".equals(subCommand)) {
-                if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                    event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
-                    return;
-                }
-                if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
-                    event.reply("❌ Bounty forum IDs are not configured.").setEphemeral(true).queue();
-                    return;
-                }
+    if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+        event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+        return;
+    }
+    if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
+        event.reply("❌ Bounty forum IDs are not configured.").setEphemeral(true).queue();
+        return;
+    }
 
-                String selectedForumId = event.getOption("forum").getAsChannel().getId();
-                if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
-                    event.reply("❌ **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
-                    return;
-                }
+    String selectedForumId = event.getOption("forum").getAsChannel().getId();
+    if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
+        event.reply("❌ **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
+        return;
+    }
 
-                ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
-                String title = event.getOption("title").getAsString();
-                int reward = event.getOption("reward").getAsInt();
-                String slotsInput = event.getOption("slots").getAsString();
-                int maxSlots = 0;
-                try {
-                    maxSlots = Integer.parseInt(slotsInput.trim());
-                } catch (NumberFormatException ignored) {
-                    maxSlots = 0;
-                }
-                String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
-                String description = readDescription(event);
+    ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
+    String title = event.getOption("title").getAsString();
+    int reward = event.getOption("reward").getAsInt();
+    String slotsInput = event.getOption("slots").getAsString();
+    int maxSlots = 0;
+    try {
+        maxSlots = Integer.parseInt(slotsInput.trim());
+    } catch (NumberFormatException ignored) {
+        maxSlots = 0;
+    }
+    String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
+    String description = readDescription(event);
 
-                event.deferReply(true).queue();
+    event.deferReply(true).queue();
 
-                MessageCreateBuilder builder = new MessageCreateBuilder();
-                EmbedBuilder questEmbed = new EmbedBuilder()
-                        .setColor(new Color(255, 69, 0))
-                        .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
-                        .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
-                        .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
-                        .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
+    MessageCreateBuilder builder = new MessageCreateBuilder();
+    EmbedBuilder questEmbed = new EmbedBuilder()
+            .setColor(new Color(255, 69, 0))
+            .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
+            .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
+            .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
+            .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
 
-                try {
-                    if (event.getOption("image") != null) {
-                        String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
-                        questEmbed.setImage(imageRef);
-                    }
-                } catch (Exception e) {
-                    event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
-                    return;
-                }
+    try {
+        if (event.getOption("image") != null) {
+            String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
+            questEmbed.setImage(imageRef);
+        }
+    } catch (Exception e) {
+        event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
+        return;
+    }
 
-                builder.addEmbeds(questEmbed.build());
-                builder.addActionRow(Button.success("bjoin_button", "✋ Join Quest"),
-                        Button.danger("bleave_button", "🛑 Leave Quest"));
+    builder.addEmbeds(questEmbed.build());
+    builder.addActionRow(
+            Button.success("bjoin_button", "✋ Join Quest"),
+            Button.danger("bleave_button", "🛑 Leave Quest")
+    );
 
-                forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
-                        success -> {
-                            event.getHook().sendMessage("✅ Dynamic Party Bounty posted!").queue();
-                            sendAuditLog(event.getGuild(), "Bounty Posted",
-                                    event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
-                                            + reward + " Points`.", new Color(255, 69, 0));
-                        },
-                        error -> event.getHook().sendMessage("❌ Failed to create post: " + error.getMessage()).queue());
-                return;
+    forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
+            success -> {
+                event.getHook().sendMessage("✅ Dynamic Party Bounty posted!").queue();
+                sendAuditLog(event.getGuild(), "Bounty Posted",
+                        event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
+                                + reward + " Points`.", new Color(255, 69, 0));
+            },
+            error -> {
+                error.printStackTrace();
+                event.getHook().sendMessage(
+                        "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
+                        .queue();
             }
+    );
+    return;
+}
 
             if ("kick".equals(subCommand)) {
                 if (!event.getChannel().getType().isThread()) {
