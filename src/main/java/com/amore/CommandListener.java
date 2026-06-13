@@ -542,7 +542,6 @@ public class CommandListener extends ListenerAdapter {
             String encodedItem = encodeItem(safeName);
             String buttonId = "buy_" + price + "_" + encodedItem;
 
-            db.addShopItem(safeName, secretDelivery);
 
             MessageCreateBuilder builder = new MessageCreateBuilder();
             List<MessageEmbed> embeds = new ArrayList<>();
@@ -584,14 +583,15 @@ public class CommandListener extends ListenerAdapter {
             builder.addEmbeds(embeds);
             builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
 
-            forum.createForumPost(itemName, builder.build()).queue(
-                    success -> {
-                        event.getHook().sendMessage("✅ Asset published!").queue();
-                        sendAuditLog(event.getGuild(), "Asset Published",
-                                event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `"
-                                        + price + " Points`.", new Color(0, 250, 154));
-                    },
-                    error -> event.getHook().sendMessage("❌ Failed to create post.").queue());
+            forum.createForumPost(itemName, builder.build()).queue(success -> {
+            db.addShopItem(safeName, secretDelivery);
+            event.getHook().sendMessage("✅ Asset published!").queue();
+             sendAuditLog(event.getGuild(), "Asset Published",
+            event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `" + price + " Points`.",
+             new Color(0, 250, 154));
+            }, error -> {
+            event.getHook().sendMessage("❌ Failed to create post.").queue();
+            });
             return;
         }
 
