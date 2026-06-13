@@ -280,6 +280,35 @@ public class CommandListener extends ListenerAdapter {
         return partyName.substring(partyName.indexOf('/') + 1, partyName.indexOf(']'));
     }
 
+    private String sanitizeFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "upload.png";
+        }
+        return fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    private String attachImage(MessageCreateBuilder builder, Attachment attachment) throws Exception {
+        if (attachment == null) {
+            return null;
+        }
+
+        if (!attachment.isImage()) {
+            throw new IllegalArgumentException("The uploaded file is not a valid image.");
+        }
+
+        if (attachment.getSize() > 8 * 1024 * 1024) {
+            throw new IllegalArgumentException("Image is too large. Maximum size is 8 MB.");
+        }
+
+        String safeFileName = sanitizeFileName(attachment.getFileName());
+
+        try (InputStream in = attachment.getProxy().download().join()) {
+            builder.addFiles(FileUpload.fromData(in, safeFileName));
+        }
+
+        return "attachment://" + safeFileName;
+    }
+
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
@@ -288,20 +317,19 @@ public class CommandListener extends ListenerAdapter {
         if (event.getName().equals("balance")) {
             int currentSparks = db.getSparks(userId);
             int currentPoints = db.getPoints(userId);
-            int inventorySize = db.getInventory(userId).isEmpty() ? 0 : db.getInventory(userId).split(",").length;
 
             EmbedBuilder embed = new EmbedBuilder()
-    .setColor(new Color(255, 105, 180))
-    .setTitle("✦ AMORA PERSONAL VAULT ✦")
-    .setDescription(
-        "A soft shimmer runs through the ledger as we check the holdings of **" + event.getUser().getName() + "**.\n\n" +
-        "⚡ **Sparks Balance**\n`" + currentSparks + "`\n\n" +
-        "💎 **Points Balance**\n`" + currentPoints + "`\n\n" +
-        "🃏 **Collection Size**\n`" + (db.getInventory(userId).isEmpty() ? 0 : db.getInventory(userId).split(",").length) + " items`\n\n" +
-        "*Your vault is always growing with every little moment of activity.*"
-    )
-    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
-    .setFooter("AMORA Economy • Gentle wealth, quietly gathered", null);
+                    .setColor(new Color(255, 105, 180))
+                    .setTitle("✦ AMORA PERSONAL VAULT ✦")
+                    .setDescription(
+                            "A soft shimmer runs through the ledger as we check the holdings of **" + event.getUser().getName() + "**.\n\n" +
+                            "⚡ **Sparks Balance**\n`" + currentSparks + "`\n\n" +
+                            "💎 **Points Balance**\n`" + currentPoints + "`\n\n" +
+                            "🃏 **Collection Size**\n`" + (db.getInventory(userId).isEmpty() ? 0 : db.getInventory(userId).split(",").length) + " items`\n\n" +
+                            "*Your vault is always growing with every little moment of activity.*"
+                    )
+                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                    .setFooter("AMORA Economy • Gentle wealth, quietly gathered", null);
             event.replyEmbeds(embed.build()).setEphemeral(true).queue();
             return;
         }
@@ -362,35 +390,37 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (event.getName().equals("inventory")) {
-    String rawInventory = db.getInventory(userId);
+            String rawInventory = db.getInventory(userId);
 
-    if (rawInventory == null || rawInventory.trim().isEmpty()) {
-        EmbedBuilder emptyBinder = new EmbedBuilder()
-            .setColor(new Color(75, 75, 85))
-            .setTitle("✦ DIGITAL BINDER: STILL EMPTY ✦")
-            .setDescription(
-                "Your personal collection binder has not been filled yet.\n\n" +
-                "🃏 **What belongs here:** Your pulled assets, collectibles, and curated rewards.\n" +
-                "⚡ **How to begin:** Use `/pull` to spend Sparks and claim your first item.\n\n" +
-                "*Every treasured archive begins with a single pull.*"
-            )
-            .setThumbnail(event.getUser().getEffectiveAvatarUrl())
-            .setFooter("AMORA Collection Binder • Waiting for its first memory", null);
+            if (rawInventory == null || rawInventory.trim().isEmpty()) {
+                EmbedBuilder emptyBinder = new EmbedBuilder()
+                        .setColor(new Color(75, 75, 85))
+                        .setTitle("✦ DIGITAL BINDER: STILL EMPTY ✦")
+                        .setDescription(
+                                "Your personal collection binder has not been filled yet.\n\n" +
+                                "🃏 **What belongs here:** Your pulled assets, collectibles, and curated rewards.\n" +
+                                "⚡ **How to begin:** Use `/pull` to spend Sparks and claim your first item.\n\n" +
+                                "*Every treasured archive begins with a single pull.*"
+                        )
+                        .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                        .setFooter("AMORA Collection Binder • Waiting for its first memory", null);
 
-        event.replyEmbeds(emptyBinder.build()).queue();
-        return;
-        }
+                event.replyEmbeds(emptyBinder.build()).queue();
+                return;
+            }
 
             EmbedBuilder invEmbed = new EmbedBuilder()
-            .setColor(new Color(255, 105, 180))
-            .setTitle("✦ CURATED COLLECTION BINDER ✦")
-            .setDescription(
-            "Viewing the private archive of " + event.getUser().getAsMention() + ".\n\n" +
-            buildInventoryDisplay(rawInventory) +
-            "\n*Every entry here is a small piece of your AMORA story.*"
-        )
-            .setThumbnail(event.getUser().getEffectiveAvatarUrl())
-            .setFooter("AMORA Binder • Carefully preserved", null);
+                    .setColor(new Color(255, 105, 180))
+                    .setTitle("✦ CURATED COLLECTION BINDER ✦")
+                    .setDescription(
+                            "Viewing the private archive of " + event.getUser().getAsMention() + ".\n\n" +
+                            buildInventoryDisplay(rawInventory) +
+                            "\n*Every entry here is a small piece of your AMORA story.*"
+                    )
+                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                    .setFooter("AMORA Binder • Carefully preserved", null);
+
+            event.replyEmbeds(invEmbed.build()).queue();
             return;
         }
 
@@ -558,7 +588,6 @@ public class CommandListener extends ListenerAdapter {
             String encodedItem = encodeItem(safeName);
             String buttonId = "buy_" + price + "_" + encodedItem;
 
-
             MessageCreateBuilder builder = new MessageCreateBuilder();
             List<MessageEmbed> embeds = new ArrayList<>();
 
@@ -567,32 +596,42 @@ public class CommandListener extends ListenerAdapter {
                     .setTitle(itemName.toUpperCase())
                     .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
 
-            String url1 = event.getOption("url1") != null ? event.getOption("url1").getAsString() : null;
-            String url2 = event.getOption("url2") != null ? event.getOption("url2").getAsString() : null;
-            if (url1 != null && !url1.isBlank()) {
-                mainEmbed.setImage(url1);
-            }
-            embeds.add(mainEmbed.build());
-
-            if (url2 != null && !url2.isBlank()) {
-                embeds.add(new EmbedBuilder().setColor(new Color(0, 250, 154)).setImage(url2).build());
-            }
-
             try {
+                String image1 = null;
+                String image2 = null;
+
                 if (event.getOption("file1") != null) {
-                    Attachment file1 = event.getOption("file1").getAsAttachment();
-                    try (InputStream in1 = file1.getProxy().download().join()) {
-                        builder.addFiles(FileUpload.fromData(in1, file1.getFileName()));
+                    image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
+                } else if (event.getOption("url1") != null) {
+                    String url1 = event.getOption("url1").getAsString();
+                    if (url1 != null && !url1.isBlank()) {
+                        image1 = url1;
                     }
                 }
+
                 if (event.getOption("file2") != null) {
-                    Attachment file2 = event.getOption("file2").getAsAttachment();
-                    try (InputStream in2 = file2.getProxy().download().join()) {
-                        builder.addFiles(FileUpload.fromData(in2, file2.getFileName()));
+                    image2 = attachImage(builder, event.getOption("file2").getAsAttachment());
+                } else if (event.getOption("url2") != null) {
+                    String url2 = event.getOption("url2").getAsString();
+                    if (url2 != null && !url2.isBlank()) {
+                        image2 = url2;
                     }
+                }
+
+                if (image1 != null) {
+                    mainEmbed.setImage(image1);
+                }
+
+                embeds.add(mainEmbed.build());
+
+                if (image2 != null) {
+                    embeds.add(new EmbedBuilder()
+                            .setColor(new Color(0, 250, 154))
+                            .setImage(image2)
+                            .build());
                 }
             } catch (Exception e) {
-                event.getHook().sendMessage("❌ Failed to process uploaded files.").queue();
+                event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
                 return;
             }
 
@@ -600,13 +639,13 @@ public class CommandListener extends ListenerAdapter {
             builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
 
             forum.createForumPost(itemName, builder.build()).queue(success -> {
-            db.addShopItem(safeName, secretDelivery);
-            event.getHook().sendMessage("✅ Asset published!").queue();
-             sendAuditLog(event.getGuild(), "Asset Published",
-            event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `" + price + " Points`.",
-             new Color(0, 250, 154));
+                db.addShopItem(safeName, secretDelivery);
+                event.getHook().sendMessage("✅ Asset published!").queue();
+                sendAuditLog(event.getGuild(), "Asset Published",
+                        event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `" + price + " Points`.",
+                        new Color(0, 250, 154));
             }, error -> {
-            event.getHook().sendMessage("❌ Failed to create post.").queue();
+                event.getHook().sendMessage("❌ Failed to create post: " + error.getMessage()).queue();
             });
             return;
         }
@@ -660,13 +699,12 @@ public class CommandListener extends ListenerAdapter {
 
                 try {
                     if (event.getOption("image") != null) {
-                        Attachment image = event.getOption("image").getAsAttachment();
-                        try (InputStream in = image.getProxy().download().join()) {
-                            builder.addFiles(FileUpload.fromData(in, image.getFileName()));
-                            questEmbed.setImage("attachment://" + image.getFileName());
-                        }
+                        String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
+                        questEmbed.setImage(imageRef);
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
+                    return;
                 }
 
                 builder.addEmbeds(questEmbed.build());
@@ -680,7 +718,7 @@ public class CommandListener extends ListenerAdapter {
                                     event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
                                             + reward + " Points`.", new Color(255, 69, 0));
                         },
-                        error -> event.getHook().sendMessage("❌ Failed to create post.").queue());
+                        error -> event.getHook().sendMessage("❌ Failed to create post: " + error.getMessage()).queue());
                 return;
             }
 
@@ -881,36 +919,36 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
             User targetUser = event.getOption("target").getAsUser();
-int amount = event.getOption("amount").getAsInt();
-String reason = event.getOption("reason").getAsString();
+            int amount = event.getOption("amount").getAsInt();
+            String reason = event.getOption("reason").getAsString();
 
-int currentTargetPoints = db.getPoints(targetUser.getId());
-db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
+            int currentTargetPoints = db.getPoints(targetUser.getId());
+            db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
 
-EmbedBuilder payoutEmbed = new EmbedBuilder()
-    .setColor(new Color(0, 250, 154))
-    .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
-    .setDescription(
-    "A reward has been delivered successfully through the AMORA network.\n\n" +
-    "*Thank you for making meaningful work worth celebrating.*"
-)
-    .addField("🎯 Recipient", targetUser.getAsMention(), true)
-    .addField("💎 Points Granted", "`+" + amount + " Points`", true)
-    .addField("📜 Reason", "`" + reason + "`", false)
-    .addField("🏦 Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
-    .setThumbnail(targetUser.getEffectiveAvatarUrl())
-    .setFooter("AMORA Directive Ledger", null);
+            EmbedBuilder payoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(0, 250, 154))
+                    .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
+                    .setDescription(
+                            "A reward has been delivered successfully through the AMORA network.\n\n" +
+                            "*Thank you for making meaningful work worth celebrating.*"
+                    )
+                    .addField("🎯 Recipient", targetUser.getAsMention(), true)
+                    .addField("💎 Points Granted", "`+" + amount + " Points`", true)
+                    .addField("📜 Reason", "`" + reason + "`", false)
+                    .addField("🏦 Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
+                    .setThumbnail(targetUser.getEffectiveAvatarUrl())
+                    .setFooter("AMORA Directive Ledger", null);
 
-    event.replyEmbeds(payoutEmbed.build()).queue();
+            event.replyEmbeds(payoutEmbed.build()).queue();
 
-    sendAuditLog(
-    event.getGuild(),
-    "Manual Payout",
-    event.getUser().getAsMention() + " paid " + targetUser.getAsMention() + " `" + amount
-        + " Points` for **" + reason + "**.",
-    new Color(0, 250, 154)
-    );
-    return;
+            sendAuditLog(
+                    event.getGuild(),
+                    "Manual Payout",
+                    event.getUser().getAsMention() + " paid " + targetUser.getAsMention() + " `" + amount
+                            + " Points` for **" + reason + "**.",
+                    new Color(0, 250, 154)
+            );
+            return;
         }
 
         if (event.getName().equals("award")) {
@@ -1024,20 +1062,20 @@ EmbedBuilder payoutEmbed = new EmbedBuilder()
 
             pendingForges.remove(ownerId);
 
-        EmbedBuilder success = new EmbedBuilder()
-        .setColor(new Color(255, 215, 0))
-        .setTitle("✦ SYNTHESIS SUCCESS ✦")
-        .setDescription(
-        "The forge answered your offering and reshaped it into something rarer.\n\n" +
-        "*From ash and shimmer, a new treasure was born.*"
-        )
-        .addField("🔥 Consumed", "`3x " + ingredient + "`", true)
-        .addField("✨ Forged", "`" + selectedReward + "`", true)
-        .addField("📥 Destination", "Safely placed into your inventory.", false)
-        .setFooter("AMORA Synthesis Forge", null);
+            EmbedBuilder success = new EmbedBuilder()
+                    .setColor(new Color(255, 215, 0))
+                    .setTitle("✦ SYNTHESIS SUCCESS ✦")
+                    .setDescription(
+                            "The forge answered your offering and reshaped it into something rarer.\n\n" +
+                            "*From ash and shimmer, a new treasure was born.*"
+                    )
+                    .addField("🔥 Consumed", "`3x " + ingredient + "`", true)
+                    .addField("✨ Forged", "`" + selectedReward + "`", true)
+                    .addField("📥 Destination", "Safely placed into your inventory.", false)
+                    .setFooter("AMORA Synthesis Forge", null);
 
-        event.replyEmbeds(success.build()).queue();
-        event.getMessage().delete().queue();
+            event.replyEmbeds(success.build()).queue();
+            event.getMessage().delete().queue();
             sendAuditLog(event.getGuild(), "Forge Crafted",
                     event.getUser().getAsMention() + " burned 3x **" + ingredient + "** and crafted **"
                             + selectedReward + "**.", new Color(255, 215, 0));
@@ -1065,20 +1103,20 @@ EmbedBuilder payoutEmbed = new EmbedBuilder()
                 int curSparks = db.getSparks(ownerId);
                 db.updateSparks(ownerId, curSparks + sparks);
 
-            EmbedBuilder success = new EmbedBuilder()
-            .setColor(new Color(80, 200, 120))
-            .setTitle("✦ RECYCLING COMPLETE ✦")
-            .setDescription(
-            "The item has been dissolved and returned to raw energy.\n\n" +
-            "*Nothing precious is ever truly wasted in the forge.*"
-             )
-            .addField("♻️ Recycled Item", "`" + selected + "`", false)
-            .addField("⚡ Sparks Recovered", "`+" + sparks + " Sparks`", true)
-            .addField("🏦 New Balance", "`" + (curSparks + sparks) + " Sparks`", true)
-            .setFooter("AMORA Recovery Forge", null);
+                EmbedBuilder success = new EmbedBuilder()
+                        .setColor(new Color(80, 200, 120))
+                        .setTitle("✦ RECYCLING COMPLETE ✦")
+                        .setDescription(
+                                "The item has been dissolved and returned to raw energy.\n\n" +
+                                "*Nothing precious is ever truly wasted in the forge.*"
+                        )
+                        .addField("♻️ Recycled Item", "`" + selected + "`", false)
+                        .addField("⚡ Sparks Recovered", "`+" + sparks + " Sparks`", true)
+                        .addField("🏦 New Balance", "`" + (curSparks + sparks) + " Sparks`", true)
+                        .setFooter("AMORA Recovery Forge", null);
 
-            event.replyEmbeds(success.build()).queue();
-            event.getMessage().delete().queue();
+                event.replyEmbeds(success.build()).queue();
+                event.getMessage().delete().queue();
                 sendAuditLog(event.getGuild(), "Item Recycled",
                         event.getUser().getAsMention() + " recycled **" + selected + "** for `" + sparks + " Sparks`.", Color.LIGHT_GRAY);
             }
@@ -1104,9 +1142,9 @@ EmbedBuilder payoutEmbed = new EmbedBuilder()
             String partyValue = partyField[1];
             int current = parsePartyCurrent(partyName);
             String maxStr = parsePartyMax(partyName);
-           int max = maxStr.equalsIgnoreCase("Unlimited")
-        ? Integer.MAX_VALUE
-        : Integer.parseInt(maxStr);
+            int max = maxStr.equalsIgnoreCase("Unlimited")
+                    ? Integer.MAX_VALUE
+                    : Integer.parseInt(maxStr);
             String userMention = event.getUser().getAsMention();
 
             if (partyValue.contains(userMention)) {
@@ -1206,44 +1244,43 @@ EmbedBuilder payoutEmbed = new EmbedBuilder()
             }
 
             EmbedBuilder checkoutEmbed = new EmbedBuilder()
-    .setColor(new Color(46, 204, 113))
-    .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
-    .setDescription(
-        "Your purchase has been processed successfully.\n\n" +
-        "📦 **Asset Added:** `" + itemName + "`\n" +
-        "💌 **Delivery Status:** Check your DMs for the secure package.\n\n" +
-        "*Thank you for supporting the AMORA Asset Market.*"
-    )
-    .setFooter("AMORA Secure Commerce System", null);
+                    .setColor(new Color(46, 204, 113))
+                    .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
+                    .setDescription(
+                            "Your purchase has been processed successfully.\n\n" +
+                            "📦 **Asset Added:** `" + itemName + "`\n" +
+                            "💌 **Delivery Status:** Check your DMs for the secure package.\n\n" +
+                            "*Thank you for supporting the AMORA Asset Market.*"
+                    )
+                    .setFooter("AMORA Secure Commerce System", null);
 
-event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
+            event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
 
-event.getUser().openPrivateChannel().flatMap(channel -> {
-    EmbedBuilder deliveryEmbed = new EmbedBuilder()
-        .setColor(new Color(138, 43, 226))
-        .setTitle("✦ ASSET DELIVERY: " + itemName.toUpperCase() + " ✦")
-        .setDescription(
-            "Thank you for your purchase from the AMORA Asset Market.\n\n" +
-            "📦 **Your Secure Delivery Data:**\n" +
-            "`" + db.getSecretLink(itemName) + "`\n\n" +
-            "💜 **Delivery Note:** This package was prepared exclusively for you.\n\n" +
-            "*Please keep this information strictly confidential.*"
-        )
-        .setFooter("AMORA Curated Ecosystem", null);
+            event.getUser().openPrivateChannel().flatMap(channel -> {
+                EmbedBuilder deliveryEmbed = new EmbedBuilder()
+                        .setColor(new Color(138, 43, 226))
+                        .setTitle("✦ ASSET DELIVERY: " + itemName.toUpperCase() + " ✦")
+                        .setDescription(
+                                "Thank you for your purchase from the AMORA Asset Market.\n\n" +
+                                "📦 **Your Secure Delivery Data:**\n" +
+                                "`" + db.getSecretLink(itemName) + "`\n\n" +
+                                "💜 **Delivery Note:** This package was prepared exclusively for you.\n\n" +
+                                "*Please keep this information strictly confidential.*"
+                        )
+                        .setFooter("AMORA Curated Ecosystem", null);
+                return channel.sendMessageEmbeds(deliveryEmbed.build());
+            }).queue(success -> {}, error -> {
+                event.getChannel().sendMessage(event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed.").queue();
+            });
 
-        return channel.sendMessageEmbeds(deliveryEmbed.build());
-    }).queue(success -> {}, error -> {
-        event.getChannel().sendMessage(event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed.").queue();
-    });
-
-    sendAuditLog(
-        event.getGuild(),
-        "Shop Purchase",
-        event.getUser().getAsMention() + " purchased **" + itemName + "** from the market for `"
-        + price + " Points`.",
-        new Color(138, 43, 226)
-    );
-        return;
+            sendAuditLog(
+                    event.getGuild(),
+                    "Shop Purchase",
+                    event.getUser().getAsMention() + " purchased **" + itemName + "** from the market for `"
+                            + price + " Points`.",
+                    new Color(138, 43, 226)
+            );
+            return;
         }
 
         if (componentId.startsWith("cancelsetup_")) {
@@ -1269,33 +1306,33 @@ event.getUser().openPrivateChannel().flatMap(channel -> {
             scheduler.schedule(() -> activeTrades.remove(tradeId), 15, TimeUnit.MINUTES);
 
             event.editMessageEmbeds(new EmbedBuilder()
-            .setColor(new Color(80, 200, 120))
-            .setTitle("✦ PROPOSAL DISPATCHED ✦")
-            .setDescription(
-            "Your exchange request has been sent successfully.\n\n" +
-            "*Now we wait for the other collector to respond.*"
-            )
-            .setFooter("AMORA Exchange Network", null)
-            .build()
+                    .setColor(new Color(80, 200, 120))
+                    .setTitle("✦ PROPOSAL DISPATCHED ✦")
+                    .setDescription(
+                            "Your exchange request has been sent successfully.\n\n" +
+                            "*Now we wait for the other collector to respond.*"
+                    )
+                    .setFooter("AMORA Exchange Network", null)
+                    .build()
             ).setComponents().queue();
 
-           EmbedBuilder tradeEmbed = new EmbedBuilder()
-        .setColor(new Color(138, 43, 226))
-        .setTitle("✦ ASSET EXCHANGE PROPOSAL ✦")
-        .setDescription(
-        "<@" + setup.senderId + "> has prepared an exchange request for <@" + setup.targetId + ">.\n\n" +
-        "*A thoughtful trade can complete both collections beautifully.*"
-         )
-        .addField("📤 Offered Asset", "`" + setup.selectedOffer + "`", false)
-        .addField("📥 Requested Asset", "`" + setup.selectedRequest + "`", false)
-        .setFooter("AMORA Exchange Network • Proposal expires in 15 minutes", null);
+            EmbedBuilder tradeEmbed = new EmbedBuilder()
+                    .setColor(new Color(138, 43, 226))
+                    .setTitle("✦ ASSET EXCHANGE PROPOSAL ✦")
+                    .setDescription(
+                            "<@" + setup.senderId + "> has prepared an exchange request for <@" + setup.targetId + ">.\n\n" +
+                            "*A thoughtful trade can complete both collections beautifully.*"
+                    )
+                    .addField("📤 Offered Asset", "`" + setup.selectedOffer + "`", false)
+                    .addField("📥 Requested Asset", "`" + setup.selectedRequest + "`", false)
+                    .setFooter("AMORA Exchange Network • Proposal expires in 15 minutes", null);
 
-        event.getChannel().sendMessageEmbeds(tradeEmbed.build())
-        .addActionRow(
-        Button.success("trade_accept_" + tradeId, "✅ Accept"),
-        Button.danger("trade_decline_" + tradeId, "❌ Decline")
-        )
-        .queue();
+            event.getChannel().sendMessageEmbeds(tradeEmbed.build())
+                    .addActionRow(
+                            Button.success("trade_accept_" + tradeId, "✅ Accept"),
+                            Button.danger("trade_decline_" + tradeId, "❌ Decline")
+                    )
+                    .queue();
 
             pendingSetups.remove(setupId);
             return;
@@ -1353,16 +1390,16 @@ event.getUser().openPrivateChannel().flatMap(channel -> {
             activeTrades.remove(tradeId);
             event.editComponents().queue();
             EmbedBuilder completedTrade = new EmbedBuilder()
-            .setColor(new Color(50, 205, 50))
-            .setTitle("✦ EXCHANGE COMPLETE ✦")
-            .setDescription(
-            "The trade has been finalized successfully.\n\n" +
-            "*A fair exchange leaves both collections a little more complete.*"
-            )
-            .addField("🤝 Participants", "<@" + trade.senderId + "> ↔ <@" + trade.targetId + ">", false)
-            .addField("📤 From Sender", "`" + trade.offerItem + "`", true)
-            .addField("📥 From Target", "`" + trade.requestItem + "`", true)
-            .setFooter("AMORA Exchange Network", null);
+                    .setColor(new Color(50, 205, 50))
+                    .setTitle("✦ EXCHANGE COMPLETE ✦")
+                    .setDescription(
+                            "The trade has been finalized successfully.\n\n" +
+                            "*A fair exchange leaves both collections a little more complete.*"
+                    )
+                    .addField("🤝 Participants", "<@" + trade.senderId + "> ↔ <@" + trade.targetId + ">", false)
+                    .addField("📤 From Sender", "`" + trade.offerItem + "`", true)
+                    .addField("📥 From Target", "`" + trade.requestItem + "`", true)
+                    .setFooter("AMORA Exchange Network", null);
 
             event.getChannel().sendMessageEmbeds(completedTrade.build()).queue();
 
