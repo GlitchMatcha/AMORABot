@@ -43,7 +43,9 @@ public class CommandListener extends ListenerAdapter {
     private static final String SHOP_FORUM_CHANNEL_ID = System.getenv("SHOP_FORUM_CHANNEL_ID");
     private static final String STANDARD_BOUNTY_FORUM_ID = System.getenv("STANDARD_BOUNTY_FORUM_ID");
     private static final String URGENT_BOUNTY_FORUM_ID = System.getenv("URGENT_BOUNTY_FORUM_ID");
-
+    private static final String ADDSPARKS_ROLE_IDS = System.getenv("ADDSPARKS_ROLE_IDS");
+    private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
+    
     private static final Map<String, TradeData> activeTrades = new ConcurrentHashMap<>();
     private static final Map<String, TradeSetup> pendingSetups = new ConcurrentHashMap<>();
     private static final Map<String, String> pendingForges = new ConcurrentHashMap<>();
@@ -90,7 +92,50 @@ public class CommandListener extends ListenerAdapter {
             auditChannel.sendMessageEmbeds(logEmbed.build()).queue();
         }
     }
+    private boolean hasAnyAllowedRole(SlashCommandInteractionEvent event, String rawRoleIds) {
+    if (event.getMember() == null || rawRoleIds == null || rawRoleIds.isBlank()) {
+        return false;
+    }
 
+    String[] allowedIds = rawRoleIds.split(",");
+    for (String allowedId : allowedIds) {
+        String trimmedId = allowedId.trim();
+        if (trimmedId.isEmpty()) {
+            continue;
+        }
+
+        boolean match = event.getMember().getRoles().stream()
+                .anyMatch(role -> role.getId().equals(trimmedId));
+
+        if (match) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+    private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
+    if (event.getMember() == null) {
+        event.reply("❌ This command can only be used inside a server.")
+                .setEphemeral(true).queue();
+        return false;
+    }
+
+    if (rawRoleIds == null || rawRoleIds.isBlank()) {
+        event.reply("❌ `" + envName + "` is not configured yet. Set it in Render first.")
+                .setEphemeral(true).queue();
+        return false;
+    }
+
+    if (!hasAnyAllowedRole(event, rawRoleIds)) {
+        event.reply("❌ You do not have any of the required roles to use this command.")
+                .setEphemeral(true).queue();
+        return false;
+        }
+
+        return true;
+}
     private String getExactItemName(String inventory, String searchTerm) {
         if (inventory == null || inventory.isEmpty()) {
             return null;
@@ -910,62 +955,74 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (event.getName().equals("addsparks")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Denied.").setEphemeral(true).queue();
-                return;
-            }
-            User targetUser = event.getOption("target").getAsUser();
-            int amount = event.getOption("amount").getAsInt();
-            int currentTargetSparks = db.getSparks(targetUser.getId());
-            db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
-            event.replyEmbeds(new EmbedBuilder()
-                    .setColor(Color.GREEN)
-                    .setTitle("VAULT UPDATED")
-                    .setDescription("Minted `" + amount + "` Sparks for " + targetUser.getAsMention())
-                    .build()).queue();
-            sendAuditLog(event.getGuild(), "Sparks Minted",
-                    event.getUser().getAsMention() + " forcefully minted `" + amount + "` Sparks to "
-                            + targetUser.getAsMention() + ".", Color.ORANGE);
-            return;
-        }
+    if (!requireAnyConfiguredRole(event, ADDSPARKS_ROLE_IDS, "ADDSPARKS_ROLE_IDS")) {
+        return;
+    }
+
+    User targetUser = event.getOption("target").getAsUser();
+    int amount = event.getOption("amount").getAsInt();
+
+    if (amount <= 0) {
+        event.reply("❌ Amount must be greater than 0.")
+                .setEphemeral(true).queue();
+        return;
+    }
+
+    int currentTargetSparks = db.getSparks(targetUser.getId());
+    db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
+
+    event.replyEmbeds(new EmbedBuilder()
+            .setColor(Color.GREEN)
+            .setTitle("VAULT UPDATED")
+            .setDescription("Minted **" + amount + " Sparks** for " + targetUser.getAsMention() + ".")
+            .addField("Updated Balance", "`" + (currentTargetSparks + amount) + " Sparks`", false)
+            .build()).queue();
+
+    sendAuditLog(event.getGuild(), "Sparks Minted",
+            event.getUser().getAsMention() + " minted **" + amount + " Sparks** to "
+                    + targetUser.getAsMention() + ".",
+            Color.ORANGE);
+    return;
+}
 
         if (event.getName().equals("payout")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Denied.").setEphemeral(true).queue();
-                return;
-            }
-            User targetUser = event.getOption("target").getAsUser();
-            int amount = event.getOption("amount").getAsInt();
-            String reason = event.getOption("reason").getAsString();
+    if (!requireAnyConfiguredRole(event, PAYOUT_ROLE_IDS, "PAYOUT_ROLE_IDS")) {
+        return;
+    }
 
-            int currentTargetPoints = db.getPoints(targetUser.getId());
-            db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
+    User targetUser = event.getOption("target").getAsUser();
+    int amount = event.getOption("amount").getAsInt();
+    String reason = event.getOption("reason").getAsString();
 
-            EmbedBuilder payoutEmbed = new EmbedBuilder()
-                    .setColor(new Color(0, 250, 154))
-                    .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
-                    .setDescription(
-                            "A reward has been delivered successfully through the AMORA network.\n\n" +
-                            "*Thank you for making meaningful work worth celebrating.*"
-                    )
-                    .addField("🎯 Recipient", targetUser.getAsMention(), true)
-                    .addField("💎 Points Granted", "`+" + amount + " Points`", true)
-                    .addField("📜 Reason", "`" + reason + "`", false)
-                    .addField("🏦 Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
-                    .setThumbnail(targetUser.getEffectiveAvatarUrl())
-                    .setFooter("AMORA Directive Ledger", null);
+    if (amount <= 0) {
+        event.reply("❌ Amount must be greater than 0.")
+                .setEphemeral(true).queue();
+        return;
+    }
 
-            event.replyEmbeds(payoutEmbed.build()).queue();
+    int currentTargetPoints = db.getPoints(targetUser.getId());
+    db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
 
-            sendAuditLog(
-                    event.getGuild(),
-                    "Manual Payout",
-                    event.getUser().getAsMention() + " paid " + targetUser.getAsMention() + " `" + amount
-                            + " Points` for **" + reason + "**.",
-                    new Color(0, 250, 154)
-            );
-            return;
-        }
+    EmbedBuilder payoutEmbed = new EmbedBuilder()
+            .setColor(new Color(0, 250, 154))
+            .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
+            .setDescription("A reward has been delivered successfully through the AMORA network.\n"
+                    + "Thank you for making meaningful work worth celebrating.")
+            .addField("Recipient", targetUser.getAsMention(), true)
+            .addField("Points Granted", "`" + amount + " Points`", true)
+            .addField("Reason", reason, false)
+            .addField("Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
+            .setThumbnail(targetUser.getEffectiveAvatarUrl())
+            .setFooter("AMORA Directive Ledger", null);
+
+        event.replyEmbeds(payoutEmbed.build()).queue();
+
+        sendAuditLog(event.getGuild(), "Manual Payout",
+            event.getUser().getAsMention() + " paid " + targetUser.getAsMention()
+                    + " **" + amount + " Points** for `" + reason + "`.",
+            new Color(0, 250, 154));
+        return;
+    }
 
         if (event.getName().equals("award")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
