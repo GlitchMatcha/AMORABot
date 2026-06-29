@@ -123,7 +123,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     if (rawRoleIds == null || rawRoleIds.isBlank()) {
-        event.reply("❌ `" + "Your Role" + "` is not allowed to use this command wahhh T^T.")
+        event.reply("❌ `" + envName + "` is not allowed to use this command wahhh T^T.")
                 .setEphemeral(true).queue();
         return false;
     }
