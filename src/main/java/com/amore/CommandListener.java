@@ -123,13 +123,13 @@ public class CommandListener extends ListenerAdapter {
     }
 
     if (rawRoleIds == null || rawRoleIds.isBlank()) {
-        event.reply("❌ `" + envName + "` is not allowed to use this command wahhh T^T.")
+        event.reply("❌ `" + "Role hasn't been configured T^T.")
                 .setEphemeral(true).queue();
         return false;
     }
 
     if (!hasAnyAllowedRole(event, rawRoleIds)) {
-        event.reply("❌ You do not have any of the required roles to use this command.")
+        event.reply("❌ You don't have the designated role for this command wahhh T^T.")
                 .setEphemeral(true).queue();
         return false;
         }
