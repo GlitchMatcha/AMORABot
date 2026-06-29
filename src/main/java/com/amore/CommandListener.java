@@ -10,9 +10,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -31,7 +28,6 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.utils.FileUpload;
@@ -45,37 +41,6 @@ public class CommandListener extends ListenerAdapter {
     private static final String URGENT_BOUNTY_FORUM_ID = System.getenv("URGENT_BOUNTY_FORUM_ID");
     private static final String ADDSPARKS_ROLE_IDS = System.getenv("ADDSPARKS_ROLE_IDS");
     private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
-    
-    private static final Map<String, TradeData> activeTrades = new ConcurrentHashMap<>();
-    private static final Map<String, TradeSetup> pendingSetups = new ConcurrentHashMap<>();
-    private static final Map<String, String> pendingForges = new ConcurrentHashMap<>();
-    private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-
-    private static class TradeData {
-        String senderId;
-        String targetId;
-        String offerItem;
-        String requestItem;
-
-        TradeData(String senderId, String targetId, String offerItem, String requestItem) {
-            this.senderId = senderId;
-            this.targetId = targetId;
-            this.offerItem = offerItem;
-            this.requestItem = requestItem;
-        }
-    }
-
-    private static class TradeSetup {
-        String senderId;
-        String targetId;
-        String selectedOffer;
-        String selectedRequest;
-
-        TradeSetup(String senderId, String targetId) {
-            this.senderId = senderId;
-            this.targetId = targetId;
-        }
-    }
 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -92,54 +57,57 @@ public class CommandListener extends ListenerAdapter {
             auditChannel.sendMessageEmbeds(logEmbed.build()).queue();
         }
     }
+
     private boolean hasAnyAllowedRole(SlashCommandInteractionEvent event, String rawRoleIds) {
-    if (event.getMember() == null || rawRoleIds == null || rawRoleIds.isBlank()) {
+        if (event.getMember() == null || rawRoleIds == null || rawRoleIds.isBlank()) {
+            return false;
+        }
+
+        String[] allowedIds = rawRoleIds.split(",");
+        for (String allowedId : allowedIds) {
+            String trimmedId = allowedId.trim();
+            if (trimmedId.isEmpty()) {
+                continue;
+            }
+
+            boolean match = event.getMember().getRoles().stream()
+                    .anyMatch(role -> role.getId().equals(trimmedId));
+
+            if (match) {
+                return true;
+            }
+        }
+
         return false;
     }
-
-    String[] allowedIds = rawRoleIds.split(",");
-    for (String allowedId : allowedIds) {
-        String trimmedId = allowedId.trim();
-        if (trimmedId.isEmpty()) {
-            continue;
-        }
-
-        boolean match = event.getMember().getRoles().stream()
-                .anyMatch(role -> role.getId().equals(trimmedId));
-
-        if (match) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
     private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
-    if (event.getMember() == null) {
-        event.reply("❌ This command can only be used inside a server.")
-                .setEphemeral(true).queue();
-        return false;
-    }
+        if (event.getMember() == null) {
+            event.reply("❌ This command can only be used inside a server.")
+                    .setEphemeral(true).queue();
+            return false;
+        }
 
-    if (rawRoleIds == null || rawRoleIds.isBlank()) {
-        event.reply("❌ `" + "Role hasn't been configured T^T.")
-                .setEphemeral(true).queue();
-        return false;
-    }
+        if (rawRoleIds == null || rawRoleIds.isBlank()) {
+            event.reply("❌ `" + envName + "` is not allowed to use this command wahhh T^T.")
+                    .setEphemeral(true).queue();
+            return false;
+        }
 
-    if (!hasAnyAllowedRole(event, rawRoleIds)) {
-        event.reply("❌ You don't have the designated role for this command wahhh T^T.")
-                .setEphemeral(true).queue();
-        return false;
+        if (!hasAnyAllowedRole(event, rawRoleIds)) {
+            event.reply("❌ You do not have any of the required roles to use this command.")
+                    .setEphemeral(true).queue();
+            return false;
         }
 
         return true;
-}
+    }
+
     private String getExactItemName(String inventory, String searchTerm) {
         if (inventory == null || inventory.isEmpty()) {
             return null;
         }
+
         for (String item : inventory.split(",")) {
             if (item.trim().equals(searchTerm.trim())) {
                 return item.trim();
@@ -156,9 +124,11 @@ public class CommandListener extends ListenerAdapter {
         if (inventory == null || inventory.isEmpty()) {
             return "";
         }
+
         String[] itemArray = inventory.split(",");
         StringBuilder newInv = new StringBuilder();
         int removed = 0;
+
         for (String item : itemArray) {
             String trimmed = item.trim();
             if (removed < amountToRemove && trimmed.equals(exactItemName)) {
@@ -170,6 +140,7 @@ public class CommandListener extends ListenerAdapter {
                 newInv.append(trimmed);
             }
         }
+
         return newInv.toString();
     }
 
@@ -177,6 +148,7 @@ public class CommandListener extends ListenerAdapter {
         if (inventory == null || inventory.isEmpty()) {
             return 0;
         }
+
         int count = 0;
         for (String item : inventory.split(",")) {
             if (item.trim().equals(exactItemName)) {
@@ -191,6 +163,7 @@ public class CommandListener extends ListenerAdapter {
         if (inventory == null || inventory.isBlank()) {
             return counts;
         }
+
         for (String item : inventory.split(",")) {
             String trimmed = item.trim();
             if (!trimmed.isEmpty()) {
@@ -202,6 +175,7 @@ public class CommandListener extends ListenerAdapter {
 
     private StringSelectMenu buildInventoryMenu(String menuId, String inventory, String placeholder) {
         StringSelectMenu.Builder menu = StringSelectMenu.create(menuId).setPlaceholder(placeholder);
+
         if (inventory == null || inventory.isEmpty()) {
             menu.addOption("Empty Inventory", "empty");
             menu.setDisabled(true);
@@ -216,6 +190,7 @@ public class CommandListener extends ListenerAdapter {
             menu.addOption(entry.getKey() + " (x" + entry.getValue() + ")", entry.getKey());
             added++;
         }
+
         return menu.build();
     }
 
@@ -236,6 +211,7 @@ public class CommandListener extends ListenerAdapter {
         if (description.length() > 4000) {
             description = description.substring(0, 4000) + "... (Truncated)";
         }
+
         return description;
     }
 
@@ -262,6 +238,7 @@ public class CommandListener extends ListenerAdapter {
 
     private List<String> forgeRewards(String ingredient) {
         List<String> rewards = new ArrayList<>();
+
         if (ingredient.contains("3★")) {
             rewards.add("4★ Concept Photocard & Vibrant Profile Color Role");
             rewards.add("4★ Director's Signature Pack");
@@ -271,6 +248,7 @@ public class CommandListener extends ListenerAdapter {
             rewards.add("5★ Premium Artist Commission Ticket");
             rewards.add("5★ Founder Relic Showcase Frame");
         }
+
         return rewards;
     }
 
@@ -279,6 +257,7 @@ public class CommandListener extends ListenerAdapter {
         if (counts.isEmpty()) {
             return "_No items._";
         }
+
         StringBuilder builder = new StringBuilder();
         for (Map.Entry<String, Integer> entry : counts.entrySet()) {
             builder.append("✦ `x").append(entry.getValue()).append("` **")
@@ -292,6 +271,7 @@ public class CommandListener extends ListenerAdapter {
         if (raw == null || raw.isBlank()) {
             return ids;
         }
+
         Matcher matcher = Pattern.compile("<@!?(\\d+)>").matcher(raw);
         while (matcher.find()) {
             ids.add(matcher.group(1));
@@ -310,7 +290,8 @@ public class CommandListener extends ListenerAdapter {
 
     private int getPartyFieldIndex(MessageEmbed embed) {
         for (int i = 0; i < embed.getFields().size(); i++) {
-            if (embed.getFields().get(i).getName() != null && embed.getFields().get(i).getName().startsWith("👥 Party")) {
+            if (embed.getFields().get(i).getName() != null
+                    && embed.getFields().get(i).getName().startsWith("👥 Party")) {
                 return i;
             }
         }
@@ -355,7 +336,8 @@ public class CommandListener extends ListenerAdapter {
         builder.addFiles(FileUpload.fromData(data, safeFileName));
         return "attachment://" + safeFileName;
     }
-     private int getInventoryCount(String inventory) {
+
+    private int getInventoryCount(String inventory) {
         if (inventory == null || inventory.isBlank()) {
             return 0;
         }
@@ -368,6 +350,7 @@ public class CommandListener extends ListenerAdapter {
         }
         return count;
     }
+
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
@@ -384,15 +367,17 @@ public class CommandListener extends ListenerAdapter {
                             "A soft shimmer runs through the ledger as we check the holdings of **" + event.getUser().getName() + "**.\n\n" +
                             "⚡ **Sparks Balance**\n`" + currentSparks + "`\n\n" +
                             "💎 **Points Balance**\n`" + currentPoints + "`\n\n" +
-                            "🃏 **Collection Size**\n`" + (db.getInventory(userId).isEmpty() ? 0 : db.getInventory(userId).split(",").length) + " items`\n\n" +
+                            "🃏 **Collection Size**\n`" + getInventoryCount(db.getInventory(userId)) + " items`\n\n" +
                             "*Your vault is always growing with every little moment of activity.*"
                     )
                     .setThumbnail(event.getUser().getEffectiveAvatarUrl())
                     .setFooter("AMORA Economy • Gentle wealth, quietly gathered", null);
+
             event.replyEmbeds(embed.build()).setEphemeral(true).queue();
             return;
         }
-                      if (event.getName().equals("profile")) {
+
+        if (event.getName().equals("profile")) {
             User targetUser = event.getOption("user") != null
                     ? event.getOption("user").getAsUser()
                     : event.getUser();
@@ -427,66 +412,7 @@ public class CommandListener extends ListenerAdapter {
             event.replyEmbeds(profileEmbed.build()).queue();
             return;
         }
-        if (event.getName().equals("pull")) {
-            int currentSparks = db.getSparks(userId);
-            int currentPity = db.getPity(userId);
-            int pullCost = 50;
 
-            if (currentSparks < pullCost) {
-                event.replyEmbeds(new EmbedBuilder()
-                        .setColor(Color.RED)
-                        .setTitle("✦ INSUFFICIENT SPARKS ✦")
-                        .setDescription(
-                                "You do not have enough energy to perform a pull.\n\n" +
-                                "⚡ **Required:** `" + pullCost + " Sparks`\n" +
-                                "💫 **Current Balance:** `" + currentSparks + " Sparks`")
-                        .build()).setEphemeral(true).queue();
-                return;
-            }
-
-            db.updateSparks(userId, currentSparks - pullCost);
-
-            double roll = Math.random() * 100;
-            String rewardName;
-            String tierLabel;
-            Color embedColor;
-            int newPity = currentPity + 1;
-
-            if (roll < 5.0 || currentPity >= 49) {
-                rewardName = "5★ Limited Edition Custom Render Asset";
-                tierLabel = currentPity >= 49 ? "💛 PITY GUARANTEE" : "🌟 LEGENDARY DROP";
-                embedColor = new Color(255, 215, 0);
-                newPity = 0;
-            } else if (roll < 30.0) {
-                rewardName = "4★ Concept Photocard & Vibrant Profile Color Role";
-                tierLabel = "💖 RARE DROP";
-                embedColor = new Color(255, 20, 147);
-            } else {
-                rewardName = "3★ Standard Server Photocard Bundle";
-                tierLabel = "⚪ COMMON DROP";
-                embedColor = Color.LIGHT_GRAY;
-            }
-
-            db.addInventoryItem(userId, rewardName);
-            db.updatePity(userId, newPity);
-
-            int remainingSparks = currentSparks - pullCost;
-
-            EmbedBuilder rewardEmbed = new EmbedBuilder()
-                    .setColor(embedColor)
-                    .setTitle("✦ AMORA GACHA REVEAL ✦")
-                    .addField("Drop Status", tierLabel, false)
-                    .addField("Item Claimed", rewardName, false)
-                    .addField("Account Summary",
-                            "⚡ **Remaining Sparks:** `" + remainingSparks + "`\n" +
-                            "🎯 **Pity Counter:** `" + newPity + "/50`",
-                            false)
-                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
-                    .setFooter("AMORA Gacha System", null);
-
-            event.replyEmbeds(rewardEmbed.build()).queue();
-            return;
-        }
         if (event.getName().equals("inventory")) {
             String rawInventory = db.getInventory(userId);
 
@@ -565,7 +491,7 @@ public class CommandListener extends ListenerAdapter {
                     .setDescription("Welcome to the Forge, " + event.getUser().getAsMention() + ".\n\n"
                             + "🔨 **Crafting:** Burn `3` identical Gacha drops to choose a reward of the next tier up.\n"
                             + "♻️ **Recycling:** Melt down any unwanted item to instantly recover Sparks.")
-                    .setFooter("Warning: Forge actions are permanent and cannot be undone.");
+                    .setFooter("Warning: Forge actions are permanent and cannot be undone.", null);
 
             event.replyEmbeds(forgeEmbed.build())
                     .addActionRow(craftMenu.build())
@@ -607,7 +533,7 @@ public class CommandListener extends ListenerAdapter {
                     .setColor(color)
                     .setTitle(title)
                     .setDescription(desc.toString())
-                    .setFooter("AMORA Network Rankings")
+                    .setFooter("AMORA Network Rankings", null)
                     .build()).queue();
             return;
         }
@@ -624,6 +550,7 @@ public class CommandListener extends ListenerAdapter {
 
             String senderInv = db.getInventory(senderId);
             String targetInv = db.getInventory(targetId);
+
             if (senderInv == null || senderInv.isEmpty()) {
                 event.reply("❌ You don't have assets!").setEphemeral(true).queue();
                 return;
@@ -634,8 +561,8 @@ public class CommandListener extends ListenerAdapter {
             }
 
             String setupId = UUID.randomUUID().toString().substring(0, 8);
-            pendingSetups.put(setupId, new TradeSetup(senderId, targetId));
-            scheduler.schedule(() -> pendingSetups.remove(setupId), 5, TimeUnit.MINUTES);
+            long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+            db.savePendingTradeSetup(setupId, senderId, targetId, expiresAt);
 
             event.replyEmbeds(new EmbedBuilder()
                             .setColor(new Color(138, 43, 226))
@@ -652,110 +579,111 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-       if (event.getName().equals("publish")) {
-    if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-        event.reply("❌ No clearance.").setEphemeral(true).queue();
-        return;
-    }
-    if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-        event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
-        return;
-    }
-    if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
-        event.reply("❌ SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
-        return;
-    }
-    if (!event.getOption("forum").getAsChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
-        event.reply("❌ **Access Denied:** Wrong channel!").setEphemeral(true).queue();
-        return;
-    }
-
-    String itemName = event.getOption("name").getAsString();
-    String safeName = itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
-
-    if (db.shopItemExists(safeName)) {
-        event.reply("❌ Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
-        return;
-    }
-
-    event.deferReply(true).queue();
-    ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
-    int price = event.getOption("price").getAsInt();
-    String secretDelivery = event.getOption("delivery").getAsString();
-    String description = readDescription(event);
-    String encodedItem = encodeItem(safeName);
-    String buttonId = "buy_" + price + "_" + encodedItem;
-
-    MessageCreateBuilder builder = new MessageCreateBuilder();
-    List<MessageEmbed> embeds = new ArrayList<>();
-
-    EmbedBuilder mainEmbed = new EmbedBuilder()
-            .setColor(new Color(0, 250, 154))
-            .setTitle(itemName.toUpperCase())
-            .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
-
-    try {
-        String image1 = null;
-        String image2 = null;
-
-        if (event.getOption("file1") != null) {
-            image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
-        } else if (event.getOption("url1") != null) {
-            String url1 = event.getOption("url1").getAsString();
-            if (url1 != null && !url1.isBlank()) {
-                image1 = url1;
+        if (event.getName().equals("publish")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ No clearance.").setEphemeral(true).queue();
+                return;
             }
-        }
-
-        if (event.getOption("file2") != null) {
-            image2 = attachImage(builder, event.getOption("file2").getAsAttachment());
-        } else if (event.getOption("url2") != null) {
-            String url2 = event.getOption("url2").getAsString();
-            if (url2 != null && !url2.isBlank()) {
-                image2 = url2;
+            if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+                event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+                return;
             }
-        }
+            if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
+                event.reply("❌ SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
+                return;
+            }
+            if (!event.getOption("forum").getAsChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
+                event.reply("❌ **Access Denied:** Wrong channel!").setEphemeral(true).queue();
+                return;
+            }
 
-        if (image1 != null) {
-            mainEmbed.setImage(image1);
-        }
+            String itemName = event.getOption("name").getAsString();
+            String safeName = itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
 
-        embeds.add(mainEmbed.build());
+            if (db.shopItemExists(safeName)) {
+                event.reply("❌ Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
+                return;
+            }
 
-        if (image2 != null) {
-            embeds.add(new EmbedBuilder()
+            event.deferReply(true).queue();
+            ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
+            int price = event.getOption("price").getAsInt();
+            String secretDelivery = event.getOption("delivery").getAsString();
+            String description = readDescription(event);
+            String encodedItem = encodeItem(safeName);
+            String buttonId = "buy_" + price + "_" + encodedItem;
+
+            MessageCreateBuilder builder = new MessageCreateBuilder();
+            List<MessageEmbed> embeds = new ArrayList<>();
+
+            EmbedBuilder mainEmbed = new EmbedBuilder()
                     .setColor(new Color(0, 250, 154))
-                    .setImage(image2)
-                    .build());
-        }
-    } catch (Exception e) {
-        event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
-        return;
-    }
+                    .setTitle(itemName.toUpperCase())
+                    .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
 
-    builder.addEmbeds(embeds);
-    builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
+            try {
+                String image1 = null;
+                String image2 = null;
 
-    forum.createForumPost(itemName, builder.build()).queue(
-            success -> {
-                db.addShopItem(safeName, secretDelivery);
-                event.getHook().sendMessage("✅ Asset published!").queue();
-                sendAuditLog(event.getGuild(), "Asset Published",
-                        event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `" + price + " Points`.",
-                        new Color(0, 250, 154));
-            },
-            error -> {
-                error.printStackTrace();
-                event.getHook().sendMessage(
-                        "⚠️ Discord returned an upload/network error after submission. Check the forum — the shop post may already exist.")
-                        .queue();
+                if (event.getOption("file1") != null) {
+                    image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
+                } else if (event.getOption("url1") != null) {
+                    String url1 = event.getOption("url1").getAsString();
+                    if (url1 != null && !url1.isBlank()) {
+                        image1 = url1;
+                    }
+                }
+
+                if (event.getOption("file2") != null) {
+                    image2 = attachImage(builder, event.getOption("file2").getAsAttachment());
+                } else if (event.getOption("url2") != null) {
+                    String url2 = event.getOption("url2").getAsString();
+                    if (url2 != null && !url2.isBlank()) {
+                        image2 = url2;
+                    }
+                }
+
+                if (image1 != null) {
+                    mainEmbed.setImage(image1);
+                }
+
+                embeds.add(mainEmbed.build());
+
+                if (image2 != null) {
+                    embeds.add(new EmbedBuilder()
+                            .setColor(new Color(0, 250, 154))
+                            .setImage(image2)
+                            .build());
+                }
+            } catch (Exception e) {
+                event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
+                return;
             }
-    );
-    return;
-}
+
+            builder.addEmbeds(embeds);
+            builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
+
+            forum.createForumPost(itemName, builder.build()).queue(
+                    success -> {
+                        db.addShopItem(safeName, secretDelivery);
+                        event.getHook().sendMessage("✅ Asset published!").queue();
+                        sendAuditLog(event.getGuild(), "Asset Published",
+                                event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `"
+                                        + price + " Points`.",
+                                new Color(0, 250, 154));
+                    },
+                    error -> {
+                        error.printStackTrace();
+                        event.getHook().sendMessage(
+                                        "⚠️ Discord returned an upload/network error after submission. Check the forum — the shop post may already exist.")
+                                .queue();
+                    }
+            );
+            return;
+        }
 
         if (event.getName().equals("bounty")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("❌ You do not have clearance to manage Bounties.").setEphemeral(true).queue();
                 return;
             }
@@ -763,76 +691,77 @@ public class CommandListener extends ListenerAdapter {
             String subCommand = event.getSubcommandName();
 
             if ("post".equals(subCommand)) {
-    if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-        event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
-        return;
-    }
-    if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
-        event.reply("❌ Bounty forum IDs are not configured.").setEphemeral(true).queue();
-        return;
-    }
+                if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+                    event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+                    return;
+                }
+                if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
+                    event.reply("❌ Bounty forum IDs are not configured.").setEphemeral(true).queue();
+                    return;
+                }
 
-    String selectedForumId = event.getOption("forum").getAsChannel().getId();
-    if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
-        event.reply("❌ **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
-        return;
-    }
+                String selectedForumId = event.getOption("forum").getAsChannel().getId();
+                if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
+                    event.reply("❌ **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
+                    return;
+                }
 
-    ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
-    String title = event.getOption("title").getAsString();
-    int reward = event.getOption("reward").getAsInt();
-    String slotsInput = event.getOption("slots").getAsString();
-    int maxSlots = 0;
-    try {
-        maxSlots = Integer.parseInt(slotsInput.trim());
-    } catch (NumberFormatException ignored) {
-        maxSlots = 0;
-    }
-    String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
-    String description = readDescription(event);
+                ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
+                String title = event.getOption("title").getAsString();
+                int reward = event.getOption("reward").getAsInt();
+                String slotsInput = event.getOption("slots").getAsString();
+                int maxSlots = 0;
+                try {
+                    maxSlots = Integer.parseInt(slotsInput.trim());
+                } catch (NumberFormatException ignored) {
+                    maxSlots = 0;
+                }
 
-    event.deferReply(true).queue();
+                String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
+                String description = readDescription(event);
 
-    MessageCreateBuilder builder = new MessageCreateBuilder();
-    EmbedBuilder questEmbed = new EmbedBuilder()
-            .setColor(new Color(255, 69, 0))
-            .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
-            .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
-            .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
-            .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
+                event.deferReply(true).queue();
 
-    try {
-        if (event.getOption("image") != null) {
-            String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
-            questEmbed.setImage(imageRef);
-        }
-    } catch (Exception e) {
-        event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
-        return;
-    }
+                MessageCreateBuilder builder = new MessageCreateBuilder();
+                EmbedBuilder questEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 69, 0))
+                        .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
+                        .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
+                        .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
+                        .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
 
-    builder.addEmbeds(questEmbed.build());
-    builder.addActionRow(
-            Button.success("bjoin_button", "✋ Join Quest"),
-            Button.danger("bleave_button", "🛑 Leave Quest")
-    );
+                try {
+                    if (event.getOption("image") != null) {
+                        String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
+                        questEmbed.setImage(imageRef);
+                    }
+                } catch (Exception e) {
+                    event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
+                    return;
+                }
 
-    forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
-            success -> {
-                event.getHook().sendMessage("✅ Dynamic Party Bounty posted!").queue();
-                sendAuditLog(event.getGuild(), "Bounty Posted",
-                        event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
-                                + reward + " Points`.", new Color(255, 69, 0));
-            },
-            error -> {
-                error.printStackTrace();
-                event.getHook().sendMessage(
-                        "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
-                        .queue();
+                builder.addEmbeds(questEmbed.build());
+                builder.addActionRow(
+                        Button.success("bjoin_button", "✋ Join Quest"),
+                        Button.danger("bleave_button", "🛑 Leave Quest")
+                );
+
+                forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
+                        success -> {
+                            event.getHook().sendMessage("✅ Dynamic Party Bounty posted!").queue();
+                            sendAuditLog(event.getGuild(), "Bounty Posted",
+                                    event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
+                                            + reward + " Points`.", new Color(255, 69, 0));
+                        },
+                        error -> {
+                            error.printStackTrace();
+                            event.getHook().sendMessage(
+                                            "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
+                                    .queue();
+                        }
+                );
+                return;
             }
-    );
-    return;
-}
 
             if ("kick".equals(subCommand)) {
                 if (!event.getChannel().getType().isThread()) {
@@ -866,23 +795,29 @@ public class CommandListener extends ListenerAdapter {
 
                             int current = parsePartyCurrent(partyName);
                             String maxStr = parsePartyMax(partyName);
+
                             partyValue = partyValue.replace(userMention + "\n", "")
                                     .replace("\n" + userMention, "")
                                     .replace(userMention, "");
+
                             if (partyValue.trim().isEmpty()) {
                                 partyValue = "None";
                             }
+
                             current--;
 
                             newEmbed.getFields().remove(fieldIndex);
                             newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+
                             if (current == 0) {
                                 newEmbed.setColor(new Color(255, 69, 0));
                             }
 
                             startMsg.editMessageEmbeds(newEmbed.build())
-                                    .setActionRow(Button.success("bjoin_button", "✋ Join Quest"),
-                                            Button.danger("bleave_button", "🛑 Leave Quest"))
+                                    .setActionRow(
+                                            Button.success("bjoin_button", "✋ Join Quest"),
+                                            Button.danger("bleave_button", "🛑 Leave Quest")
+                                    )
                                     .queue();
 
                             replyHook.editOriginal("✅ Successfully kicked " + userMention + " from the party.").queue();
@@ -906,10 +841,12 @@ public class CommandListener extends ListenerAdapter {
                             MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
                             EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
                             newEmbed.setColor(Color.RED);
+
                             int partyFieldIndex = getPartyFieldIndex(oldEmbed);
                             if (partyFieldIndex != -1) {
                                 newEmbed.getFields().remove(partyFieldIndex);
                             }
+
                             newEmbed.addField("❌ DIRECTIVE CANCELLED",
                                     "This quest was aborted by " + event.getUser().getAsMention() + ". No points were awarded.", false);
 
@@ -920,8 +857,10 @@ public class CommandListener extends ListenerAdapter {
                                         .setDescription("Quest cancelled and locked.")
                                         .build()).setContent("").queue(done2 ->
                                         thread.getManager().setLocked(true).setArchived(true).queue());
+
                                 sendAuditLog(event.getGuild(), "Bounty Cancelled",
-                                        event.getUser().getAsMention() + " aborted the quest in thread `" + thread.getId() + "`.", Color.RED);
+                                        event.getUser().getAsMention() + " aborted the quest in thread `"
+                                                + thread.getId() + "`.", Color.RED);
                             });
                         }, error -> replyHook.editOriginal("❌ Error fetching the starting message.").queue()));
                 return;
@@ -934,7 +873,8 @@ public class CommandListener extends ListenerAdapter {
                 }
 
                 ThreadChannel thread = event.getChannel().asThreadChannel();
-                boolean isUrgent = URGENT_BOUNTY_FORUM_ID != null && thread.getParentChannel().getId().equals(URGENT_BOUNTY_FORUM_ID);
+                boolean isUrgent = URGENT_BOUNTY_FORUM_ID != null
+                        && thread.getParentChannel().getId().equals(URGENT_BOUNTY_FORUM_ID);
                 String commandExecutorId = event.getUser().getId();
 
                 event.reply("🔄 Processing party mass-payout and logging stats...").queue(replyHook ->
@@ -962,6 +902,7 @@ public class CommandListener extends ListenerAdapter {
                                     payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
                                     continue;
                                 }
+
                                 int currentPoints = db.getPoints(uid);
                                 db.updatePoints(uid, currentPoints + rewardAmount);
                                 db.incrementBountyStats(uid, isUrgent);
@@ -971,11 +912,14 @@ public class CommandListener extends ListenerAdapter {
 
                             EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
                             newEmbed.setColor(selfApprove ? Color.ORANGE : Color.GREEN);
+
                             if (partyFieldIndex != -1) {
                                 newEmbed.getFields().remove(partyFieldIndex);
                             }
+
                             newEmbed.addField("✅ QUEST CLEARED",
                                     "Successfully completed by the party!\n\n" + payoutLog, false);
+
                             if (selfApprove) {
                                 newEmbed.addField("⚠️ OVERRIDE LOGGED",
                                         event.getUser().getAsMention() + " authorized a payout that included themselves.", false);
@@ -996,107 +940,113 @@ public class CommandListener extends ListenerAdapter {
                                                     + thread.getId() + "` for `" + rewardAmount + " Points`.", Color.RED);
                                 } else {
                                     sendAuditLog(event.getGuild(), "Bounty Cleared",
-                                            event.getUser().getAsMention() + " cleared the quest in thread `" + thread.getId()
-                                                    + "`. Paid out `" + rewardAmount + " Points`.", Color.GREEN);
+                                            event.getUser().getAsMention() + " cleared the quest in thread `"
+                                                    + thread.getId() + "`. Paid out `" + rewardAmount + " Points`.",
+                                            Color.GREEN);
                                 }
                             });
                         }, error -> replyHook.editOriginal("❌ Error fetching the starting message.").queue()));
+                return;
             }
+
             return;
         }
 
         if (event.getName().equals("addsparks")) {
-    if (!requireAnyConfiguredRole(event, ADDSPARKS_ROLE_IDS, "ADDSPARKS_ROLE_IDS")) {
-        return;
-    }
+            if (!requireAnyConfiguredRole(event, ADDSPARKS_ROLE_IDS, "ADDSPARKS_ROLE_IDS")) {
+                return;
+            }
 
-    User targetUser = event.getOption("target").getAsUser();
-    int amount = event.getOption("amount").getAsInt();
+            User targetUser = event.getOption("target").getAsUser();
+            int amount = event.getOption("amount").getAsInt();
 
-    if (amount <= 0) {
-        event.reply("❌ Amount must be greater than 0.")
-                .setEphemeral(true).queue();
-        return;
-    }
+            if (amount <= 0) {
+                event.reply("❌ Amount must be greater than 0.")
+                        .setEphemeral(true).queue();
+                return;
+            }
 
-    int currentTargetSparks = db.getSparks(targetUser.getId());
-    db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
+            int currentTargetSparks = db.getSparks(targetUser.getId());
+            db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
 
-    event.replyEmbeds(new EmbedBuilder()
-            .setColor(Color.GREEN)
-            .setTitle("VAULT UPDATED")
-            .setDescription("Minted **" + amount + " Sparks** for " + targetUser.getAsMention() + ".")
-            .addField("Updated Balance", "`" + (currentTargetSparks + amount) + " Sparks`", false)
-            .build()).queue();
+            event.replyEmbeds(new EmbedBuilder()
+                    .setColor(Color.GREEN)
+                    .setTitle("VAULT UPDATED")
+                    .setDescription("Minted **" + amount + " Sparks** for " + targetUser.getAsMention() + ".")
+                    .addField("Updated Balance", "`" + (currentTargetSparks + amount) + " Sparks`", false)
+                    .build()).queue();
 
-    sendAuditLog(event.getGuild(), "Sparks Minted",
-            event.getUser().getAsMention() + " minted **" + amount + " Sparks** to "
-                    + targetUser.getAsMention() + ".",
-            Color.ORANGE);
-    return;
-}
+            sendAuditLog(event.getGuild(), "Sparks Minted",
+                    event.getUser().getAsMention() + " minted **" + amount + " Sparks** to "
+                            + targetUser.getAsMention() + ".", Color.ORANGE);
+            return;
+        }
 
         if (event.getName().equals("payout")) {
-    if (!requireAnyConfiguredRole(event, PAYOUT_ROLE_IDS, "PAYOUT_ROLE_IDS")) {
-        return;
-    }
+            if (!requireAnyConfiguredRole(event, PAYOUT_ROLE_IDS, "PAYOUT_ROLE_IDS")) {
+                return;
+            }
 
-    User targetUser = event.getOption("target").getAsUser();
-    int amount = event.getOption("amount").getAsInt();
-    String reason = event.getOption("reason").getAsString();
+            User targetUser = event.getOption("target").getAsUser();
+            int amount = event.getOption("amount").getAsInt();
+            String reason = event.getOption("reason").getAsString();
 
-    if (amount <= 0) {
-        event.reply("❌ Amount must be greater than 0.")
-                .setEphemeral(true).queue();
-        return;
-    }
+            if (amount <= 0) {
+                event.reply("❌ Amount must be greater than 0.")
+                        .setEphemeral(true).queue();
+                return;
+            }
 
-    int currentTargetPoints = db.getPoints(targetUser.getId());
-    db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
+            int currentTargetPoints = db.getPoints(targetUser.getId());
+            db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
 
-    EmbedBuilder payoutEmbed = new EmbedBuilder()
-            .setColor(new Color(0, 250, 154))
-            .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
-            .setDescription("A reward has been delivered successfully through the AMORA network.\n"
-                    + "Thank you for making meaningful work worth celebrating.")
-            .addField("Recipient", targetUser.getAsMention(), true)
-            .addField("Points Granted", "`" + amount + " Points`", true)
-            .addField("Reason", reason, false)
-            .addField("Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
-            .setThumbnail(targetUser.getEffectiveAvatarUrl())
-            .setFooter("AMORA Directive Ledger", null);
+            EmbedBuilder payoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(0, 250, 154))
+                    .setTitle("✦ BOUNTY PAYOUT CLEARED ✦")
+                    .setDescription("A reward has been delivered successfully through the AMORA network.\n"
+                            + "Thank you for making meaningful work worth celebrating.")
+                    .addField("Recipient", targetUser.getAsMention(), true)
+                    .addField("Points Granted", "`" + amount + " Points`", true)
+                    .addField("Reason", reason, false)
+                    .addField("Updated Total", "`" + (currentTargetPoints + amount) + " Points`", false)
+                    .setThumbnail(targetUser.getEffectiveAvatarUrl())
+                    .setFooter("AMORA Directive Ledger", null);
 
-        event.replyEmbeds(payoutEmbed.build()).queue();
+            event.replyEmbeds(payoutEmbed.build()).queue();
 
-        sendAuditLog(event.getGuild(), "Manual Payout",
-            event.getUser().getAsMention() + " paid " + targetUser.getAsMention()
-                    + " **" + amount + " Points** for `" + reason + "`.",
-            new Color(0, 250, 154));
-        return;
-    }
+            sendAuditLog(event.getGuild(), "Manual Payout",
+                    event.getUser().getAsMention() + " paid " + targetUser.getAsMention()
+                            + " **" + amount + " Points** for `" + reason + "`.",
+                    new Color(0, 250, 154));
+            return;
+        }
 
         if (event.getName().equals("award")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("❌ You do not have clearance to award performance Sparks.").setEphemeral(true).queue();
                 return;
             }
+
             User targetUser = event.getOption("target").getAsUser();
             int amount = event.getOption("amount").getAsInt();
             String reason = event.getOption("reason").getAsString();
             int currentTargetSparks = db.getSparks(targetUser.getId());
             db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
+
             EmbedBuilder awardEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 215, 0))
                     .setTitle("STAGE CLEAR REWARD ISSUED")
                     .setDescription("Massive energy detected. " + targetUser.getAsMention()
-                            + " has been awarded for their impact.\n\nAchievement: **" + reason + "**\nBounty Claimed: `"
-                            + amount + " Sparks`")
+                            + " has been awarded for their impact.\n\nAchievement: **" + reason
+                            + "**\nBounty Claimed: `" + amount + " Sparks`")
                     .setThumbnail(targetUser.getEffectiveAvatarUrl())
                     .setFooter("AMORA Performance Ecosystem", null);
+
             event.replyEmbeds(awardEmbed.build()).queue();
             sendAuditLog(event.getGuild(), "Performance Award",
-                    event.getUser().getAsMention() + " awarded " + targetUser.getAsMention() + " `" + amount
-                            + " Sparks` for **" + reason + "**.", new Color(255, 215, 0));
+                    event.getUser().getAsMention() + " awarded " + targetUser.getAsMention() + " `"
+                            + amount + " Sparks` for **" + reason + "**.",
+                    new Color(255, 215, 0));
         }
     }
 
@@ -1107,23 +1057,27 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.startsWith("offer_") || componentId.startsWith("req_")) {
             String setupId = componentId.substring(componentId.indexOf('_') + 1);
-            TradeSetup setup = pendingSetups.get(setupId);
+            DatabaseManager.PendingTradeSetupRecord setup = db.getPendingTradeSetup(setupId);
+
             if (setup == null) {
                 event.reply("❌ This trade setup has expired.").setEphemeral(true).queue();
                 return;
             }
+
             String selectedValue = event.getValues().get(0);
             if (componentId.startsWith("offer_")) {
-                setup.selectedOffer = selectedValue;
+                db.updatePendingTradeOffer(setupId, selectedValue);
             } else {
-                setup.selectedRequest = selectedValue;
+                db.updatePendingTradeRequest(setupId, selectedValue);
             }
+
             event.deferEdit().queue();
             return;
         }
 
         if (componentId.startsWith("forge_craft_")) {
             String ownerId = componentId.substring("forge_craft_".length());
+
             if (!event.getUser().getId().equals(ownerId)) {
                 event.reply("❌ This is not your forge session!").setEphemeral(true).queue();
                 return;
@@ -1141,9 +1095,11 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            pendingForges.put(ownerId, selectedIngredient);
+            db.savePendingForge(ownerId, selectedIngredient, System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10));
+
             StringSelectMenu.Builder claimMenu = StringSelectMenu.create("forge_claim_" + ownerId)
                     .setPlaceholder("✨ Choose your upgraded reward...");
+
             for (String reward : forgeRewards(selectedIngredient)) {
                 claimMenu.addOption(reward, reward);
             }
@@ -1159,13 +1115,15 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.startsWith("forge_claim_")) {
             String ownerId = componentId.substring("forge_claim_".length());
+
             if (!event.getUser().getId().equals(ownerId)) {
                 event.reply("❌ Not your session!").setEphemeral(true).queue();
                 return;
             }
 
             String selectedReward = event.getValues().get(0);
-            String ingredient = pendingForges.get(ownerId);
+            String ingredient = db.getPendingForgeIngredient(ownerId);
+
             if (ingredient == null) {
                 event.reply("❌ Forge session expired. Try again.").setEphemeral(true).queue();
                 return;
@@ -1175,7 +1133,7 @@ public class CommandListener extends ListenerAdapter {
                 String currentInv = db.getInventory(ownerId);
                 if (getItemCount(currentInv, ingredient) < 3) {
                     event.reply("❌ You no longer have 3x of the ingredient!").setEphemeral(true).queue();
-                    pendingForges.remove(ownerId);
+                    db.deletePendingForge(ownerId);
                     return;
                 }
 
@@ -1184,7 +1142,7 @@ public class CommandListener extends ListenerAdapter {
                 db.updateInventory(ownerId, newInv);
             }
 
-            pendingForges.remove(ownerId);
+            db.deletePendingForge(ownerId);
 
             EmbedBuilder success = new EmbedBuilder()
                     .setColor(new Color(255, 215, 0))
@@ -1208,12 +1166,14 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.startsWith("forge_recycle_")) {
             String ownerId = componentId.substring("forge_recycle_".length());
+
             if (!event.getUser().getId().equals(ownerId)) {
                 event.reply("❌ This is not your forge session!").setEphemeral(true).queue();
                 return;
             }
 
             String selected = event.getValues().get(0);
+
             synchronized (this) {
                 String currentInv = db.getInventory(ownerId);
                 if (getItemCount(currentInv, selected) < 1) {
@@ -1224,6 +1184,7 @@ public class CommandListener extends ListenerAdapter {
                 int sparks = recycleValue(selected);
                 String newInv = removeMultipleItems(currentInv, selected, 1);
                 db.updateInventory(ownerId, newInv);
+
                 int curSparks = db.getSparks(ownerId);
                 db.updateSparks(ownerId, curSparks + sparks);
 
@@ -1242,7 +1203,8 @@ public class CommandListener extends ListenerAdapter {
                 event.replyEmbeds(success.build()).queue();
                 event.getMessage().delete().queue();
                 sendAuditLog(event.getGuild(), "Item Recycled",
-                        event.getUser().getAsMention() + " recycled **" + selected + "** for `" + sparks + " Sparks`.", Color.LIGHT_GRAY);
+                        event.getUser().getAsMention() + " recycled **" + selected + "** for `"
+                                + sparks + " Sparks`.", Color.LIGHT_GRAY);
             }
         }
     }
@@ -1253,127 +1215,129 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
 
         if (componentId.equals("bjoin_button")) {
-    if (!event.getChannel().getType().isThread()) {
-        event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
-        return;
-    }
+            if (!event.getChannel().getType().isThread()) {
+                event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+                return;
+            }
 
-    ThreadChannel thread = event.getChannel().asThreadChannel();
+            ThreadChannel thread = event.getChannel().asThreadChannel();
 
-    event.deferReply(true).queue(hook ->
-            thread.retrieveStartMessage().queue(startMsg -> {
-                MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+            event.deferReply(true).queue(hook ->
+                    thread.retrieveStartMessage().queue(startMsg -> {
+                        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+                        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
 
-                String[] partyField = getPartyField(oldEmbed);
-                int fieldIndex = getPartyFieldIndex(oldEmbed);
-                if (partyField == null || fieldIndex == -1) {
-                    hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
-                    return;
-                }
+                        String[] partyField = getPartyField(oldEmbed);
+                        int fieldIndex = getPartyFieldIndex(oldEmbed);
 
-                String partyName = partyField[0];
-                String partyValue = partyField[1];
-                int current = parsePartyCurrent(partyName);
-                String maxStr = parsePartyMax(partyName);
-                int max = maxStr.equalsIgnoreCase("Unlimited")
-                        ? Integer.MAX_VALUE
-                        : Integer.parseInt(maxStr);
-                String userMention = event.getUser().getAsMention();
+                        if (partyField == null || fieldIndex == -1) {
+                            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
+                            return;
+                        }
 
-                if (partyValue.contains(userMention)) {
-                    hook.sendMessage("❌ You are already in the party!").setEphemeral(true).queue();
-                    return;
-                }
+                        String partyName = partyField[0];
+                        String partyValue = partyField[1];
+                        int current = parsePartyCurrent(partyName);
+                        String maxStr = parsePartyMax(partyName);
+                        int max = maxStr.equalsIgnoreCase("Unlimited")
+                                ? Integer.MAX_VALUE
+                                : Integer.parseInt(maxStr);
+                        String userMention = event.getUser().getAsMention();
 
-                if (current >= max) {
-                    hook.sendMessage("❌ This party is full!").setEphemeral(true).queue();
-                    return;
-                }
+                        if (partyValue.contains(userMention)) {
+                            hook.sendMessage("❌ You are already in the party!").setEphemeral(true).queue();
+                            return;
+                        }
 
-                partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
-                current++;
+                        if (current >= max) {
+                            hook.sendMessage("❌ This party is full!").setEphemeral(true).queue();
+                            return;
+                        }
 
-                newEmbed.getFields().remove(fieldIndex);
-                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
-                newEmbed.setColor(Color.YELLOW);
+                        partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
+                        current++;
 
-                Button joinButton = current >= max
-                        ? Button.success("bjoin_button", "✋ Join Quest").asDisabled()
-                        : Button.success("bjoin_button", "✋ Join Quest");
+                        newEmbed.getFields().remove(fieldIndex);
+                        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+                        newEmbed.setColor(Color.YELLOW);
 
-                startMsg.editMessageEmbeds(newEmbed.build())
-                        .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
-                        .queue(
-                                success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
-                                error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
-                        );
-            }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
-    );
-    return;
-}
+                        Button joinButton = current >= max
+                                ? Button.success("bjoin_button", "✋ Join Quest").asDisabled()
+                                : Button.success("bjoin_button", "✋ Join Quest");
 
-if (componentId.equals("bleave_button")) {
-    if (!event.getChannel().getType().isThread()) {
-        event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
-        return;
-    }
+                        startMsg.editMessageEmbeds(newEmbed.build())
+                                .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
+                                .queue(
+                                        success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
+                                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                                );
+                    }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
+            );
+            return;
+        }
 
-    ThreadChannel thread = event.getChannel().asThreadChannel();
+        if (componentId.equals("bleave_button")) {
+            if (!event.getChannel().getType().isThread()) {
+                event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+                return;
+            }
 
-    event.deferReply(true).queue(hook ->
-            thread.retrieveStartMessage().queue(startMsg -> {
-                MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+            ThreadChannel thread = event.getChannel().asThreadChannel();
 
-                String[] partyField = getPartyField(oldEmbed);
-                int fieldIndex = getPartyFieldIndex(oldEmbed);
-                if (partyField == null || fieldIndex == -1) {
-                    hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
-                    return;
-                }
+            event.deferReply(true).queue(hook ->
+                    thread.retrieveStartMessage().queue(startMsg -> {
+                        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+                        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
 
-                String partyName = partyField[0];
-                String partyValue = partyField[1];
-                int current = parsePartyCurrent(partyName);
-                String maxStr = parsePartyMax(partyName);
-                String userMention = event.getUser().getAsMention();
+                        String[] partyField = getPartyField(oldEmbed);
+                        int fieldIndex = getPartyFieldIndex(oldEmbed);
 
-                if (!partyValue.contains(userMention)) {
-                    hook.sendMessage("❌ You are not in the party!").setEphemeral(true).queue();
-                    return;
-                }
+                        if (partyField == null || fieldIndex == -1) {
+                            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
+                            return;
+                        }
 
-                partyValue = partyValue.replace(userMention + "\n", "")
-                        .replace("\n" + userMention, "")
-                        .replace(userMention, "");
+                        String partyName = partyField[0];
+                        String partyValue = partyField[1];
+                        int current = parsePartyCurrent(partyName);
+                        String maxStr = parsePartyMax(partyName);
+                        String userMention = event.getUser().getAsMention();
 
-                if (partyValue.trim().isEmpty()) {
-                    partyValue = "None";
-                }
+                        if (!partyValue.contains(userMention)) {
+                            hook.sendMessage("❌ You are not in the party!").setEphemeral(true).queue();
+                            return;
+                        }
 
-                current--;
+                        partyValue = partyValue.replace(userMention + "\n", "")
+                                .replace("\n" + userMention, "")
+                                .replace(userMention, "");
 
-                newEmbed.getFields().remove(fieldIndex);
-                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+                        if (partyValue.trim().isEmpty()) {
+                            partyValue = "None";
+                        }
 
-                if (current == 0) {
-                    newEmbed.setColor(new Color(255, 69, 0));
-                }
+                        current--;
 
-                startMsg.editMessageEmbeds(newEmbed.build())
-                        .setActionRow(
-                                Button.success("bjoin_button", "✋ Join Quest"),
-                                Button.danger("bleave_button", "🛑 Leave Quest")
-                        )
-                        .queue(
-                                success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
-                                error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
-                        );
-            }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
-    );
-    return;
-}
+                        newEmbed.getFields().remove(fieldIndex);
+                        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+
+                        if (current == 0) {
+                            newEmbed.setColor(new Color(255, 69, 0));
+                        }
+
+                        startMsg.editMessageEmbeds(newEmbed.build())
+                                .setActionRow(
+                                        Button.success("bjoin_button", "✋ Join Quest"),
+                                        Button.danger("bleave_button", "🛑 Leave Quest")
+                                )
+                                .queue(
+                                        success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
+                                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                                );
+                    }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
+            );
+            return;
+        }
 
         if (componentId.startsWith("buy_")) {
             String[] parts = componentId.split("_", 3);
@@ -1428,9 +1392,10 @@ if (componentId.equals("bleave_button")) {
                         )
                         .setFooter("AMORA Curated Ecosystem", null);
                 return channel.sendMessageEmbeds(deliveryEmbed.build());
-            }).queue(success -> {}, error -> {
-                event.getChannel().sendMessage(event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed.").queue();
-            });
+            }).queue(success -> {
+            }, error -> event.getChannel().sendMessage(
+                    event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed."
+            ).queue());
 
             sendAuditLog(
                     event.getGuild(),
@@ -1444,25 +1409,35 @@ if (componentId.equals("bleave_button")) {
 
         if (componentId.startsWith("cancelsetup_")) {
             String setupId = componentId.substring("cancelsetup_".length());
-            pendingSetups.remove(setupId);
+            db.deletePendingTradeSetup(setupId);
+
             event.editMessageEmbeds(new EmbedBuilder()
                     .setColor(Color.RED)
                     .setDescription("❌ Trade setup cancelled.")
-                    .build()).setComponents(new ArrayList<ActionRow>()).queue();
+                    .build()).setComponents().queue();
             return;
         }
 
         if (componentId.startsWith("propose_")) {
             String setupId = componentId.substring("propose_".length());
-            TradeSetup setup = pendingSetups.get(setupId);
+            DatabaseManager.PendingTradeSetupRecord setup = db.getPendingTradeSetup(setupId);
+
             if (setup == null || setup.selectedOffer == null || setup.selectedRequest == null) {
                 event.reply("❌ Invalid or expired trade setup.").setEphemeral(true).queue();
                 return;
             }
 
             String tradeId = UUID.randomUUID().toString().substring(0, 8);
-            activeTrades.put(tradeId, new TradeData(setup.senderId, setup.targetId, setup.selectedOffer, setup.selectedRequest));
-            scheduler.schedule(() -> activeTrades.remove(tradeId), 15, TimeUnit.MINUTES);
+            long tradeExpiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(15);
+
+            db.saveActiveTrade(
+                    tradeId,
+                    setup.senderId,
+                    setup.targetId,
+                    setup.selectedOffer,
+                    setup.selectedRequest,
+                    tradeExpiresAt
+            );
 
             event.editMessageEmbeds(new EmbedBuilder()
                     .setColor(new Color(80, 200, 120))
@@ -1493,7 +1468,7 @@ if (componentId.equals("bleave_button")) {
                     )
                     .queue();
 
-            pendingSetups.remove(setupId);
+            db.deletePendingTradeSetup(setupId);
             return;
         }
 
@@ -1501,20 +1476,22 @@ if (componentId.equals("bleave_button")) {
             String[] parts = componentId.split("_", 3);
             String action = parts[1];
             String tradeId = parts[2];
-            TradeData trade = activeTrades.get(tradeId);
+
+            DatabaseManager.ActiveTradeRecord trade = db.getActiveTrade(tradeId);
 
             if (trade == null) {
                 event.editComponents().queue();
                 event.getChannel().sendMessage("❌ Trade expired.").queue();
                 return;
             }
+
             if (!event.getUser().getId().equals(trade.targetId) && !event.getUser().getId().equals(trade.senderId)) {
                 event.reply("❌ You are not involved in this trade.").setEphemeral(true).queue();
                 return;
             }
 
             if (action.equals("decline")) {
-                activeTrades.remove(tradeId);
+                db.deleteActiveTrade(tradeId);
                 event.editComponents().queue();
                 event.getChannel().sendMessage("❌ Trade cancelled.").queue();
                 return;
@@ -1529,8 +1506,9 @@ if (componentId.equals("bleave_button")) {
                 String senderInv = db.getInventory(trade.senderId);
                 String targetInv = db.getInventory(trade.targetId);
 
-                if (getExactItemName(senderInv, trade.offerItem) == null || getExactItemName(targetInv, trade.requestItem) == null) {
-                    activeTrades.remove(tradeId);
+                if (getExactItemName(senderInv, trade.offerItem) == null
+                        || getExactItemName(targetInv, trade.requestItem) == null) {
+                    db.deleteActiveTrade(tradeId);
                     event.editComponents().queue();
                     event.getChannel().sendMessage("❌ Trade voided. One or more items are missing.").queue();
                     return;
@@ -1546,8 +1524,9 @@ if (componentId.equals("bleave_button")) {
                 db.updateInventory(trade.targetId, newTargetInv);
             }
 
-            activeTrades.remove(tradeId);
+            db.deleteActiveTrade(tradeId);
             event.editComponents().queue();
+
             EmbedBuilder completedTrade = new EmbedBuilder()
                     .setColor(new Color(50, 205, 50))
                     .setTitle("✦ EXCHANGE COMPLETE ✦")
@@ -1563,8 +1542,9 @@ if (componentId.equals("bleave_button")) {
             event.getChannel().sendMessageEmbeds(completedTrade.build()).queue();
 
             sendAuditLog(event.getGuild(), "Trade Executed",
-                    "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@" + trade.targetId + "> for **"
-                            + trade.requestItem + "**.", new Color(50, 205, 50));
+                    "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@"
+                            + trade.targetId + "> for **" + trade.requestItem + "**.",
+                    new Color(50, 205, 50));
         }
     }
 }
