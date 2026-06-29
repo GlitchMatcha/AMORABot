@@ -23,7 +23,8 @@ public class App {
 
         System.out.println("✦ Starting AMORA Bot JDA Instance...");
 
-        DatabaseManager.getInstance();
+        DatabaseManager db = DatabaseManager.getInstance();
+        db.cleanupExpiredSessions();
 
         try {
             JDA jda = JDABuilder.createDefault(token)

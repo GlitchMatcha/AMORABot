@@ -17,6 +17,44 @@ public class DatabaseManager {
     private static DatabaseManager instance;
     private Connection connection;
 
+    public static class PendingTradeSetupRecord {
+        public final String setupId;
+        public final String senderId;
+        public final String targetId;
+        public final String selectedOffer;
+        public final String selectedRequest;
+        public final long expiresAt;
+
+        public PendingTradeSetupRecord(String setupId, String senderId, String targetId,
+                                       String selectedOffer, String selectedRequest, long expiresAt) {
+            this.setupId = setupId;
+            this.senderId = senderId;
+            this.targetId = targetId;
+            this.selectedOffer = selectedOffer;
+            this.selectedRequest = selectedRequest;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    public static class ActiveTradeRecord {
+        public final String tradeId;
+        public final String senderId;
+        public final String targetId;
+        public final String offerItem;
+        public final String requestItem;
+        public final long expiresAt;
+
+        public ActiveTradeRecord(String tradeId, String senderId, String targetId,
+                                 String offerItem, String requestItem, long expiresAt) {
+            this.tradeId = tradeId;
+            this.senderId = senderId;
+            this.targetId = targetId;
+            this.offerItem = offerItem;
+            this.requestItem = requestItem;
+            this.expiresAt = expiresAt;
+        }
+    }
+
     private DatabaseManager() {
         connect();
         initializeDatabase();
@@ -55,10 +93,61 @@ public class DatabaseManager {
                 + "secret_link TEXT"
                 + ");";
 
+        String createPendingTradeSetupsTable = "CREATE TABLE IF NOT EXISTS pending_trade_setups ("
+                + "setup_id TEXT PRIMARY KEY, "
+                + "sender_id TEXT NOT NULL, "
+                + "target_id TEXT NOT NULL, "
+                + "selected_offer TEXT, "
+                + "selected_request TEXT, "
+                + "expires_at INTEGER NOT NULL"
+                + ");";
+
+        String createActiveTradesTable = "CREATE TABLE IF NOT EXISTS active_trades ("
+                + "trade_id TEXT PRIMARY KEY, "
+                + "sender_id TEXT NOT NULL, "
+                + "target_id TEXT NOT NULL, "
+                + "offer_item TEXT NOT NULL, "
+                + "request_item TEXT NOT NULL, "
+                + "expires_at INTEGER NOT NULL"
+                + ");";
+
+        String createPendingForgesTable = "CREATE TABLE IF NOT EXISTS pending_forges ("
+                + "owner_id TEXT PRIMARY KEY, "
+                + "ingredient TEXT NOT NULL, "
+                + "expires_at INTEGER NOT NULL"
+                + ");";
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
-            System.out.println("✦ Core tables & Shop Vault verified.");
+            stmt.execute(createPendingTradeSetupsTable);
+            stmt.execute(createActiveTradesTable);
+            stmt.execute(createPendingForgesTable);
+            System.out.println("✦ Core tables, Shop Vault, and session tables verified.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void cleanupExpiredSessions() {
+        long now = System.currentTimeMillis();
+
+        String deletePendingTradeSetups = "DELETE FROM pending_trade_setups WHERE expires_at < ?;";
+        String deleteActiveTrades = "DELETE FROM active_trades WHERE expires_at < ?;";
+        String deletePendingForges = "DELETE FROM pending_forges WHERE expires_at < ?;";
+
+        try (
+            PreparedStatement p1 = connection.prepareStatement(deletePendingTradeSetups);
+            PreparedStatement p2 = connection.prepareStatement(deleteActiveTrades);
+            PreparedStatement p3 = connection.prepareStatement(deletePendingForges)
+        ) {
+            p1.setLong(1, now);
+            p2.setLong(1, now);
+            p3.setLong(1, now);
+
+            p1.executeUpdate();
+            p2.executeUpdate();
+            p3.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -323,8 +412,183 @@ public class DatabaseManager {
         return "";
     }
 
+    public void savePendingTradeSetup(String setupId, String senderId, String targetId, long expiresAt) {
+        String query = "INSERT OR REPLACE INTO pending_trade_setups "
+                + "(setup_id, sender_id, target_id, selected_offer, selected_request, expires_at) "
+                + "VALUES (?, ?, ?, NULL, NULL, ?);";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, setupId);
+            pstmt.setString(2, senderId);
+            pstmt.setString(3, targetId);
+            pstmt.setLong(4, expiresAt);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public PendingTradeSetupRecord getPendingTradeSetup(String setupId) {
+        String query = "SELECT * FROM pending_trade_setups WHERE setup_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, setupId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    long expiresAt = rs.getLong("expires_at");
+                    if (expiresAt < System.currentTimeMillis()) {
+                        deletePendingTradeSetup(setupId);
+                        return null;
+                    }
+
+                    return new PendingTradeSetupRecord(
+                            rs.getString("setup_id"),
+                            rs.getString("sender_id"),
+                            rs.getString("target_id"),
+                            rs.getString("selected_offer"),
+                            rs.getString("selected_request"),
+                            expiresAt
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void updatePendingTradeOffer(String setupId, String selectedOffer) {
+        String query = "UPDATE pending_trade_setups SET selected_offer = ? WHERE setup_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, selectedOffer);
+            pstmt.setString(2, setupId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void updatePendingTradeRequest(String setupId, String selectedRequest) {
+        String query = "UPDATE pending_trade_setups SET selected_request = ? WHERE setup_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, selectedRequest);
+            pstmt.setString(2, setupId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void deletePendingTradeSetup(String setupId) {
+        String query = "DELETE FROM pending_trade_setups WHERE setup_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, setupId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void saveActiveTrade(String tradeId, String senderId, String targetId,
+                                String offerItem, String requestItem, long expiresAt) {
+        String query = "INSERT OR REPLACE INTO active_trades "
+                + "(trade_id, sender_id, target_id, offer_item, request_item, expires_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?);";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, tradeId);
+            pstmt.setString(2, senderId);
+            pstmt.setString(3, targetId);
+            pstmt.setString(4, offerItem);
+            pstmt.setString(5, requestItem);
+            pstmt.setLong(6, expiresAt);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public ActiveTradeRecord getActiveTrade(String tradeId) {
+        String query = "SELECT * FROM active_trades WHERE trade_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, tradeId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    long expiresAt = rs.getLong("expires_at");
+                    if (expiresAt < System.currentTimeMillis()) {
+                        deleteActiveTrade(tradeId);
+                        return null;
+                    }
+
+                    return new ActiveTradeRecord(
+                            rs.getString("trade_id"),
+                            rs.getString("sender_id"),
+                            rs.getString("target_id"),
+                            rs.getString("offer_item"),
+                            rs.getString("request_item"),
+                            expiresAt
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void deleteActiveTrade(String tradeId) {
+        String query = "DELETE FROM active_trades WHERE trade_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, tradeId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void savePendingForge(String ownerId, String ingredient, long expiresAt) {
+        String query = "INSERT OR REPLACE INTO pending_forges (owner_id, ingredient, expires_at) VALUES (?, ?, ?);";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, ownerId);
+            pstmt.setString(2, ingredient);
+            pstmt.setLong(3, expiresAt);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getPendingForgeIngredient(String ownerId) {
+        String query = "SELECT ingredient, expires_at FROM pending_forges WHERE owner_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, ownerId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    long expiresAt = rs.getLong("expires_at");
+                    if (expiresAt < System.currentTimeMillis()) {
+                        deletePendingForge(ownerId);
+                        return null;
+                    }
+                    return rs.getString("ingredient");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void deletePendingForge(String ownerId) {
+        String query = "DELETE FROM pending_forges WHERE owner_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, ownerId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     private void createNewUser(String userId) {
-        String query = "INSERT OR IGNORE INTO users (user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared) VALUES (?, 0, 0, '', 0, 0, 0);";
+        String query = "INSERT OR IGNORE INTO users "
+                + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared) "
+                + "VALUES (?, 0, 0, '', 0, 0, 0);";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();

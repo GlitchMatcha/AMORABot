@@ -26,13 +26,13 @@ public class ChatListener extends ListenerAdapter {
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
 
     private static final long USER_ROLL_COOLDOWN_MS = 30_000L;
-    private static final long QUESTION_COOLDOWN_MS = 8 * 60_000L;
+    private static final long QUESTION_COOLDOWN_MS = 6 * 60_000L;
     private static final long SPARK_COOLDOWN_MS = 30 * 60_000L;
 
     private static final long QUESTION_LIFETIME_MS = 2 * 60_000L;
     private static final long SPARK_LIFETIME_MS = 90_000L;
 
-    private static final double QUESTION_CHANCE = 0.0125;
+    private static final double QUESTION_CHANCE = 0.016;
     private static final double SPARK_DROP_CHANCE = 0.0015;
 
     private static final int RECENT_PROMPT_MEMORY = 12;
