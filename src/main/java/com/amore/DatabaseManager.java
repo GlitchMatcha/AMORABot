@@ -300,7 +300,7 @@ public class DatabaseManager {
             e.printStackTrace();
         }
     }
-}
+
     public int getBountiesCleared(String userId) {
         String query = "SELECT bounties_cleared FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -332,3 +332,4 @@ public class DatabaseManager {
         }
         return 0;
     }
+}
