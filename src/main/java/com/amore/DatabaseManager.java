@@ -301,3 +301,34 @@ public class DatabaseManager {
         }
     }
 }
+    public int getBountiesCleared(String userId) {
+        String query = "SELECT bounties_cleared FROM users WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("bounties_cleared");
+                }
+                createNewUser(userId);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public int getUrgentCleared(String userId) {
+        String query = "SELECT urgent_cleared FROM users WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("urgent_cleared");
+                }
+                createNewUser(userId);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
