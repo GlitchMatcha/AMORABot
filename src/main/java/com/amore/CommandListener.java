@@ -355,7 +355,7 @@ public class CommandListener extends ListenerAdapter {
         builder.addFiles(FileUpload.fromData(data, safeFileName));
         return "attachment://" + safeFileName;
     }
-    private int getInventoryCount(String inventory) {
+     private int getInventoryCount(String inventory) {
         if (inventory == null || inventory.isBlank()) {
             return 0;
         }
@@ -392,7 +392,7 @@ public class CommandListener extends ListenerAdapter {
             event.replyEmbeds(embed.build()).setEphemeral(true).queue();
             return;
         }
-                if (event.getName().equals("profile")) {
+                      if (event.getName().equals("profile")) {
             User targetUser = event.getOption("user") != null
                     ? event.getOption("user").getAsUser()
                     : event.getUser();
