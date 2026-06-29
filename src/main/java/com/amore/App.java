@@ -39,7 +39,6 @@ public class App {
                     Commands.slash("pull", "Spend 50 Sparks to pull a random Gacha reward!"),
                     Commands.slash("balance", "Check your current AMORA Sparks balance."),
                     Commands.slash("inventory", "View your collected Gacha photocards and assets"),
-
                     Commands.slash("forge", "Open the Synthesis Forge to craft or recycle items"),
 
                     Commands.slash("leaderboard", "View the Top 10 rankings in the server")
@@ -97,8 +96,9 @@ public class App {
                             new SubcommandData("complete", "Director Only: Run INSIDE a quest thread to mass-pay the party & lock!")
                                 .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
                         ),
+
                     Commands.slash("profile", "View your AMORA profile")
-    .addOption(OptionType.USER, "user", "Whose profile to view", false)
+                        .addOption(OptionType.USER, "user", "Whose profile to view", false)
                 ).queue();
 
             System.out.println("✦ Slash commands registered successfully.");
