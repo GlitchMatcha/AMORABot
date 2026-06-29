@@ -355,7 +355,19 @@ public class CommandListener extends ListenerAdapter {
         builder.addFiles(FileUpload.fromData(data, safeFileName));
         return "attachment://" + safeFileName;
     }
+    private int getInventoryCount(String inventory) {
+        if (inventory == null || inventory.isBlank()) {
+            return 0;
+        }
 
+        int count = 0;
+        for (String item : inventory.split(",")) {
+            if (!item.trim().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
@@ -380,59 +392,39 @@ public class CommandListener extends ListenerAdapter {
             event.replyEmbeds(embed.build()).setEphemeral(true).queue();
             return;
         }
+                if (event.getName().equals("profile")) {
+            User targetUser = event.getOption("user") != null
+                    ? event.getOption("user").getAsUser()
+                    : event.getUser();
 
-        if (event.getName().equals("pull")) {
-            int currentSparks = db.getSparks(userId);
-            int currentPity = db.getPity(userId);
-            int pullCost = 50;
+            String targetId = targetUser.getId();
+            int sparks = db.getSparks(targetId);
+            int points = db.getPoints(targetId);
+            int pity = db.getPity(targetId);
+            int collectionSize = getInventoryCount(db.getInventory(targetId));
+            int directivesCleared = db.getBountiesCleared(targetId);
+            int urgentCleared = db.getUrgentCleared(targetId);
 
-            if (currentSparks < pullCost) {
-                event.replyEmbeds(new EmbedBuilder()
-                        .setColor(Color.RED)
-                        .setTitle("✦ INSIGNIFICANT SPARKS ✦")
-                        .setDescription("❌ You do not have enough energy.\n\n"
-                                + "• **Required:** `" + pullCost + " Sparks`\n"
-                                + "• **Balance:** `" + currentSparks + " Sparks`")
-                        .build()).setEphemeral(true).queue();
-                return;
-            }
+            EmbedBuilder profileEmbed = new EmbedBuilder()
+                    .setColor(new Color(186, 85, 211))
+                    .setTitle("✦ AMORA PROFILE ✦")
+                    .setDescription("An intimate snapshot of " + targetUser.getAsMention() + "'s presence in the AMORA network.")
+                    .addField("⚡ Economy",
+                            "**Sparks:** `" + sparks + "`\n" +
+                            "**Points:** `" + points + "`\n" +
+                            "**Pity:** `" + pity + "/50`",
+                            false)
+                    .addField("🃏 Collection",
+                            "**Items Owned:** `" + collectionSize + "`",
+                            false)
+                    .addField("🎯 Activity",
+                            "**Directives Cleared:** `" + directivesCleared + "`\n" +
+                            "**Urgent Directives:** `" + urgentCleared + "`",
+                            false)
+                    .setThumbnail(targetUser.getEffectiveAvatarUrl())
+                    .setFooter("AMORA Profile Archive", null);
 
-            db.updateSparks(userId, currentSparks - pullCost);
-            double roll = Math.random() * 100;
-            String rewardName;
-            String tierLabel;
-            Color embedColor;
-            int newPity = currentPity;
-
-            if (roll <= 5.0 || currentPity >= 49) {
-                rewardName = "5★ Limited Edition Custom Render Asset";
-                tierLabel = "🃏 LEGENDARY DROP ✦" + (currentPity >= 49 ? " *(PITY GUARANTEE)*" : "");
-                embedColor = new Color(255, 215, 0);
-                newPity = 0;
-            } else if (roll <= 30.0) {
-                rewardName = "4★ Concept Photocard & Vibrant Profile Color Role";
-                tierLabel = "✨ RARE DROP ⊹";
-                embedColor = new Color(255, 20, 147);
-                newPity++;
-            } else {
-                rewardName = "3★ Standard Server Photocard Bundle";
-                tierLabel = "▫️ COMMON DROP";
-                embedColor = Color.LIGHT_GRAY;
-                newPity++;
-            }
-
-            db.addInventoryItem(userId, rewardName);
-            db.updatePity(userId, newPity);
-            int remainingSparks = currentSparks - pullCost;
-
-            EmbedBuilder rewardEmbed = new EmbedBuilder()
-                    .setColor(embedColor)
-                    .setTitle("✦ AMORA GACHA REVEAL ✦")
-                    .addField("Drop Status", "`" + tierLabel + "`", false)
-                    .addField("Item Claimed", "**" + rewardName + "**", false)
-                    .addField("Account Summary", "⚡ Remaining: `" + remainingSparks + " Sparks`\n📈 Pity Counter: `" + newPity + "/50`", false)
-                    .setThumbnail(event.getUser().getEffectiveAvatarUrl());
-            event.replyEmbeds(rewardEmbed.build()).queue();
+            event.replyEmbeds(profileEmbed.build()).queue();
             return;
         }
 

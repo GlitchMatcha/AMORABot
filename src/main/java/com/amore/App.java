@@ -96,7 +96,9 @@ public class App {
 
                             new SubcommandData("complete", "Director Only: Run INSIDE a quest thread to mass-pay the party & lock!")
                                 .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
-                        )
+                        ),
+                    Commands.slash("profile", "View your AMORA profile")
+    .addOption(OptionType.USER, "user", "Whose profile to view", false)
                 ).queue();
 
             System.out.println("✦ Slash commands registered successfully.");
