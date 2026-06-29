@@ -123,7 +123,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     if (rawRoleIds == null || rawRoleIds.isBlank()) {
-        event.reply("❌ `" + envName + "` is not configured yet. Set it in Render first.")
+        event.reply("❌ `" + "Your Role" + "` is not allowed to use this command wahhh T^T.")
                 .setEphemeral(true).queue();
         return false;
     }
