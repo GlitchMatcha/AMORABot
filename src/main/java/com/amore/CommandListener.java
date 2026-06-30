@@ -122,23 +122,24 @@ public class CommandListener extends ListenerAdapter {
         return value.substring(0, maxLength - 3) + "...";
     }
 
-        private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-    String artwork = fetchSongArtwork(song.link);
-
+    private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
     EmbedBuilder embed = new EmbedBuilder()
             .setColor(new Color(255, 105, 180))
             .setTitle(title)
             .setDescription(
                     "🎶 **" + song.title + "**\n" +
                     "by **" + song.artist + "**\n\n" +
-                    "🫶 **Suggested by:** <@" + song.addedBy + ">"
+                    "🎧 **Listen here:**\n" + song.link + "\n\n" +
+                    "🫶 Suggested by: <@" + song.addedBy + ">"
             )
             .addField("Source", song.source, true)
             .addField("Song ID", "#" + song.songId, true)
-            .setFooter(footer, null);
+            .setFooter(footer + " • Curated by the community", null);
 
-    if (artwork != null && !artwork.isBlank()) {
-        embed.setThumbnail(artwork);
+    String artworkUrl = fetchSongArtwork(song.link);
+
+    if (artworkUrl != null && !artworkUrl.isBlank()) {
+        embed.setThumbnail(artworkUrl); 
     }
 
     return embed;
