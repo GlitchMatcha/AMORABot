@@ -13,6 +13,13 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import org.json.JSONObject;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
@@ -114,19 +121,26 @@ public class CommandListener extends ListenerAdapter {
         return value.substring(0, maxLength - 3) + "...";
     }
 
-    private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-        return new EmbedBuilder()
-                .setColor(new Color(255, 105, 180))
-                .setTitle(title)
-                .setDescription(
-                        "🎶 **" + song.title + "**\n" +
-                        "by **" + song.artist + "**\n\n" +
-                        "🎧 **Listen here:**\n" + song.link + "\n\n" +
-                        "🫶 **Suggested by:** <@" + song.addedBy + ">"
-                )
-                .addField("Source", song.source, true)
-                .addField("Song ID", "#" + song.songId, true)
-                .setFooter(footer, null);
+        private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
+        String artwork = fetchSongArtwork(song.link);
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .setColor(new Color(255, 105, 180))
+            .setTitle(title)
+            .setDescription(
+                    "🎶 **" + song.title + "**\n" +
+                    "by **" + song.artist + "**\n\n" +
+                    "🫶 **Suggested by:** <@" + song.addedBy + ">"
+            )
+            .addField("Source", song.source, true)
+            .addField("Song ID", "#" + song.songId, true)
+            .setFooter(footer, null);
+
+        if (artwork != null && !artwork.isBlank()) {
+        embed.setThumbnail(artwork);
+        }
+
+        return embed;
     }
     private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
         if (event.getMember() == null) {
@@ -397,7 +411,79 @@ public class CommandListener extends ListenerAdapter {
         }
         return count;
     }
+    private String fetchSongArtwork(String link) {
+    try {
+        String normalized = link.toLowerCase();
 
+        if (normalized.contains("spotify.com/")) {
+            return fetchSpotifyThumbnail(link);
+        }
+
+        if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
+            return fetchYouTubeThumbnail(link);
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+
+    return null;
+}
+
+private String fetchSpotifyThumbnail(String link) {
+    try {
+        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
+        String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
+
+        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(5000);
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line);
+            }
+
+            JSONObject json = new JSONObject(response.toString());
+            return json.optString("thumbnail_url", null);
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+    }
+}
+
+private String fetchYouTubeThumbnail(String link) {
+    try {
+        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
+        String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
+
+        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(5000);
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line);
+            }
+
+            JSONObject json = new JSONObject(response.toString());
+            return json.optString("thumbnail_url", null);
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+        }
+    }
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
