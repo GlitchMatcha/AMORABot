@@ -1676,9 +1676,8 @@ private String fetchYouTubeThumbnail(String link) {
             event.reply("❌ Unknown song subcommand.")
                     .setEphemeral(true).queue();
             return;
+            }
         }
-        }
-    }
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
