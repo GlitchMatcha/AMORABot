@@ -77,7 +77,7 @@ public class DatabaseManager {
         }
     }
 
-    private void initializeDatabase() {
+        private void initializeDatabase() {
         String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
                 + "user_id TEXT PRIMARY KEY, "
                 + "sparks INTEGER DEFAULT 0, "
@@ -117,13 +117,32 @@ public class DatabaseManager {
                 + "expires_at INTEGER NOT NULL"
                 + ");";
 
+        String createSongSuggestionsTable = "CREATE TABLE IF NOT EXISTS song_suggestions ("
+                + "song_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "added_by TEXT NOT NULL, "
+                + "title TEXT NOT NULL, "
+                + "artist TEXT NOT NULL, "
+                + "link TEXT NOT NULL, "
+                + "source TEXT NOT NULL, "
+                + "is_active INTEGER NOT NULL DEFAULT 1, "
+                + "created_at INTEGER NOT NULL, "
+                + "last_featured_at INTEGER NOT NULL DEFAULT 0"
+                + ");";
+
+        String createBotStateTable = "CREATE TABLE IF NOT EXISTS bot_state ("
+                + "state_key TEXT PRIMARY KEY, "
+                + "state_value TEXT NOT NULL"
+                + ");";
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
             stmt.execute(createPendingTradeSetupsTable);
             stmt.execute(createActiveTradesTable);
             stmt.execute(createPendingForgesTable);
-            System.out.println("✦ Core tables, Shop Vault, and session tables verified.");
+            stmt.execute(createSongSuggestionsTable);
+            stmt.execute(createBotStateTable);
+            System.out.println("✦ Core tables, Shop Vault, session tables, and music tables verified.");
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -591,6 +610,218 @@ public class DatabaseManager {
                 + "VALUES (?, 0, 0, '', 0, 0, 0);";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+     public static class SongSuggestionRecord {
+        public final int songId;
+        public final String addedBy;
+        public final String title;
+        public final String artist;
+        public final String link;
+        public final String source;
+        public final boolean active;
+        public final long createdAt;
+        public final long lastFeaturedAt;
+
+        public SongSuggestionRecord(int songId, String addedBy, String title, String artist,
+                                    String link, String source, boolean active,
+                                    long createdAt, long lastFeaturedAt) {
+            this.songId = songId;
+            this.addedBy = addedBy;
+            this.title = title;
+            this.artist = artist;
+            this.link = link;
+            this.source = source;
+            this.active = active;
+            this.createdAt = createdAt;
+            this.lastFeaturedAt = lastFeaturedAt;
+        }
+    }
+        private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
+        return new SongSuggestionRecord(
+                rs.getInt("song_id"),
+                rs.getString("added_by"),
+                rs.getString("title"),
+                rs.getString("artist"),
+                rs.getString("link"),
+                rs.getString("source"),
+                rs.getInt("is_active") == 1,
+                rs.getLong("created_at"),
+                rs.getLong("last_featured_at")
+        );
+    }
+
+    public boolean songLinkExists(String link) {
+        String query = "SELECT 1 FROM song_suggestions WHERE LOWER(link) = LOWER(?) AND is_active = 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, link);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public SongSuggestionRecord addSongSuggestion(String addedBy, String title, String artist, String link, String source) {
+        String query = "INSERT INTO song_suggestions "
+                + "(added_by, title, artist, link, source, is_active, created_at, last_featured_at) "
+                + "VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
+
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, addedBy);
+            pstmt.setString(2, title);
+            pstmt.setString(3, artist);
+            pstmt.setString(4, link);
+            pstmt.setString(5, source);
+            pstmt.setLong(6, System.currentTimeMillis());
+            pstmt.executeUpdate();
+            return getSongSuggestionByLink(link);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public SongSuggestionRecord getSongSuggestionByLink(String link) {
+        String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, link);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapSongSuggestion(rs);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public SongSuggestionRecord getSongSuggestionById(int songId) {
+        String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, songId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapSongSuggestion(rs);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
+        List<SongSuggestionRecord> songs = new ArrayList<>();
+        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
+
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, limit);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    songs.add(mapSongSuggestion(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return songs;
+    }
+
+    public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
+        List<SongSuggestionRecord> songs = new ArrayList<>();
+        String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
+
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setInt(2, limit);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    songs.add(mapSongSuggestion(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return songs;
+    }
+
+    public SongSuggestionRecord getRandomActiveSongSuggestion() {
+        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY last_featured_at ASC, RANDOM() LIMIT 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                return mapSongSuggestion(rs);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public boolean deactivateSongSuggestion(int songId) {
+        String query = "UPDATE song_suggestions SET is_active = 0 WHERE song_id = ? AND is_active = 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, songId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public void markSongFeatured(int songId, long featuredAt) {
+        String query = "UPDATE song_suggestions SET last_featured_at = ? WHERE song_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setLong(1, featuredAt);
+            pstmt.setInt(2, songId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public int getActiveSongSuggestionCount() {
+        String query = "SELECT COUNT(*) AS total FROM song_suggestions WHERE is_active = 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getInt("total");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public String getBotState(String key) {
+        String query = "SELECT state_value FROM bot_state WHERE state_key = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, key);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("state_value");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void setBotState(String key, String value) {
+        String query = "INSERT OR REPLACE INTO bot_state (state_key, state_value) VALUES (?, ?);";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, key);
+            pstmt.setString(2, value);
             pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
