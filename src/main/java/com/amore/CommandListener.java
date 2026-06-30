@@ -427,7 +427,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     return null;
-}
+
 
 private String fetchSpotifyThumbnail(String link) {
     try {
