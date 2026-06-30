@@ -13,13 +13,6 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import org.json.JSONObject;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
@@ -48,7 +41,6 @@ public class CommandListener extends ListenerAdapter {
     private static final String URGENT_BOUNTY_FORUM_ID = System.getenv("URGENT_BOUNTY_FORUM_ID");
     private static final String ADDSPARKS_ROLE_IDS = System.getenv("ADDSPARKS_ROLE_IDS");
     private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
-    private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -88,60 +80,7 @@ public class CommandListener extends ListenerAdapter {
 
         return false;
     }
-       private boolean isSupportedSongLink(String link) {
-        if (link == null || link.isBlank()) {
-            return false;
-        }
 
-        String normalized = link.toLowerCase();
-        return normalized.contains("spotify.com/")
-                || normalized.contains("youtube.com/")
-                || normalized.contains("youtu.be/");
-    }
-
-    private String detectSongSource(String link) {
-        String normalized = link.toLowerCase();
-
-        if (normalized.contains("spotify.com/")) {
-            return "Spotify";
-        }
-        if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
-            return "YouTube";
-        }
-        return "Unknown";
-    }
-
-    private String truncateText(String value, int maxLength) {
-        if (value == null) {
-            return "";
-        }
-        if (value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength - 3) + "...";
-    }
-
-        private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-        String artwork = fetchSongArtwork(song.link);
-
-        EmbedBuilder embed = new EmbedBuilder()
-            .setColor(new Color(255, 105, 180))
-            .setTitle(title)
-            .setDescription(
-                    "🎶 **" + song.title + "**\n" +
-                    "by **" + song.artist + "**\n\n" +
-                    "🫶 **Suggested by:** <@" + song.addedBy + ">"
-            )
-            .addField("Source", song.source, true)
-            .addField("Song ID", "#" + song.songId, true)
-            .setFooter(footer, null);
-
-        if (artwork != null && !artwork.isBlank()) {
-        embed.setThumbnail(artwork);
-        }
-
-        return embed;
-    }
     private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
         if (event.getMember() == null) {
             event.reply("❌ This command can only be used inside a server.")
@@ -411,79 +350,7 @@ public class CommandListener extends ListenerAdapter {
         }
         return count;
     }
-    private String fetchSongArtwork(String link) {
-    try {
-        String normalized = link.toLowerCase();
 
-        if (normalized.contains("spotify.com/")) {
-            return fetchSpotifyThumbnail(link);
-        }
-
-        if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
-            return fetchYouTubeThumbnail(link);
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-
-    return null;
-
-
-private String fetchSpotifyThumbnail(String link) {
-    try {
-        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-        String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(5000);
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-
-            JSONObject json = new JSONObject(response.toString());
-            return json.optString("thumbnail_url", null);
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-        return null;
-    }
-}
-
-private String fetchYouTubeThumbnail(String link) {
-    try {
-        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-        String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(5000);
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-
-            JSONObject json = new JSONObject(response.toString());
-            return json.optString("thumbnail_url", null);
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-        return null;
-        }
-    }
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
@@ -1180,168 +1047,6 @@ private String fetchYouTubeThumbnail(String link) {
                     event.getUser().getAsMention() + " awarded " + targetUser.getAsMention() + " `"
                             + amount + " Sparks` for **" + reason + "**.",
                     new Color(255, 215, 0));
-        }
-                if (event.getName().equals("song")) {
-            String subcommand = event.getSubcommandName();
-
-            if (subcommand == null) {
-                event.reply("❌ Missing subcommand. Use `/song add`, `/song list`, `/song suggest`, or `/song remove`.")
-                        .setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("add")) {
-                String title = event.getOption("title").getAsString().trim();
-                String artist = event.getOption("artist").getAsString().trim();
-                String link = event.getOption("link").getAsString().trim();
-
-                if (title.isBlank() || artist.isBlank() || link.isBlank()) {
-                    event.reply("❌ Title, artist, and link are required.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (title.length() > 120 || artist.length() > 120 || link.length() > 500) {
-                    event.reply("❌ One or more fields are too long.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (!isSupportedSongLink(link)) {
-                    event.reply("❌ Please submit a valid Spotify or YouTube link.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (db.songLinkExists(link)) {
-                    event.reply("❌ That exact song link is already in the AMORA pool.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
-                        userId,
-                        title,
-                        artist,
-                        link,
-                        detectSongSource(link)
-                );
-
-                if (created == null) {
-                    event.reply("❌ Failed to save the song suggestion.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.replyEmbeds(
-                        buildSongEmbed(created, "✦ SONG ADDED TO THE AMORA POOL ✦", "AMORA Daily Music Pool").build()
-                ).setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("remove")) {
-                int songId = event.getOption("id").getAsInt();
-                DatabaseManager.SongSuggestionRecord song = db.getSongSuggestionById(songId);
-
-                if (song == null || !song.active) {
-                    event.reply("❌ That song ID does not exist in the active pool.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean isOwner = userId.equals(song.addedBy);
-                boolean isAdmin = event.getMember() != null
-                        && event.getMember().hasPermission(Permission.ADMINISTRATOR);
-
-                if (!isOwner && !isAdmin) {
-                    event.reply("❌ You can only remove songs you added yourself unless you are an admin.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean removed = db.deactivateSongSuggestion(songId);
-                if (!removed) {
-                    event.reply("❌ Failed to remove that song.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.reply("✅ Removed **" + song.title + "** by **" + song.artist + "** from the AMORA pool.")
-                        .setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("list")) {
-                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(10);
-
-                if (songs.isEmpty()) {
-                    event.reply("❌ The AMORA song pool is empty right now. Add one with `/song add`.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                StringBuilder desc = new StringBuilder();
-                for (DatabaseManager.SongSuggestionRecord song : songs) {
-                    desc.append("`#").append(song.songId).append("` ")
-                            .append("**").append(truncateText(song.title, 40)).append("**")
-                            .append(" — ").append(truncateText(song.artist, 30))
-                            .append("\n↳ ").append(song.source)
-                            .append(" • added by <@").append(song.addedBy).append(">")
-                            .append("\n\n");
-                }
-
-                EmbedBuilder embed = new EmbedBuilder()
-                        .setColor(new Color(186, 85, 211))
-                        .setTitle("✦ AMORA SONG POOL ✦")
-                        .setDescription(desc.toString())
-                        .setFooter("Showing the 10 most recent active song submissions", null);
-
-                event.replyEmbeds(embed.build()).setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("suggest")) {
-                DatabaseManager.SongSuggestionRecord song = db.getRandomActiveSongSuggestion();
-
-                if (song == null) {
-                    event.reply("❌ There are no active song suggestions yet.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.replyEmbeds(
-                        buildSongEmbed(song, "✦ RANDOM AMORA SONG PICK ✦", "AMORA Music Recommendation").build()
-                ).queue();
-                return;
-            }
-
-            if (subcommand.equals("postnow")) {
-                boolean isAdmin = event.getMember() != null
-                        && event.getMember().hasPermission(Permission.ADMINISTRATOR);
-
-                if (!isAdmin) {
-                    event.reply("❌ Only admins can force-post the daily song.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (DAILY_SONG_CHANNEL_ID == null || DAILY_SONG_CHANNEL_ID.isBlank()) {
-                    event.reply("❌ DAILY_SONG_CHANNEL_ID is not configured.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean posted = App.postSongRecommendation(event.getJDA(), false);
-                if (!posted) {
-                    event.reply("❌ Could not post a song right now. Check the channel ID or make sure the pool has songs.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.reply("✅ Song recommendation posted in <#" + DAILY_SONG_CHANNEL_ID + ">.")
-                        .setEphemeral(true).queue();
-                return;
-            }
         }
     }
 
