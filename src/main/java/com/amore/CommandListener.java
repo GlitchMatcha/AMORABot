@@ -24,6 +24,7 @@ import java.util.Random;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.net.URLDecoder;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
