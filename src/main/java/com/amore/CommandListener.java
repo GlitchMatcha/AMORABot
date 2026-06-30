@@ -178,7 +178,128 @@ public class CommandListener extends ListenerAdapter {
         }
         return null;
     }
+    // Add these helper methods inside CommandListener.java
 
+private String normalizeSongLink(String raw) {
+    if (raw == null) {
+        return "";
+    }
+
+    String link = raw.trim();
+    if (link.isBlank()) {
+        return "";
+    }
+
+    try {
+        URI uri = URI.create(link);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
+
+        if (host.equals("youtu.be")) {
+            String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
+            if (!videoId.isBlank()) {
+                return "https://www.youtube.com/watch?v=" + videoId;
+            }
+        }
+
+        if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
+            String videoId = getQueryParam(uri.getRawQuery(), "v");
+            if (videoId != null && !videoId.isBlank()) {
+                return "https://www.youtube.com/watch?v=" + videoId;
+            }
+        }
+
+        if (host.equals("open.spotify.com")) {
+            String path = uri.getPath() == null ? "" : uri.getPath().trim();
+            if (path.startsWith("/track/")) {
+                String trackId = path.substring("/track/".length());
+                int slashIndex = trackId.indexOf('/');
+                if (slashIndex != -1) {
+                    trackId = trackId.substring(0, slashIndex);
+                }
+                if (!trackId.isBlank()) {
+                    return "https://open.spotify.com/track/" + trackId;
+                }
+            }
+        }
+    } catch (Exception ignored) {
+    }
+
+    return link;
+}
+
+private String getQueryParam(String rawQuery, String key) {
+    if (rawQuery == null || rawQuery.isBlank()) {
+        return null;
+    }
+
+    for (String pair : rawQuery.split("&")) {
+        int idx = pair.indexOf('=');
+        if (idx <= 0) {
+            continue;
+        }
+
+        String paramKey = pair.substring(0, idx);
+        String paramValue = pair.substring(idx + 1);
+
+        if (paramKey.equals(key)) {
+            return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
+        }
+    }
+
+    return null;
+}
+
+private boolean isSupportedSongLink(String link) {
+    String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
+    return normalized.startsWith("https://open.spotify.com/track/")
+            || normalized.startsWith("https://www.youtube.com/watch?v=");
+}
+
+private boolean isYouTubePlaylistLink(String link) {
+    if (link == null || link.isBlank()) {
+        return false;
+    }
+
+    String lower = link.toLowerCase(Locale.ROOT);
+    return (lower.contains("youtube.com") || lower.contains("youtu.be"))
+            && lower.contains("list=");
+}
+
+private String detectSongSource(String link) {
+    String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
+    if (normalized.contains("spotify")) {
+        return "Spotify";
+    }
+    return "YouTube";
+}
+
+private String truncateText(String text, int maxLength) {
+    if (text == null) {
+        return "";
+    }
+    if (text.length() <= maxLength) {
+        return text;
+    }
+    return text.substring(0, Math.max(0, maxLength - 3)) + "...";
+}
+
+private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
+    return new EmbedBuilder()
+            .setColor(new Color(255, 105, 180))
+            .setTitle(title)
+            .setDescription(
+                    "🎵 **" + song.title + "**\n" +
+                    "by **" + song.artist + "**\n\n" +
+                    "🎧 **Listen here:**\n" + song.link + "\n\n" +
+                    "🫶 **Suggested by:** <@" + song.addedBy + ">"
+            )
+            .addField("Source", song.source, true)
+            .addField("Song ID", "#" + song.songId, true)
+            .setFooter(footer, null);
+}
     private String removeItem(String inventory, String exactItemName) {
         return removeMultipleItems(inventory, exactItemName, 1);
     }
@@ -1290,11 +1411,11 @@ private String fetchYouTubeThumbnail(String link) {
                             + amount + " Sparks` for **" + reason + "**.",
                     new Color(255, 215, 0));
         }
-                if (event.getName().equals("song")) {
+                       if (event.getName().equals("song")) {
             String subcommand = event.getSubcommandName();
 
             if (subcommand == null) {
-                event.reply("❌ Missing subcommand. Use `/song add`, `/song list`, `/song suggest`, or `/song remove`.")
+                event.reply("❌ Missing subcommand. Use `/song add`, `/song importplaylist`, `/song list`, `/song suggest`, or `/song remove`.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1302,7 +1423,7 @@ private String fetchYouTubeThumbnail(String link) {
             if (subcommand.equals("add")) {
                 String title = event.getOption("title").getAsString().trim();
                 String artist = event.getOption("artist").getAsString().trim();
-                String link = event.getOption("link").getAsString().trim();
+                String link = normalizeSongLink(event.getOption("link").getAsString().trim());
 
                 if (title.isBlank() || artist.isBlank() || link.isBlank()) {
                     event.reply("❌ Title, artist, and link are required.")
@@ -1317,7 +1438,7 @@ private String fetchYouTubeThumbnail(String link) {
                 }
 
                 if (!isSupportedSongLink(link)) {
-                    event.reply("❌ Please submit a valid Spotify or YouTube link.")
+                    event.reply("❌ Please submit a valid Spotify track or YouTube song link.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1345,6 +1466,106 @@ private String fetchYouTubeThumbnail(String link) {
                 event.replyEmbeds(
                         buildSongEmbed(created, "✦ SONG ADDED TO THE AMORA POOL ✦", "AMORA Daily Music Pool").build()
                 ).setEphemeral(true).queue();
+                return;
+            }
+
+            if (subcommand.equals("importplaylist")) {
+                String playlistLink = event.getOption("link").getAsString().trim();
+
+                if (playlistLink.isBlank()) {
+                    event.reply("❌ Playlist link is required.")
+                            .setEphemeral(true).queue();
+                    return;
+                }
+
+                if (!isYouTubePlaylistLink(playlistLink)) {
+                    event.reply("❌ Please provide a valid public YouTube playlist link.")
+                            .setEphemeral(true).queue();
+                    return;
+                }
+
+                event.deferReply(true).queue();
+
+                try {
+                    List<YouTubePlaylistImporter.ImportedSong> importedSongs =
+                            YouTubePlaylistImporter.importPlaylist(playlistLink);
+
+                    if (importedSongs.isEmpty()) {
+                        event.getHook().sendMessage("❌ No usable songs were found in that playlist.")
+                                .queue();
+                        return;
+                    }
+
+                    int added = 0;
+                    int skippedExisting = 0;
+                    int skippedInvalid = 0;
+
+                    Set<String> seenThisImport = new HashSet<>();
+                    StringBuilder preview = new StringBuilder();
+
+                    for (YouTubePlaylistImporter.ImportedSong imported : importedSongs) {
+                        String normalizedLink = normalizeSongLink(imported.link());
+
+                        if (normalizedLink.isBlank() || !isSupportedSongLink(normalizedLink)) {
+                            skippedInvalid++;
+                            continue;
+                        }
+
+                        String dedupeKey = normalizedLink.toLowerCase(Locale.ROOT);
+                        if (!seenThisImport.add(dedupeKey)) {
+                            skippedInvalid++;
+                            continue;
+                        }
+
+                        if (db.songLinkExists(normalizedLink)) {
+                            skippedExisting++;
+                            continue;
+                        }
+
+                        DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
+                                userId,
+                                imported.title(),
+                                imported.artist(),
+                                normalizedLink,
+                                "YouTube"
+                        );
+
+                        if (created == null) {
+                            skippedInvalid++;
+                            continue;
+                        }
+
+                        added++;
+
+                        if (preview.length() < 900) {
+                            preview.append("`#").append(created.songId).append("` ")
+                                    .append("**").append(truncateText(created.title, 40)).append("**")
+                                    .append(" — ").append(truncateText(created.artist, 30))
+                                    .append("\n");
+                        }
+                    }
+
+                    EmbedBuilder resultEmbed = new EmbedBuilder()
+                            .setColor(new Color(255, 105, 180))
+                            .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
+                            .setDescription(
+                                    "🎵 Playlist scan finished.\n\n" +
+                                    "✅ Added: `" + added + "`\n" +
+                                    "♻️ Already in pool: `" + skippedExisting + "`\n" +
+                                    "⚠️ Skipped/invalid: `" + skippedInvalid + "`"
+                            )
+                            .setFooter("AMORA Music Importer", null);
+
+                    if (preview.length() > 0) {
+                        resultEmbed.addField("Imported Songs", preview.toString(), false);
+                    }
+
+                    event.getHook().sendMessageEmbeds(resultEmbed.build()).queue();
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    event.getHook().sendMessage("❌ Failed to import playlist: " + e.getMessage()).queue();
+                }
                 return;
             }
 
@@ -1451,6 +1672,11 @@ private String fetchYouTubeThumbnail(String link) {
                         .setEphemeral(true).queue();
                 return;
             }
+
+            event.reply("❌ Unknown song subcommand.")
+                    .setEphemeral(true).queue();
+            return;
+        }
         }
     }
 

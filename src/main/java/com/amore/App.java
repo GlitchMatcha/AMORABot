@@ -131,19 +131,22 @@ public class App {
                         .addOption(OptionType.USER, "user", "Whose profile to view", false),
 
                     Commands.slash("song", "Manage the AMORA daily song pool")
-                        .addSubcommands(
-                            new SubcommandData("add", "Add a Spotify or YouTube song to the daily pool")
-                                .addOption(OptionType.STRING, "title", "Song title", true)
-                                .addOption(OptionType.STRING, "artist", "Artist name", true)
-                                .addOption(OptionType.STRING, "link", "Spotify or YouTube link", true),
+                    .addSubcommands(
+                    new SubcommandData("add", "Add a Spotify or YouTube song to the daily pool")
+                    .addOption(OptionType.STRING, "title", "Song title", true)
+                    .addOption(OptionType.STRING, "artist", "Artist name", true)
+                    .addOption(OptionType.STRING, "link", "Spotify or YouTube link", true),
 
-                            new SubcommandData("remove", "Remove a song by ID (owner or admin)")
-                                .addOption(OptionType.INTEGER, "id", "Song ID from /song list", true),
+                    new SubcommandData("importplaylist", "Import all songs from a public YouTube playlist")
+                    .addOption(OptionType.STRING, "link", "Public YouTube playlist URL", true),
 
-                            new SubcommandData("list", "Show recent songs in the AMORA pool"),
-                            new SubcommandData("suggest", "Get a random song recommendation from the pool"),
-                            new SubcommandData("postnow", "Admin: force-post a song recommendation now")
-                        )
+                    new SubcommandData("remove", "Remove a song by ID (owner or admin)")
+                    .addOption(OptionType.INTEGER, "id", "Song ID from /song list", true),
+
+                    new SubcommandData("list", "Show recent songs in the AMORA pool"),
+                    new SubcommandData("suggest", "Get a random song recommendation from the pool"),
+                    new SubcommandData("postnow", "Admin: force-post a song recommendation now")
+                    )
                 ).queue();
 
             System.out.println("✦ Slash commands registered successfully.");
