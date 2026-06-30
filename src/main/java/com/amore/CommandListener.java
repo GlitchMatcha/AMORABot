@@ -92,61 +92,7 @@ public class CommandListener extends ListenerAdapter {
 
         return false;
     }
-       private boolean isSupportedSongLink(String link) {
-        if (link == null || link.isBlank()) {
-            return false;
-        }
-
-        String normalized = link.toLowerCase();
-        return normalized.contains("spotify.com/")
-                || normalized.contains("youtube.com/")
-                || normalized.contains("youtu.be/");
-    }
-
-    private String detectSongSource(String link) {
-        String normalized = link.toLowerCase();
-
-        if (normalized.contains("spotify.com/")) {
-            return "Spotify";
-        }
-        if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
-            return "YouTube";
-        }
-        return "Unknown";
-    }
-
-    private String truncateText(String value, int maxLength) {
-        if (value == null) {
-            return "";
-        }
-        if (value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength - 3) + "...";
-    }
-
-    private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-    EmbedBuilder embed = new EmbedBuilder()
-            .setColor(new Color(255, 105, 180))
-            .setTitle(title)
-            .setDescription(
-                    "🎶 **" + song.title + "**\n" +
-                    "by **" + song.artist + "**\n\n" +
-                    "🎧 **Listen here:**\n" + song.link + "\n\n" +
-                    "🫶 Suggested by: <@" + song.addedBy + ">"
-            )
-            .addField("Source", song.source, true)
-            .addField("Song ID", "#" + song.songId, true)
-            .setFooter(footer + " • Curated by the community", null);
-
-    String artworkUrl = fetchSongArtwork(song.link);
-
-    if (artworkUrl != null && !artworkUrl.isBlank()) {
-        embed.setThumbnail(artworkUrl); 
-    }
-
-    return embed;
-}
+       
     private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
         if (event.getMember() == null) {
             event.reply("❌ This command can only be used inside a server.")
@@ -183,6 +129,77 @@ public class CommandListener extends ListenerAdapter {
     }
     // Add these helper methods inside CommandListener.java
 
+private String normalizeSongLink(String raw) {
+    if (raw == null) {
+        return "";
+    }
+
+    String link = raw.trim();
+    if (link.isBlank()) {
+        return "";
+    }
+
+    try {
+        URI uri = URI.create(link);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
+
+        if (host.equals("youtu.be")) {
+            String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
+            if (!videoId.isBlank()) {
+                return "https://www.youtube.com/watch?v=" + videoId;
+            }
+        }
+
+        if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
+            String videoId = getQueryParam(uri.getRawQuery(), "v");
+            if (videoId != null && !videoId.isBlank()) {
+                return "https://www.youtube.com/watch?v=" + videoId;
+            }
+        }
+
+        if (host.equals("open.spotify.com")) {
+            String path = uri.getPath() == null ? "" : uri.getPath().trim();
+            if (path.startsWith("/track/")) {
+                String trackId = path.substring("/track/".length());
+                int slashIndex = trackId.indexOf('/');
+                if (slashIndex != -1) {
+                    trackId = trackId.substring(0, slashIndex);
+                }
+                if (!trackId.isBlank()) {
+                    return "https://open.spotify.com/track/" + trackId;
+                }
+            }
+        }
+    } catch (Exception ignored) {
+    }
+
+    return link;
+}
+
+private String getQueryParam(String rawQuery, String key) {
+    if (rawQuery == null || rawQuery.isBlank()) {
+        return null;
+    }
+
+    for (String pair : rawQuery.split("&")) {
+        int idx = pair.indexOf('=');
+        if (idx <= 0) {
+            continue;
+        }
+
+        String paramKey = pair.substring(0, idx);
+        String paramValue = pair.substring(idx + 1);
+
+        if (paramKey.equals(key)) {
+            return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
+        }
+    }
+
+    return null;
+}
 private String normalizeSongLink(String raw) {
     if (raw == null) {
         return "";
@@ -303,6 +320,9 @@ private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, S
             .addField("Song ID", "#" + song.songId, true)
             .setFooter(footer, null);
 }
+
+
+
     private String removeItem(String inventory, String exactItemName) {
         return removeMultipleItems(inventory, exactItemName, 1);
     }
