@@ -179,76 +179,7 @@ private String normalizeSongLink(String raw) {
     return link;
 }
 
-private String getQueryParam(String rawQuery, String key) {
-    if (rawQuery == null || rawQuery.isBlank()) {
-        return null;
-    }
 
-    for (String pair : rawQuery.split("&")) {
-        int idx = pair.indexOf('=');
-        if (idx <= 0) {
-            continue;
-        }
-
-        String paramKey = pair.substring(0, idx);
-        String paramValue = pair.substring(idx + 1);
-
-        if (paramKey.equals(key)) {
-            return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
-        }
-    }
-
-    return null;
-}
-private String normalizeSongLink(String raw) {
-    if (raw == null) {
-        return "";
-    }
-
-    String link = raw.trim();
-    if (link.isBlank()) {
-        return "";
-    }
-
-    try {
-        URI uri = URI.create(link);
-        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        if (host.startsWith("www.")) {
-            host = host.substring(4);
-        }
-
-        if (host.equals("youtu.be")) {
-            String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
-            if (!videoId.isBlank()) {
-                return "https://www.youtube.com/watch?v=" + videoId;
-            }
-        }
-
-        if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
-            String videoId = getQueryParam(uri.getRawQuery(), "v");
-            if (videoId != null && !videoId.isBlank()) {
-                return "https://www.youtube.com/watch?v=" + videoId;
-            }
-        }
-
-        if (host.equals("open.spotify.com")) {
-            String path = uri.getPath() == null ? "" : uri.getPath().trim();
-            if (path.startsWith("/track/")) {
-                String trackId = path.substring("/track/".length());
-                int slashIndex = trackId.indexOf('/');
-                if (slashIndex != -1) {
-                    trackId = trackId.substring(0, slashIndex);
-                }
-                if (!trackId.isBlank()) {
-                    return "https://open.spotify.com/track/" + trackId;
-                }
-            }
-        }
-    } catch (Exception ignored) {
-    }
-
-    return link;
-}
 
 private String getQueryParam(String rawQuery, String key) {
     if (rawQuery == null || rawQuery.isBlank()) {
