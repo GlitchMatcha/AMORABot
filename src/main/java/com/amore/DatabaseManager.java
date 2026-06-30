@@ -616,30 +616,38 @@ public class DatabaseManager {
         }
     }
      public static class SongSuggestionRecord {
-        public final int songId;
-        public final String addedBy;
-        public final String title;
-        public final String artist;
-        public final String link;
-        public final String source;
-        public final boolean active;
-        public final long createdAt;
-        public final long lastFeaturedAt;
+    public final int songId;
+    public final String addedBy;
+    public final String title;
+    public final String artist;
+    public final String link;
+    public final String source;
+    public final boolean active;
+    public final long createdAt;
+    public final long lastFeaturedAt;
 
-        public SongSuggestionRecord(int songId, String addedBy, String title, String artist,
-                                    String link, String source, boolean active,
-                                    long createdAt, long lastFeaturedAt) {
-            this.songId = songId;
-            this.addedBy = addedBy;
-            this.title = title;
-            this.artist = artist;
-            this.link = link;
-            this.source = source;
-            this.active = active;
-            this.createdAt = createdAt;
-            this.lastFeaturedAt = lastFeaturedAt;
-        }
+    public SongSuggestionRecord(
+            int songId,
+            String addedBy,
+            String title,
+            String artist,
+            String link,
+            String source,
+            boolean active,
+            long createdAt,
+            long lastFeaturedAt
+    ) {
+        this.songId = songId;
+        this.addedBy = addedBy;
+        this.title = title;
+        this.artist = artist;
+        this.link = link;
+        this.source = source;
+        this.active = active;
+        this.createdAt = createdAt;
+        this.lastFeaturedAt = lastFeaturedAt;
     }
+}
         private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
         return new SongSuggestionRecord(
                 rs.getInt("song_id"),
