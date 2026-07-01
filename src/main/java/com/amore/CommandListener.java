@@ -49,6 +49,7 @@ import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 
 public class CommandListener extends ListenerAdapter {
 
+    private static final ExecutorService scheduler = Executors.newSingleThreadExecutor();
     private static final String AUDIT_LOG_CHANNEL_ID = System.getenv("AUDIT_LOG_CHANNEL_ID");
     private static final String SHOP_FORUM_CHANNEL_ID = System.getenv("SHOP_FORUM_CHANNEL_ID");
     private static final String STANDARD_BOUNTY_FORUM_ID = System.getenv("STANDARD_BOUNTY_FORUM_ID");
