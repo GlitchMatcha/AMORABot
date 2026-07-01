@@ -211,14 +211,20 @@ private boolean isSupportedSongLink(String link) {
 }
 
 private boolean isYouTubePlaylistLink(String link) {
-    if (link == null || link.isBlank()) {
+        if (link == null || link.isBlank()) {
+            return false;
+        }
+
+        String lower = link.trim().toLowerCase(Locale.ROOT);
+        if ((lower.contains("youtube.com") || lower.contains("youtu.be")) && lower.contains("list=")) {
+            return true;
+        }
+        if (link.startsWith("PL") || link.startsWith("OL") || link.startsWith("RD") || link.startsWith("UU")) {
+            return true;
+        }
+        
         return false;
     }
-
-    String lower = link.toLowerCase(Locale.ROOT);
-    return (lower.contains("youtube.com") || lower.contains("youtu.be"))
-            && lower.contains("list=");
-}
 
 private String detectSongSource(String link) {
     String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
@@ -1434,95 +1440,100 @@ private String fetchYouTubeThumbnail(String link) {
                 }
 
                 if (!isYouTubePlaylistLink(playlistLink)) {
-                    event.reply("❌ Please provide a valid public YouTube playlist link.")
+                    event.reply("❌ Please provide a valid public YouTube playlist link or Playlist ID.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
-                event.deferReply(true).queue();
+                //push the heavy lifting to the background >p>
+                event.deferReply(true).queue(hook -> {
+                    java.util.concurrent.CompletableFuture.runAsync(() -> {
+                        try {
+                            List<YouTubePlaylistImporter.ImportedSong> importedSongs =
+                                    YouTubePlaylistImporter.importPlaylist(playlistLink);
 
-                try {
-                    List<YouTubePlaylistImporter.ImportedSong> importedSongs =
-                            YouTubePlaylistImporter.importPlaylist(playlistLink);
+                            if (importedSongs.isEmpty()) {
+                                hook.sendMessage("❌ No usable songs were found in that playlist.").queue();
+                                return;
+                            }
 
-                    if (importedSongs.isEmpty()) {
-                        event.getHook().sendMessage("❌ No usable songs were found in that playlist.")
-                                .queue();
-                        return;
-                    }
+                            int added = 0;
+                            int skippedExisting = 0;
+                            int skippedInvalid = 0;
 
-                    int added = 0;
-                    int skippedExisting = 0;
-                    int skippedInvalid = 0;
+                            Set<String> seenThisImport = new HashSet<>();
+                            StringBuilder preview = new StringBuilder();
 
-                    Set<String> seenThisImport = new HashSet<>();
-                    StringBuilder preview = new StringBuilder();
+                            for (YouTubePlaylistImporter.ImportedSong imported : importedSongs) {
+                                String normalizedLink = normalizeSongLink(imported.link());
 
-                    for (YouTubePlaylistImporter.ImportedSong imported : importedSongs) {
-                        String normalizedLink = normalizeSongLink(imported.link());
+                                if (normalizedLink.isBlank() || !isSupportedSongLink(normalizedLink)) {
+                                    skippedInvalid++;
+                                    continue;
+                                }
 
-                        if (normalizedLink.isBlank() || !isSupportedSongLink(normalizedLink)) {
-                            skippedInvalid++;
-                            continue;
+                                String dedupeKey = normalizedLink.toLowerCase(Locale.ROOT);
+                                if (!seenThisImport.add(dedupeKey)) {
+                                    skippedInvalid++;
+                                    continue;
+                                }
+
+                                if (db.songLinkExists(normalizedLink)) {
+                                    skippedExisting++;
+                                    continue;
+                                }
+
+                                DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
+                                        userId,
+                                        imported.title(),
+                                        imported.artist(),
+                                        normalizedLink,
+                                        "YouTube"
+                                );
+
+                                if (created == null) {
+                                    skippedInvalid++;
+                                    continue;
+                                }
+
+                                added++;
+
+                                if (preview.length() < 900) {
+                                    preview.append("`#").append(created.songId).append("` ")
+                                            .append("**").append(truncateText(created.title, 40)).append("**")
+                                            .append(" — ").append(truncateText(created.artist, 30))
+                                            .append("\n");
+                                }
+                            }
+
+                            EmbedBuilder resultEmbed = new EmbedBuilder()
+                                    .setColor(new Color(255, 105, 180))
+                                    .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
+                                    .setDescription(
+                                            "🎵 Playlist scan finished.\n\n" +
+                                            "✅ Added: `" + added + "`\n" +
+                                            "♻️ Already in pool: `" + skippedExisting + "`\n" +
+                                            "⚠️ Skipped/invalid: `" + skippedInvalid + "`"
+                                    )
+                                    .setFooter("AMORA Music Importer", null);
+
+                            if (preview.length() > 0) {
+                                resultEmbed.addField("Imported Songs", preview.toString(), false);
+                            }
+
+                            hook.sendMessageEmbeds(resultEmbed.build()).queue();
+
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                            if (e instanceof java.util.concurrent.CompletionException && e.getCause() != null) {
+                                errorMsg = e.getCause().getMessage() != null ? e.getCause().getMessage() : e.getCause().getClass().getSimpleName();
+                            }
+                            
+                            hook.sendMessage("❌ Failed to import playlist: " + errorMsg).queue();
                         }
-
-                        String dedupeKey = normalizedLink.toLowerCase(Locale.ROOT);
-                        if (!seenThisImport.add(dedupeKey)) {
-                            skippedInvalid++;
-                            continue;
-                        }
-
-                        if (db.songLinkExists(normalizedLink)) {
-                            skippedExisting++;
-                            continue;
-                        }
-
-                        DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
-                                userId,
-                                imported.title(),
-                                imported.artist(),
-                                normalizedLink,
-                                "YouTube"
-                        );
-
-                        if (created == null) {
-                            skippedInvalid++;
-                            continue;
-                        }
-
-                        added++;
-
-                        if (preview.length() < 900) {
-                            preview.append("`#").append(created.songId).append("` ")
-                                    .append("**").append(truncateText(created.title, 40)).append("**")
-                                    .append(" — ").append(truncateText(created.artist, 30))
-                                    .append("\n");
-                        }
-                    }
-
-                    EmbedBuilder resultEmbed = new EmbedBuilder()
-                            .setColor(new Color(255, 105, 180))
-                            .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
-                            .setDescription(
-                                    "🎵 Playlist scan finished.\n\n" +
-                                    "✅ Added: `" + added + "`\n" +
-                                    "♻️ Already in pool: `" + skippedExisting + "`\n" +
-                                    "⚠️ Skipped/invalid: `" + skippedInvalid + "`"
-                            )
-                            .setFooter("AMORA Music Importer", null);
-
-                    if (preview.length() > 0) {
-                        resultEmbed.addField("Imported Songs", preview.toString(), false);
-                    }
-
-                    event.getHook().sendMessageEmbeds(resultEmbed.build()).queue();
-
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    // 🛑 NEW: If the message is null, print the actual Class Name so we can see what broke!
-                    String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                    event.getHook().sendMessage("❌ Failed to import playlist: " + errorMsg).queue();
-                }
+                    });
+                });
                 return;
             }
             if (subcommand.equals("remove")) {
