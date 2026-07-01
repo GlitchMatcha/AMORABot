@@ -260,6 +260,11 @@ private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, S
             .addField("Source", song.source, true)
             .addField("Song ID", "#" + song.songId, true)
             .setFooter(footer, null);
+            String artworkUrl = fetchSongArtwork(song.link);
+        if (artworkUrl != null && !artworkUrl.isBlank()) {
+            eb.setImage(artworkUrl);
+        }
+        return eb;
 }
 
 
@@ -498,7 +503,7 @@ private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, S
         }
         return count;
     }
-    private String fetchSongArtwork(String link) {
+    public static String fetchSongArtwork(String link) {
     try {
         String normalized = link.toLowerCase();
 
@@ -516,7 +521,7 @@ private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, S
     return null;
 }
 
-private String fetchSpotifyThumbnail(String link) {
+private static String fetchSpotifyThumbnail(String link) {
     try {
         String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
         String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
@@ -544,7 +549,7 @@ private String fetchSpotifyThumbnail(String link) {
     }
 }
 
-private String fetchYouTubeThumbnail(String link) {
+public static String fetchYouTubeThumbnail(String link) {
     try {
         String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
         String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
