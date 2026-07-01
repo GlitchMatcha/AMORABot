@@ -1437,16 +1437,15 @@ private String fetchYouTubeThumbnail(String link) {
                 String playlistLink = event.getOption("link").getAsString().trim();
 
                 if (playlistLink.isBlank()) {
-                    event.reply("❌ Playlist link is required.")
-                            .setEphemeral(true).queue();
+                    event.reply("❌ Playlist link is required.").setEphemeral(true).queue();
                     return;
                 }
 
                 if (!isYouTubePlaylistLink(playlistLink)) {
-                    event.reply("❌ Please provide a valid public YouTube playlist link or Playlist ID.")
-                            .setEphemeral(true).queue();
+                    event.reply("❌ Please provide a valid public YouTube playlist link or Playlist ID.").setEphemeral(true).queue();
                     return;
                 }
+
                 event.deferReply(true).queue(hook -> {
                     scheduler.execute(() -> {
                         try {
@@ -1458,11 +1457,14 @@ private String fetchYouTubeThumbnail(String link) {
                                 return;
                             }
 
-                            int added = 0;
                             int skippedExisting = 0;
                             int skippedInvalid = 0;
-
                             Set<String> seenThisImport = new HashSet<>();
+                            
+                            // 🛑 BATCH LISTS
+                            List<String> bulkLinks = new ArrayList<>();
+                            List<String> bulkTitles = new ArrayList<>();
+                            List<String> bulkArtists = new ArrayList<>();
                             StringBuilder preview = new StringBuilder();
 
                             for (YouTubePlaylistImporter.ImportedSong imported : importedSongs) {
@@ -1484,27 +1486,22 @@ private String fetchYouTubeThumbnail(String link) {
                                     continue;
                                 }
 
-                                DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
-                                        userId,
-                                        imported.title(),
-                                        imported.artist(),
-                                        normalizedLink,
-                                        "YouTube"
-                                );
-
-                                if (created == null) {
-                                    skippedInvalid++;
-                                    continue;
-                                }
-
-                                added++;
+                                // 🛑 ADD TO BATCH INSTEAD OF SAVING IMMEDIATELY
+                                bulkLinks.add(normalizedLink);
+                                bulkTitles.add(imported.title());
+                                bulkArtists.add(imported.artist());
 
                                 if (preview.length() < 900) {
-                                    preview.append("`#").append(created.songId).append("` ")
-                                            .append("**").append(truncateText(created.title, 40)).append("**")
-                                            .append(" — ").append(truncateText(created.artist, 30))
+                                    preview.append("✦ **").append(truncateText(imported.title(), 40)).append("**")
+                                            .append(" — ").append(truncateText(imported.artist(), 30))
                                             .append("\n");
                                 }
+                            }
+
+                            // 🛑 FIRE THE BULK IMPORTER
+                            int added = 0;
+                            if (!bulkLinks.isEmpty()) {
+                                added = db.bulkAddSongSuggestions(userId, bulkLinks, bulkTitles, bulkArtists, "YouTube");
                             }
 
                             EmbedBuilder resultEmbed = new EmbedBuilder()
@@ -1519,18 +1516,17 @@ private String fetchYouTubeThumbnail(String link) {
                                     .setFooter("AMORA Music Importer", null);
 
                             if (preview.length() > 0) {
-                                resultEmbed.addField("Imported Songs", preview.toString(), false);
+                                resultEmbed.addField("Imported Songs Preview", preview.toString(), false);
                             }
+
                             hook.editOriginalEmbeds(resultEmbed.build()).setContent("").queue();
 
                         } catch (Throwable t) { 
                             t.printStackTrace();
                             String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
-                            
                             if (t instanceof java.util.concurrent.CompletionException && t.getCause() != null) {
                                 errorMsg = t.getCause().getMessage() != null ? t.getCause().getMessage() : t.getCause().getClass().getSimpleName();
                             }
-                            
                             hook.editOriginal("❌ Failed to import playlist: " + errorMsg).queue();
                         }
                     });
