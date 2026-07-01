@@ -1521,15 +1521,16 @@ private String fetchYouTubeThumbnail(String link) {
                             if (preview.length() > 0) {
                                 resultEmbed.addField("Imported Songs", preview.toString(), false);
                             }
-                            hook.editOriginalEmbeds(resultEmbed.build()).queue();
+                            hook.editOriginalEmbeds(resultEmbed.build()).setContent("").queue();
 
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                        } catch (Throwable t) { 
+                            t.printStackTrace();
+                            String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
                             
-                            if (e instanceof java.util.concurrent.CompletionException && e.getCause() != null) {
-                                errorMsg = e.getCause().getMessage() != null ? e.getCause().getMessage() : e.getCause().getClass().getSimpleName();
+                            if (t instanceof java.util.concurrent.CompletionException && t.getCause() != null) {
+                                errorMsg = t.getCause().getMessage() != null ? t.getCause().getMessage() : t.getCause().getClass().getSimpleName();
                             }
+                            
                             hook.editOriginal("❌ Failed to import playlist: " + errorMsg).queue();
                         }
                     });
