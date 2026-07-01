@@ -91,9 +91,14 @@ public class DatabaseManager {
     }
 
     initializeDatabase();
-}
-
-private void connect() {
+    }
+    public static synchronized DatabaseManager getInstance() {
+    if (instance == null) {
+        instance = new DatabaseManager();
+    }
+    return instance;
+    }
+    private void connect() {
     try {
         Class.forName("org.postgresql.Driver");
         connection = DriverManager.getConnection(URL);
