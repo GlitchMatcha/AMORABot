@@ -11,9 +11,7 @@ import java.util.List;
 
 public class DatabaseManager {
 
-    private static final String SQLITE_PATH = System.getenv().getOrDefault("SQLITE_PATH", "amore_gacha.db");
-    private static final String URL = "jdbc:sqlite:" + SQLITE_PATH;
-
+    private static final String URL = System.getenv("DATABASE_URL");
     private static DatabaseManager instance;
     private Connection connection;
 
@@ -55,7 +53,36 @@ public class DatabaseManager {
         }
     }
 
+    public static class SongSuggestionRecord {
+        public final int songId;
+        public final String addedBy;
+        public final String title;
+        public final String artist;
+        public final String link;
+        public final String source;
+        public final boolean active;
+        public final long createdAt;
+        public final long lastFeaturedAt;
+
+        public SongSuggestionRecord(
+                int songId, String addedBy, String title, String artist, String link,
+                String source, boolean active, long createdAt, long lastFeaturedAt) {
+            this.songId = songId;
+            this.addedBy = addedBy;
+            this.title = title;
+            this.artist = artist;
+            this.link = link;
+            this.source = source;
+            this.active = active;
+            this.createdAt = createdAt;
+            this.lastFeaturedAt = lastFeaturedAt;
+        }
+    }
+
     private DatabaseManager() {
+        if (URL == null || URL.isBlank()) {
+            throw new IllegalStateException("DATABASE_URL environment variable is not set!");
+        }
         connect();
         initializeDatabase();
     }
@@ -70,14 +97,14 @@ public class DatabaseManager {
     private void connect() {
         try {
             connection = DriverManager.getConnection(URL);
-            System.out.println("✦ SQLite Database Connected Successfully.");
+            System.out.println("✦ PostgreSQL Database Connected Successfully.");
         } catch (SQLException e) {
-            System.out.println("❌ Failed to connect to the database.");
+            System.out.println("❌ Failed to connect to the PostgreSQL database.");
             e.printStackTrace();
         }
     }
 
-        private void initializeDatabase() {
+    private void initializeDatabase() {
         String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
                 + "user_id TEXT PRIMARY KEY, "
                 + "sparks INTEGER DEFAULT 0, "
@@ -99,7 +126,7 @@ public class DatabaseManager {
                 + "target_id TEXT NOT NULL, "
                 + "selected_offer TEXT, "
                 + "selected_request TEXT, "
-                + "expires_at INTEGER NOT NULL"
+                + "expires_at BIGINT NOT NULL"
                 + ");";
 
         String createActiveTradesTable = "CREATE TABLE IF NOT EXISTS active_trades ("
@@ -108,25 +135,24 @@ public class DatabaseManager {
                 + "target_id TEXT NOT NULL, "
                 + "offer_item TEXT NOT NULL, "
                 + "request_item TEXT NOT NULL, "
-                + "expires_at INTEGER NOT NULL"
+                + "expires_at BIGINT NOT NULL"
                 + ");";
 
         String createPendingForgesTable = "CREATE TABLE IF NOT EXISTS pending_forges ("
                 + "owner_id TEXT PRIMARY KEY, "
                 + "ingredient TEXT NOT NULL, "
-                + "expires_at INTEGER NOT NULL"
+                + "expires_at BIGINT NOT NULL"
                 + ");";
-
         String createSongSuggestionsTable = "CREATE TABLE IF NOT EXISTS song_suggestions ("
-                + "song_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "song_id SERIAL PRIMARY KEY, "
                 + "added_by TEXT NOT NULL, "
                 + "title TEXT NOT NULL, "
                 + "artist TEXT NOT NULL, "
                 + "link TEXT NOT NULL, "
                 + "source TEXT NOT NULL, "
                 + "is_active INTEGER NOT NULL DEFAULT 1, "
-                + "created_at INTEGER NOT NULL, "
-                + "last_featured_at INTEGER NOT NULL DEFAULT 0"
+                + "created_at BIGINT NOT NULL, "
+                + "last_featured_at BIGINT NOT NULL DEFAULT 0"
                 + ");";
 
         String createBotStateTable = "CREATE TABLE IF NOT EXISTS bot_state ("
@@ -142,7 +168,7 @@ public class DatabaseManager {
             stmt.execute(createPendingForgesTable);
             stmt.execute(createSongSuggestionsTable);
             stmt.execute(createBotStateTable);
-            System.out.println("✦ Core tables, Shop Vault, session tables, and music tables verified.");
+            System.out.println("✦ Core tables, Shop Vault, session tables, and music tables verified (PostgreSQL).");
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -150,20 +176,16 @@ public class DatabaseManager {
 
     public void cleanupExpiredSessions() {
         long now = System.currentTimeMillis();
-
         String deletePendingTradeSetups = "DELETE FROM pending_trade_setups WHERE expires_at < ?;";
         String deleteActiveTrades = "DELETE FROM active_trades WHERE expires_at < ?;";
         String deletePendingForges = "DELETE FROM pending_forges WHERE expires_at < ?;";
 
-        try (
-            PreparedStatement p1 = connection.prepareStatement(deletePendingTradeSetups);
-            PreparedStatement p2 = connection.prepareStatement(deleteActiveTrades);
-            PreparedStatement p3 = connection.prepareStatement(deletePendingForges)
-        ) {
+        try (PreparedStatement p1 = connection.prepareStatement(deletePendingTradeSetups);
+             PreparedStatement p2 = connection.prepareStatement(deleteActiveTrades);
+             PreparedStatement p3 = connection.prepareStatement(deletePendingForges)) {
             p1.setLong(1, now);
             p2.setLong(1, now);
             p3.setLong(1, now);
-
             p1.executeUpdate();
             p2.executeUpdate();
             p3.executeUpdate();
@@ -172,8 +194,20 @@ public class DatabaseManager {
         }
     }
 
+    private void createNewUser(String userId) {
+        String query = "INSERT INTO users "
+                + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared) "
+                + "VALUES (?, 0, 0, '', 0, 0, 0) ON CONFLICT (user_id) DO NOTHING;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     public void incrementBountyStats(String userId, boolean isUrgent) {
-        getPoints(userId);
+        getPoints(userId); 
         String column = isUrgent ? "urgent_cleared" : "bounties_cleared";
         String query = "UPDATE users SET " + column + " = " + column + " + 1 WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -233,7 +267,8 @@ public class DatabaseManager {
     }
 
     public void addShopItem(String itemName, String secretLink) {
-        String query = "INSERT OR REPLACE INTO shop_items (item_name, secret_link) VALUES (?, ?);";
+        String query = "INSERT INTO shop_items (item_name, secret_link) VALUES (?, ?) "
+                + "ON CONFLICT (item_name) DO UPDATE SET secret_link = EXCLUDED.secret_link;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, secretLink);
@@ -432,9 +467,11 @@ public class DatabaseManager {
     }
 
     public void savePendingTradeSetup(String setupId, String senderId, String targetId, long expiresAt) {
-        String query = "INSERT OR REPLACE INTO pending_trade_setups "
+        String query = "INSERT INTO pending_trade_setups "
                 + "(setup_id, sender_id, target_id, selected_offer, selected_request, expires_at) "
-                + "VALUES (?, ?, ?, NULL, NULL, ?);";
+                + "VALUES (?, ?, ?, NULL, NULL, ?) "
+                + "ON CONFLICT (setup_id) DO UPDATE SET "
+                + "sender_id = EXCLUDED.sender_id, target_id = EXCLUDED.target_id, expires_at = EXCLUDED.expires_at;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, setupId);
             pstmt.setString(2, senderId);
@@ -457,7 +494,6 @@ public class DatabaseManager {
                         deletePendingTradeSetup(setupId);
                         return null;
                     }
-
                     return new PendingTradeSetupRecord(
                             rs.getString("setup_id"),
                             rs.getString("sender_id"),
@@ -508,9 +544,12 @@ public class DatabaseManager {
 
     public void saveActiveTrade(String tradeId, String senderId, String targetId,
                                 String offerItem, String requestItem, long expiresAt) {
-        String query = "INSERT OR REPLACE INTO active_trades "
+        String query = "INSERT INTO active_trades "
                 + "(trade_id, sender_id, target_id, offer_item, request_item, expires_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?);";
+                + "VALUES (?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (trade_id) DO UPDATE SET "
+                + "sender_id = EXCLUDED.sender_id, target_id = EXCLUDED.target_id, "
+                + "offer_item = EXCLUDED.offer_item, request_item = EXCLUDED.request_item, expires_at = EXCLUDED.expires_at;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, tradeId);
             pstmt.setString(2, senderId);
@@ -535,7 +574,6 @@ public class DatabaseManager {
                         deleteActiveTrade(tradeId);
                         return null;
                     }
-
                     return new ActiveTradeRecord(
                             rs.getString("trade_id"),
                             rs.getString("sender_id"),
@@ -563,7 +601,8 @@ public class DatabaseManager {
     }
 
     public void savePendingForge(String ownerId, String ingredient, long expiresAt) {
-        String query = "INSERT OR REPLACE INTO pending_forges (owner_id, ingredient, expires_at) VALUES (?, ?, ?);";
+        String query = "INSERT INTO pending_forges (owner_id, ingredient, expires_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT (owner_id) DO UPDATE SET ingredient = EXCLUDED.ingredient, expires_at = EXCLUDED.expires_at;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, ownerId);
             pstmt.setString(2, ingredient);
@@ -604,51 +643,7 @@ public class DatabaseManager {
         }
     }
 
-    private void createNewUser(String userId) {
-        String query = "INSERT OR IGNORE INTO users "
-                + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared) "
-                + "VALUES (?, 0, 0, '', 0, 0, 0);";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setString(1, userId);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-     public static class SongSuggestionRecord {
-    public final int songId;
-    public final String addedBy;
-    public final String title;
-    public final String artist;
-    public final String link;
-    public final String source;
-    public final boolean active;
-    public final long createdAt;
-    public final long lastFeaturedAt;
-
-    public SongSuggestionRecord(
-            int songId,
-            String addedBy,
-            String title,
-            String artist,
-            String link,
-            String source,
-            boolean active,
-            long createdAt,
-            long lastFeaturedAt
-    ) {
-        this.songId = songId;
-        this.addedBy = addedBy;
-        this.title = title;
-        this.artist = artist;
-        this.link = link;
-        this.source = source;
-        this.active = active;
-        this.createdAt = createdAt;
-        this.lastFeaturedAt = lastFeaturedAt;
-    }
-}
-        private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
+    private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
         return new SongSuggestionRecord(
                 rs.getInt("song_id"),
                 rs.getString("added_by"),
@@ -679,7 +674,6 @@ public class DatabaseManager {
         String query = "INSERT INTO song_suggestions "
                 + "(added_by, title, artist, link, source, is_active, created_at, last_featured_at) "
                 + "VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
-
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, addedBy);
             pstmt.setString(2, title);
@@ -694,11 +688,12 @@ public class DatabaseManager {
         }
         return null;
     }
+
     public int bulkAddSongSuggestions(String addedBy, List<String> links, List<String> titles, List<String> artists, String source) {
         String query = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, last_featured_at) VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
         int count = 0;
         try {
-            connection.setAutoCommit(false);
+            connection.setAutoCommit(false); 
             try (PreparedStatement pstmt = connection.prepareStatement(query)) {
                 long now = System.currentTimeMillis();
                 for (int i = 0; i < links.size(); i++) {
@@ -725,6 +720,7 @@ public class DatabaseManager {
         }
         return count;
     }
+
     public SongSuggestionRecord getSongSuggestionByLink(String link) {
         String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -758,7 +754,6 @@ public class DatabaseManager {
     public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
         List<SongSuggestionRecord> songs = new ArrayList<>();
         String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setInt(1, limit);
             try (ResultSet rs = pstmt.executeQuery()) {
@@ -769,14 +764,12 @@ public class DatabaseManager {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
         return songs;
     }
 
     public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
         List<SongSuggestionRecord> songs = new ArrayList<>();
         String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
             pstmt.setInt(2, limit);
@@ -788,7 +781,6 @@ public class DatabaseManager {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
         return songs;
     }
 
@@ -856,7 +848,8 @@ public class DatabaseManager {
     }
 
     public void setBotState(String key, String value) {
-        String query = "INSERT OR REPLACE INTO bot_state (state_key, state_value) VALUES (?, ?);";
+        String query = "INSERT INTO bot_state (state_key, state_value) VALUES (?, ?) "
+                + "ON CONFLICT (state_key) DO UPDATE SET state_value = EXCLUDED.state_value;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, key);
             pstmt.setString(2, value);
