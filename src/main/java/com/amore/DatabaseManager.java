@@ -80,40 +80,45 @@ public class DatabaseManager {
     }
 
     private DatabaseManager() {
-        if (URL == null || URL.isBlank()) {
-            throw new IllegalStateException("DATABASE_URL environment variable is not set!");
-        }
-        connect();
-        initializeDatabase();
+    if (URL == null || URL.isBlank()) {
+        throw new IllegalStateException("DATABASE_URL environment variable is not set!");
     }
 
-    public static synchronized DatabaseManager getInstance() {
-        if (instance == null) {
-            instance = new DatabaseManager();
-        }
-        return instance;
+    connect();
+
+    if (connection == null) {
+        throw new IllegalStateException("Failed to establish PostgreSQL connection.");
     }
 
-    private void connect() {
-        try {
-            connection = DriverManager.getConnection(URL);
-            System.out.println("✦ PostgreSQL Database Connected Successfully.");
-        } catch (SQLException e) {
-            System.out.println("❌ Failed to connect to the PostgreSQL database.");
-            e.printStackTrace();
-        }
+    initializeDatabase();
+}
+
+private void connect() {
+    try {
+        Class.forName("org.postgresql.Driver");
+        connection = DriverManager.getConnection(URL);
+        System.out.println("✦ PostgreSQL Database Connected Successfully.");
+    } catch (Exception e) {
+        System.out.println("❌ Failed to connect to the PostgreSQL database.");
+        e.printStackTrace();
+        connection = null;
     }
+}
 
     private void initializeDatabase() {
-        String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
-                + "user_id TEXT PRIMARY KEY, "
-                + "sparks INTEGER DEFAULT 0, "
-                + "points INTEGER DEFAULT 0, "
-                + "inventory TEXT DEFAULT '', "
-                + "pity INTEGER DEFAULT 0, "
-                + "bounties_cleared INTEGER DEFAULT 0, "
-                + "urgent_cleared INTEGER DEFAULT 0"
-                + ");";
+    if (connection == null) {
+        throw new IllegalStateException("Cannot initialize database because connection is null.");
+    }
+
+    String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
+            + "user_id TEXT PRIMARY KEY, "
+            + "sparks INTEGER DEFAULT 0, "
+            + "points INTEGER DEFAULT 0, "
+            + "inventory TEXT DEFAULT '', "
+            + "pity INTEGER DEFAULT 0, "
+            + "bounties_cleared INTEGER DEFAULT 0, "
+            + "urgent_cleared INTEGER DEFAULT 0"
+            + ");";
 
         String createShopTable = "CREATE TABLE IF NOT EXISTS shop_items ("
                 + "item_name TEXT PRIMARY KEY, "
@@ -170,10 +175,9 @@ public class DatabaseManager {
             stmt.execute(createBotStateTable);
             System.out.println("✦ Core tables, Shop Vault, session tables, and music tables verified (PostgreSQL).");
         } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        e.printStackTrace();
     }
-
+}
     public void cleanupExpiredSessions() {
         long now = System.currentTimeMillis();
         String deletePendingTradeSetups = "DELETE FROM pending_trade_setups WHERE expires_at < ?;";
