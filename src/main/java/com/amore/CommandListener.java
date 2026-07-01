@@ -248,7 +248,7 @@ private String truncateText(String text, int maxLength) {
 }
 
 private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-    return new EmbedBuilder()
+    EmbedBuilder eb = new EmbedBuilder()
             .setColor(new Color(255, 105, 180))
             .setTitle(title)
             .setDescription(
