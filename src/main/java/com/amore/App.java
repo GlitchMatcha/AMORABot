@@ -220,6 +220,11 @@ public class App {
                 .addField("Song ID", "#" + song.songId, true)
                 .setFooter("AMORA Daily Recommendation • Curated by the community", null);
 
+        String artworkUrl = CommandListener.fetchSongArtwork(song.link);
+        if (artworkUrl != null && !artworkUrl.isBlank()) {
+            embed.setImage(artworkUrl);
+        }
+
         try {
             channel.sendMessageEmbeds(embed.build()).complete();
             db.markSongFeatured(song.songId, System.currentTimeMillis());
