@@ -31,12 +31,12 @@ public final class YouTubePlaylistImporter {
 
     public static List<ImportedSong> importPlaylist(String playlistUrl) throws Exception {
         if (API_KEY == null || API_KEY.isBlank()) {
-            throw new IllegalStateException("YOUTUBE_API_KEY is missing.");
+            throw new IllegalStateException("YOUTUBE_API_KEY is missing from environment variables.");
         }
 
         String playlistId = extractPlaylistId(playlistUrl);
         if (playlistId == null || playlistId.isBlank()) {
-            throw new IllegalArgumentException("Invalid YouTube playlist URL.");
+            throw new IllegalArgumentException("Invalid YouTube playlist URL or ID. Make sure the URL contains 'list=' or input the ID directly.");
         }
 
         List<ImportedSong> songs = new ArrayList<>();
@@ -67,30 +67,32 @@ public final class YouTubePlaylistImporter {
 
             JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 
-            if (root.has("error")) {
+            // 🛑 Hardened Error Catching
+            if (root.has("error") && root.get("error").isJsonObject()) {
                 JsonObject error = root.getAsJsonObject("error");
-                String message = error.has("message") ? error.get("message").getAsString() : "Unknown API error.";
+                String message = (error.has("message") && !error.get("message").isJsonNull()) 
+                        ? error.get("message").getAsString() 
+                        : "Unknown API error.";
                 throw new IllegalStateException("YouTube API error: " + message);
             }
 
-            JsonArray items = root.getAsJsonArray("items");
-            if (items != null) {
+            // 🛑 Hardened Array Parsing
+            if (root.has("items") && root.get("items").isJsonArray()) {
+                JsonArray items = root.getAsJsonArray("items");
                 for (JsonElement element : items) {
+                    if (!element.isJsonObject()) continue;
                     JsonObject item = element.getAsJsonObject();
+
+                    if (!item.has("snippet") || !item.get("snippet").isJsonObject()) continue;
                     JsonObject snippet = item.getAsJsonObject("snippet");
-                    if (snippet == null) {
-                        continue;
-                    }
 
                     String title = safeGet(snippet, "title");
                     if ("Deleted video".equalsIgnoreCase(title) || "Private video".equalsIgnoreCase(title)) {
                         continue;
                     }
 
+                    if (!snippet.has("resourceId") || !snippet.get("resourceId").isJsonObject()) continue;
                     JsonObject resourceId = snippet.getAsJsonObject("resourceId");
-                    if (resourceId == null || !resourceId.has("videoId")) {
-                        continue;
-                    }
 
                     String videoId = safeGet(resourceId, "videoId");
                     if (videoId.isBlank()) {
@@ -110,7 +112,10 @@ public final class YouTubePlaylistImporter {
                 }
             }
 
-            pageToken = root.has("nextPageToken") ? root.get("nextPageToken").getAsString() : null;
+            // 🛑 Hardened Pagination check
+            pageToken = (root.has("nextPageToken") && root.get("nextPageToken").isJsonPrimitive()) 
+                    ? root.get("nextPageToken").getAsString() 
+                    : null;
 
         } while (pageToken != null && !pageToken.isBlank());
 
@@ -132,7 +137,8 @@ public final class YouTubePlaylistImporter {
     }
 
     private static String safeGet(JsonObject obj, String key) {
-        if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+        // Only attempt to get string if it is a safe primitive (prevents NPE and Cast crashes)
+        if (obj == null || !obj.has(key) || !obj.get(key).isJsonPrimitive()) {
             return "";
         }
         return obj.get(key).getAsString();
@@ -150,8 +156,20 @@ public final class YouTubePlaylistImporter {
             return null;
         }
 
+        String trimmed = raw.trim();
+        
+        // 🛑 NEW: Allow Direct Playlist IDs! 
+        if (!trimmed.contains("youtube.com") && !trimmed.contains("youtu.be")) {
+            // YouTube playlist IDs almost always start with PL, OL, RD, or UU
+            if (trimmed.startsWith("PL") || trimmed.startsWith("OL") || trimmed.startsWith("RD") || trimmed.startsWith("UU")) {
+                return trimmed;
+            }
+            return null; 
+        }
+
         try {
-            URI uri = URI.create(raw.trim());
+            // Clean up spaces before parsing to prevent URI crash
+            URI uri = URI.create(trimmed.replace(" ", "%20"));
             String query = uri.getRawQuery();
 
             if (query != null) {
