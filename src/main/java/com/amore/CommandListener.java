@@ -1519,11 +1519,12 @@ private String fetchYouTubeThumbnail(String link) {
 
                 } catch (Exception e) {
                     e.printStackTrace();
-                    event.getHook().sendMessage("❌ Failed to import playlist: " + e.getMessage()).queue();
+                    // 🛑 NEW: If the message is null, print the actual Class Name so we can see what broke!
+                    String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    event.getHook().sendMessage("❌ Failed to import playlist: " + errorMsg).queue();
                 }
                 return;
             }
-
             if (subcommand.equals("remove")) {
                 int songId = event.getOption("id").getAsInt();
                 DatabaseManager.SongSuggestionRecord song = db.getSongSuggestionById(songId);
