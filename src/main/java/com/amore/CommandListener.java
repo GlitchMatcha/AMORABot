@@ -1444,16 +1444,14 @@ private String fetchYouTubeThumbnail(String link) {
                             .setEphemeral(true).queue();
                     return;
                 }
-
-                //push the heavy lifting to the background >p>
                 event.deferReply(true).queue(hook -> {
-                    java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    scheduler.execute(() -> {
                         try {
                             List<YouTubePlaylistImporter.ImportedSong> importedSongs =
                                     YouTubePlaylistImporter.importPlaylist(playlistLink);
 
                             if (importedSongs.isEmpty()) {
-                                hook.sendMessage("❌ No usable songs were found in that playlist.").queue();
+                                hook.editOriginal("❌ No usable songs were found in that playlist.").queue();
                                 return;
                             }
 
@@ -1520,17 +1518,16 @@ private String fetchYouTubeThumbnail(String link) {
                             if (preview.length() > 0) {
                                 resultEmbed.addField("Imported Songs", preview.toString(), false);
                             }
-
-                            hook.sendMessageEmbeds(resultEmbed.build()).queue();
+                            hook.editOriginalEmbeds(resultEmbed.build()).queue();
 
                         } catch (Exception e) {
                             e.printStackTrace();
                             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                            
                             if (e instanceof java.util.concurrent.CompletionException && e.getCause() != null) {
                                 errorMsg = e.getCause().getMessage() != null ? e.getCause().getMessage() : e.getCause().getClass().getSimpleName();
                             }
-                            
-                            hook.sendMessage("❌ Failed to import playlist: " + errorMsg).queue();
+                            hook.editOriginal("❌ Failed to import playlist: " + errorMsg).queue();
                         }
                     });
                 });

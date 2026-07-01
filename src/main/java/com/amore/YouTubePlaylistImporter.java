@@ -58,7 +58,6 @@ public final class YouTubePlaylistImporter {
                     .timeout(Duration.ofSeconds(20))
                     .GET()
                     .build();
-
             HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
@@ -67,7 +66,6 @@ public final class YouTubePlaylistImporter {
 
             JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 
-            // 🛑 Hardened Error Catching
             if (root.has("error") && root.get("error").isJsonObject()) {
                 JsonObject error = root.getAsJsonObject("error");
                 String message = (error.has("message") && !error.get("message").isJsonNull()) 
@@ -76,7 +74,6 @@ public final class YouTubePlaylistImporter {
                 throw new IllegalStateException("YouTube API error: " + message);
             }
 
-            // 🛑 Hardened Array Parsing
             if (root.has("items") && root.get("items").isJsonArray()) {
                 JsonArray items = root.getAsJsonArray("items");
                 for (JsonElement element : items) {
@@ -112,7 +109,6 @@ public final class YouTubePlaylistImporter {
                 }
             }
 
-            // 🛑 Hardened Pagination check
             pageToken = (root.has("nextPageToken") && root.get("nextPageToken").isJsonPrimitive()) 
                     ? root.get("nextPageToken").getAsString() 
                     : null;
@@ -137,7 +133,6 @@ public final class YouTubePlaylistImporter {
     }
 
     private static String safeGet(JsonObject obj, String key) {
-        // Only attempt to get string if it is a safe primitive (prevents NPE and Cast crashes)
         if (obj == null || !obj.has(key) || !obj.get(key).isJsonPrimitive()) {
             return "";
         }
@@ -158,9 +153,7 @@ public final class YouTubePlaylistImporter {
 
         String trimmed = raw.trim();
         
-        // 🛑 NEW: Allow Direct Playlist IDs! 
         if (!trimmed.contains("youtube.com") && !trimmed.contains("youtu.be")) {
-            // YouTube playlist IDs almost always start with PL, OL, RD, or UU
             if (trimmed.startsWith("PL") || trimmed.startsWith("OL") || trimmed.startsWith("RD") || trimmed.startsWith("UU")) {
                 return trimmed;
             }
@@ -168,7 +161,6 @@ public final class YouTubePlaylistImporter {
         }
 
         try {
-            // Clean up spaces before parsing to prevent URI crash
             URI uri = URI.create(trimmed.replace(" ", "%20"));
             String query = uri.getRawQuery();
 
