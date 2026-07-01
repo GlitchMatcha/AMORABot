@@ -694,7 +694,37 @@ public class DatabaseManager {
         }
         return null;
     }
-
+    public int bulkAddSongSuggestions(String addedBy, List<String> links, List<String> titles, List<String> artists, String source) {
+        String query = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, last_featured_at) VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
+        int count = 0;
+        try {
+            connection.setAutoCommit(false);
+            try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+                long now = System.currentTimeMillis();
+                for (int i = 0; i < links.size(); i++) {
+                    pstmt.setString(1, addedBy);
+                    pstmt.setString(2, titles.get(i));
+                    pstmt.setString(3, artists.get(i));
+                    pstmt.setString(4, links.get(i));
+                    pstmt.setString(5, source);
+                    pstmt.setLong(6, now);
+                    pstmt.addBatch(); 
+                    count++;
+                }
+                pstmt.executeBatch(); 
+                connection.commit();  
+            } catch (SQLException e) {
+                connection.rollback();
+                e.printStackTrace();
+                count = 0;
+            } finally {
+                connection.setAutoCommit(true); 
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return count;
+    }
     public SongSuggestionRecord getSongSuggestionByLink(String link) {
         String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
