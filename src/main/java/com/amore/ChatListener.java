@@ -23,6 +23,7 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 public class ChatListener extends ListenerAdapter {
 
     private static final String CHAT_ACTIVITY_CHANNEL_ID = System.getenv("CHAT_ACTIVITY_CHANNEL_ID");
+    
     private static final String ACTIVE_CHECK_CHANNEL_ID = System.getenv("ACTIVE_CHECK_CHANNEL_ID");
 
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
@@ -402,47 +403,60 @@ public class ChatListener extends ListenerAdapter {
 
         String currentChannelId = event.getChannel().getId();
         
-        if (ACTIVE_CHECK_CHANNEL_ID != null && currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
-            String rawContent = event.getMessage().getContentRaw();
-            DatabaseManager db = DatabaseManager.getInstance();
+        String rawContent = event.getMessage().getContentRaw();
+        DatabaseManager db = DatabaseManager.getInstance();
+        
+        String trigger = db.getBotState("ac_trigger");
+        if (trigger == null) trigger = "ACTIVITY CHECK";
+        
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
+                .replaceAll("[*_~`]", "")
+                .replaceAll("\\p{Z}", " ");
+        
+        if (rawContent.toLowerCase().contains(trigger.toLowerCase()) || cleanContent.toLowerCase().contains(trigger.toLowerCase())) {
             
-            String trigger = db.getBotState("ac_trigger");
-            if (trigger == null) trigger = "ACTIVITY CHECK";
-            
+            if (ACTIVE_CHECK_CHANNEL_ID == null || !currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
+                event.getChannel().sendMessage("⚠️ **Admin Note:** Activity Check detected, but this channel (`" + currentChannelId + "`) is NOT the configured `ACTIVE_CHECK_CHANNEL_ID` in Render! Ignoring.").queue();
+                return;
+            }
+
             String reactPhrase = db.getBotState("ac_react");
             if (reactPhrase == null) reactPhrase = "React with";
             
             String goalPhrase = db.getBotState("ac_goal");
             if (goalPhrase == null) goalPhrase = "Goal";
 
-            String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                    .replaceAll("[*_~`]", "")
-                    .replaceAll("\\p{Z}", " ");
-            
-            if (rawContent.toLowerCase().contains(trigger.toLowerCase()) || cleanContent.toLowerCase().contains(trigger.toLowerCase())) {
-                String safeReact = Pattern.quote(reactPhrase);
-                String safeGoal = Pattern.quote(goalPhrase);
+            String reactRegex = java.util.Arrays.stream(reactPhrase.trim().split("\\s+"))
+                                  .map(Pattern::quote)
+                                  .collect(java.util.stream.Collectors.joining("\\s+"));
+            String goalRegex = java.util.Arrays.stream(goalPhrase.trim().split("\\s+"))
+                                 .map(Pattern::quote)
+                                 .collect(java.util.stream.Collectors.joining("\\s+"));
 
-                Matcher emojiMatcher = Pattern.compile("(?i)" + safeReact + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(cleanContent);
-                Matcher goalMatcher = Pattern.compile("(?i)" + safeGoal + "\\s*:?\\s*`?(\\d+)`?").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(cleanContent);
+            Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "\\s*:?\\s*(\\d+)").matcher(cleanContent);
 
-                if (emojiMatcher.find() && goalMatcher.find()) {
-                    String emojiStr = emojiMatcher.group(1).replaceAll("[.,!?]$", "");
-                    int goal = Integer.parseInt(goalMatcher.group(1));
+            if (emojiMatcher.find() && goalMatcher.find()) {
+                String emojiStr = emojiMatcher.group(1).replaceAll("[.,!?]$", "");
+                int goal = Integer.parseInt(goalMatcher.group(1));
 
-                    try {
-                        net.dv8tion.jda.api.entities.emoji.Emoji emoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr);
-                        event.getMessage().addReaction(emoji).queue(
-                            success -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)),
-                            error -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)) // Save anyway
-                        );
-                    } catch (Exception e) {
-                        System.out.println("⚠️ Emoji parse exception handled. Tracker saved regardless: " + emojiStr);
-                        activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
-                    }
+                try {
+                    net.dv8tion.jda.api.entities.emoji.Emoji emoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr);
+                    event.getMessage().addReaction(emoji).queue(
+                        success -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)),
+                        error -> {
+                            event.getChannel().sendMessage("⚠️ **Admin Note:** Triggered, but I am missing permissions to add the reaction `" + emojiStr + "`! Tracker started anyway.").queue();
+                            activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
+                        }
+                    );
+                } catch (Exception e) {
+                    event.getChannel().sendMessage("⚠️ **Admin Note:** Triggered, but I failed to parse the emoji `" + emojiStr + "`. Did a typo get attached to it? Tracker started anyway!").queue();
+                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
                 }
-                return; 
+            } else {
+                event.getChannel().sendMessage("⚠️ **Admin Note:** Trigger recognized, but I could not find the exact `Reaction Phrase` or `Goal Phrase`. Ensure there are no typos!").queue();
             }
+            return;
         }
 
         if (CHAT_ACTIVITY_CHANNEL_ID != null
