@@ -424,7 +424,7 @@ public class ChatListener extends ListenerAdapter {
         if (trigger == null) trigger = "ACTIVITY CHECK";
 
         String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                .replaceAll("[*_~`]", "")
+                .replaceAll("[*_~`|]", "")
                 .replaceAll("\\p{Z}", " ");
         
         String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
