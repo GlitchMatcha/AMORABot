@@ -351,10 +351,10 @@ public class ChatListener extends ListenerAdapter {
 
                 net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
                         .setColor(new java.awt.Color(255, 182, 193)) 
-                        .setDescription("🎀 ⊹₊ ˚‧︵‿₊୨ **Shout out to " + event.getUser().getAsMention() + ", check out their profileee 💗** ୧₊‿︵‧ ˚ ₊⊹ 👾✨\n\n*( `+5 Sparks` )*")
+                        .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + event.getUser().getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
                         .setImage(event.getUser().getEffectiveAvatarUrl() + "?size=512");
 
-                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(10, TimeUnit.SECONDS);
+                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(7, TimeUnit.SECONDS);
             }
 
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
@@ -407,7 +407,9 @@ public class ChatListener extends ListenerAdapter {
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
 
-        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC);
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
+                .replaceAll("[*_~`|]", "")
+                .replaceAll("\\p{Z}", " ");
         
         String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
         String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
