@@ -354,7 +354,7 @@ public class ChatListener extends ListenerAdapter {
                         .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + event.getUser().getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
                         .setImage(event.getUser().getEffectiveAvatarUrl() + "?size=512");
 
-                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(7, TimeUnit.SECONDS);
+                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(10, TimeUnit.SECONDS);
             }
 
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
