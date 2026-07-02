@@ -322,11 +322,15 @@ public class ChatListener extends ListenerAdapter {
         if (event.getUser() == null || event.getUser().isBot()) return;
 
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
-        if (check == null) return;
+        if (check == null) return; 
 
         String reactionEmoji = event.getEmoji().getFormatted();
+        String reactionName = event.getEmoji().getName();
         
-        if (!reactionEmoji.equals(check.emojiCode) && !reactionEmoji.contains(check.emojiCode) && !check.emojiCode.contains(reactionEmoji)) {
+        if (!reactionEmoji.equals(check.emojiCode) 
+            && !reactionEmoji.contains(check.emojiCode) 
+            && !check.emojiCode.contains(reactionEmoji)
+            && !check.emojiCode.contains(reactionName)) {
             return;
         }
 
@@ -354,7 +358,12 @@ public class ChatListener extends ListenerAdapter {
                         .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + event.getUser().getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
                         .setImage(event.getUser().getEffectiveAvatarUrl() + "?size=512");
 
-                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(10, TimeUnit.SECONDS);
+                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(3, TimeUnit.SECONDS, 
+                    success -> {}, 
+                    error -> {
+                        event.getChannel().sendMessage("⚠️ **ERROR:** " + event.getUser().getAsMention() + " claimed the shoutout, but my Embeds are disabled in this channel! Please turn on 'Embed Links' for AMORA.").queue();
+                    }
+                );
             }
 
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
@@ -383,10 +392,13 @@ public class ChatListener extends ListenerAdapter {
                             .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
 
                     long elapsed = System.currentTimeMillis() - check.firstReactionTime;
-                    long delayMs = 16000L - elapsed;
+                    long delayMs = 6000L - elapsed;
                     if (delayMs < 0) delayMs = 0; 
 
-                    event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS);
+                    event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS,
+                        success -> {}, 
+                        error -> {}
+                    );
                 }
 
                 activeChecks.remove(event.getMessageId());
