@@ -744,7 +744,35 @@ public static String fetchYouTubeThumbnail(String link) {
             event.replyEmbeds(profileEmbed.build()).queue();
             return;
         }
+        if (event.getName().equals("activitycheck")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ You do not have clearance to configure templates.").setEphemeral(true).queue();
+                return;
+            }
 
+            String trigger = event.getOption("trigger").getAsString().trim();
+            String reactPhrase = event.getOption("react_phrase").getAsString().trim();
+            String goalPhrase = event.getOption("goal_phrase").getAsString().trim();
+
+            db.setBotState("ac_trigger", trigger);
+            db.setBotState("ac_react", reactPhrase);
+            db.setBotState("ac_goal", goalPhrase);
+
+            EmbedBuilder configEmbed = new EmbedBuilder()
+                    .setColor(new Color(0, 250, 154))
+                    .setTitle("✦ TEMPLATE CONFIGURATION SAVED ✦")
+                    .setDescription("The AMORA tracking engine has been updated to hunt for your new template layout.")
+                    .addField("🎯 Required Trigger", "`" + trigger + "`", false)
+                    .addField("✨ Reaction Phrase", "`" + reactPhrase + "`", true)
+                    .addField("🏆 Goal Phrase", "`" + goalPhrase + "`", true)
+                    .setFooter("AMORA Engine Systems", null);
+
+            event.replyEmbeds(configEmbed.build()).queue();
+            sendAuditLog(event.getGuild(), "Template Configured",
+                    event.getUser().getAsMention() + " updated the Activity Check template to trigger on: `" + trigger + "`",
+                    new Color(0, 250, 154));
+            return;
+        }
         if (event.getName().equals("inventory")) {
             String rawInventory = db.getInventory(userId);
 

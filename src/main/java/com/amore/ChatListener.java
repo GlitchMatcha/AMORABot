@@ -13,17 +13,38 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 
 public class ChatListener extends ListenerAdapter {
 
     private static final String CHAT_ACTIVITY_CHANNEL_ID = System.getenv("CHAT_ACTIVITY_CHANNEL_ID");
+    
+    // ━━━ NEW: Active Check Channel ━━━
+    private static final String ACTIVE_CHECK_CHANNEL_ID = System.getenv("ACTIVE_CHECK_CHANNEL_ID");
 
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
+
+    private static class ActiveCheckTracker {
+        String emojiCode;
+        int goal;
+        boolean firstClaimed = false;
+        boolean goalReached = false;
+        String firstReactorId = null;
+        List<String> allReactors = new ArrayList<>(); 
+
+        ActiveCheckTracker(String emojiCode, int goal) {
+            this.emojiCode = emojiCode;
+            this.goal = goal;
+        }
+    }
+    private static final Map<String, ActiveCheckTracker> activeChecks = new ConcurrentHashMap<>();
 
     private static final long USER_ROLL_COOLDOWN_MS = 30_000L;
     private static final long QUESTION_COOLDOWN_MS = 6 * 60_000L;
@@ -297,6 +318,77 @@ public class ChatListener extends ListenerAdapter {
         prompts.addAll(CHAOTIC_FUN_PROMPTS);
         return List.copyOf(prompts);
     }
+    @Override
+    public void onMessageReactionAdd(MessageReactionAddEvent event) {
+        if (event.getUser() == null || event.getUser().isBot()) return;
+
+        ActiveCheckTracker check = activeChecks.get(event.getMessageId());
+        if (check == null) return;
+
+        String reactionEmoji = event.getEmoji().getFormatted();
+        if (!reactionEmoji.equals(check.emojiCode)) return;
+
+        String userId = event.getUserId();
+
+        synchronized (check) {
+            if (!check.allReactors.contains(userId)) {
+                check.allReactors.add(userId);
+            } else {
+                return; 
+            }
+
+            DatabaseManager db = DatabaseManager.getInstance();
+
+            if (!check.firstClaimed) {
+                check.firstClaimed = true;
+                check.firstReactorId = userId;
+                
+                int currentSparks = db.getSparks(userId);
+                db.updateSparks(userId, currentSparks + 5);
+
+                event.getChannel().sendMessage("⚡ " + event.getUser().getAsMention() 
+                    + " was the **FIRST** to respond to the Activity Check! (`+5 Sparks`)").queue();
+            }
+
+            if (check.allReactors.size() >= check.goal && !check.goalReached) {
+                check.goalReached = true;
+                List<String> lotteryPool = new ArrayList<>(check.allReactors);
+                if (check.firstReactorId != null) {
+                    lotteryPool.remove(check.firstReactorId);
+                }
+                
+                int numWinners = (int) (lotteryPool.size() * 0.25);
+
+                net.dv8tion.jda.api.EmbedBuilder finaleEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                        .setColor(new java.awt.Color(255, 215, 0))
+                        .setTitle("✦ ACTIVITY GOAL REACHED: " + check.goal + " ✦")
+                        .setDescription("The target has been hit! The AMORA system has processed the engagement.")
+                        .addField("🏆 First Responder", "<@" + check.firstReactorId + ">", false);
+
+                if (numWinners > 0) {
+                    java.util.Collections.shuffle(lotteryPool);
+                    StringBuilder winnersMentions = new StringBuilder();
+
+                    for (int i = 0; i < numWinners; i++) {
+                        String winnerId = lotteryPool.get(i);
+                        winnersMentions.append("<@").append(winnerId).append("> ");
+                        
+                        int cur = db.getSparks(winnerId);
+                        db.updateSparks(winnerId, cur + 3);
+                    }
+
+                    finaleEmbed.addField("🎲 Lucky Lottery Winners", winnersMentions.toString() + "\n*(Awarded `+3 Sparks` each!)*", false);
+                    finaleEmbed.setFooter("AMORA RNG Engine • " + numWinners + " winners selected from " + lotteryPool.size() + " eligible reactors.", null);
+                } else {
+                    finaleEmbed.setFooter("AMORA System • Goal reached. Crowd size too small to trigger the RNG lottery.", null);
+                }
+
+                event.getChannel().sendMessageEmbeds(finaleEmbed.build()).queue();
+
+                activeChecks.remove(event.getMessageId());
+            }
+        }
+    }
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
@@ -304,9 +396,47 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
 
+        String currentChannelId = event.getChannel().getId();
+        if (ACTIVE_CHECK_CHANNEL_ID != null && currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
+            String rawContent = event.getMessage().getContentRaw();
+            DatabaseManager db = DatabaseManager.getInstance();
+            
+            String trigger = db.getBotState("ac_trigger");
+            if (trigger == null) trigger = "ACTIVITY CHECK";
+            
+            String reactPhrase = db.getBotState("ac_react");
+            if (reactPhrase == null) reactPhrase = "React with";
+            
+            String goalPhrase = db.getBotState("ac_goal");
+            if (goalPhrase == null) goalPhrase = "Goal";
+
+            String normalizedContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC);
+            
+            if (rawContent.contains(trigger) || normalizedContent.contains(trigger)) {
+                String safeReact = Pattern.quote(reactPhrase);
+                String safeGoal = Pattern.quote(goalPhrase);
+
+                Matcher emojiMatcher = Pattern.compile("(?i)" + safeReact + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(normalizedContent);
+                Matcher goalMatcher = Pattern.compile("(?i)" + safeGoal + "\\s*:?\\s*`?(\\d+)`?").matcher(normalizedContent);
+
+                if (emojiMatcher.find() && goalMatcher.find()) {
+                    String emojiStr = emojiMatcher.group(1);
+                    int goal = Integer.parseInt(goalMatcher.group(1));
+
+                    event.getMessage().addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr)).queue(
+                        success -> {
+                            activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
+                        },
+                        error -> System.out.println("⚠️ Could not add Activity Check reaction. Invalid emoji format?")
+                    );
+                }
+                return; 
+            }
+        }
+
         if (CHAT_ACTIVITY_CHANNEL_ID != null
                 && !CHAT_ACTIVITY_CHANNEL_ID.isBlank()
-                && !event.getChannel().getId().equals(CHAT_ACTIVITY_CHANNEL_ID)) {
+                && !currentChannelId.equals(CHAT_ACTIVITY_CHANNEL_ID)) {
             return;
         }
 
