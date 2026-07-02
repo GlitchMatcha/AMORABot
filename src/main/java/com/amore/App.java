@@ -57,6 +57,7 @@ public class App {
 
         try {
             JDA jda = JDABuilder.createDefault(token)
+                    .enableIntents(net.dv8tion.jda.api.requests.GatewayIntent.MESSAGE_CONTENT)
                     .setActivity(Activity.playing("AMORA ✦: Matcha Says to Type /pull"))
                     .addEventListeners(new CommandListener(), new ChatListener())
                     .build();
