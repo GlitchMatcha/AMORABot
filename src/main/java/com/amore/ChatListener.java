@@ -324,7 +324,6 @@ public class ChatListener extends ListenerAdapter {
         if (check == null) return;
 
         String reactionEmoji = event.getEmoji().getFormatted();
-        
         if (!reactionEmoji.equals(check.emojiCode) && !reactionEmoji.contains(check.emojiCode) && !check.emojiCode.contains(reactionEmoji)) {
             return;
         }
@@ -339,7 +338,6 @@ public class ChatListener extends ListenerAdapter {
             }
 
             DatabaseManager db = DatabaseManager.getInstance();
-
             if (!check.firstClaimed) {
                 check.firstClaimed = true;
                 check.firstReactorId = userId;
@@ -350,7 +348,6 @@ public class ChatListener extends ListenerAdapter {
                 event.getChannel().sendMessage("⚡ " + event.getUser().getAsMention() 
                     + " found the emoji **FIRST** and claimed the Activity Check! (`+5 Sparks`)").queue();
             }
-
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
                 check.goalReached = true;
                 List<String> lotteryPool = new ArrayList<>(check.allReactors);
@@ -400,18 +397,14 @@ public class ChatListener extends ListenerAdapter {
         }
 
         String currentChannelId = event.getChannel().getId();
-        
         String rawContent = event.getMessage().getContentRaw();
         DatabaseManager db = DatabaseManager.getInstance();
-        
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
-        
-        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                .replaceAll("[*_~`]", "")
-                .replaceAll("\\p{Z}", " ");
-        
-        if (rawContent.toLowerCase().contains(trigger.toLowerCase()) || cleanContent.toLowerCase().contains(trigger.toLowerCase())) {
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC);
+        String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
+        String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
+        if (ultraCleanContent.contains(ultraCleanTrigger)) {
             
             if (ACTIVE_CHECK_CHANNEL_ID == null || !currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
                 event.getChannel().sendMessage("⚠️ **Admin Note:** Activity Check detected, but this channel (`" + currentChannelId + "`) is NOT the configured `ACTIVE_CHECK_CHANNEL_ID` in Render! Ignoring.").queue();
@@ -423,28 +416,24 @@ public class ChatListener extends ListenerAdapter {
             
             String goalPhrase = db.getBotState("ac_goal");
             if (goalPhrase == null) goalPhrase = "Goal";
-
             String reactRegex = java.util.Arrays.stream(reactPhrase.trim().split("\\s+"))
                                   .map(Pattern::quote)
-                                  .collect(java.util.stream.Collectors.joining("\\s+"));
+                                  .collect(java.util.stream.Collectors.joining("\\s*"));
             String goalRegex = java.util.Arrays.stream(goalPhrase.trim().split("\\s+"))
                                  .map(Pattern::quote)
-                                 .collect(java.util.stream.Collectors.joining("\\s+"));
-
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(cleanContent);
-            Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "\\s*:?\\s*(\\d+)").matcher(cleanContent);
+                                 .collect(java.util.stream.Collectors.joining("\\s*"));
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "\\s*[\\p{Punct}]*\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|[^\\s\\p{Punct}\\w]+)").matcher(cleanContent);
+            Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
-                String emojiStr = emojiMatcher.group(1).replaceAll("[.,!?]$", "");
+                String emojiStr = emojiMatcher.group(1);
                 int goal = Integer.parseInt(goalMatcher.group(1));
                 activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
-                
             } else {
-                event.getChannel().sendMessage("⚠️ **Admin Note:** Trigger recognized, but I could not find the exact `Reaction Phrase` or `Goal Phrase`. Ensure there are no typos!").queue();
+                event.getChannel().sendMessage("⚠️ **Admin Note:** Trigger recognized, but I could not extract the Emoji or Goal. Please check formatting!").queue();
             }
             return; 
         }
-
         if (CHAT_ACTIVITY_CHANNEL_ID != null
                 && !CHAT_ACTIVITY_CHANNEL_ID.isBlank()
                 && !currentChannelId.equals(CHAT_ACTIVITY_CHANNEL_ID)) {
