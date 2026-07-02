@@ -35,6 +35,7 @@ public class ChatListener extends ListenerAdapter {
         boolean firstClaimed = false;
         boolean goalReached = false;
         String firstReactorId = null;
+        long firstReactionTime = 0L; 
         List<String> allReactors = new ArrayList<>(); 
 
         ActiveCheckTracker(String emojiCode, int goal) {
@@ -343,11 +344,17 @@ public class ChatListener extends ListenerAdapter {
             if (!check.firstClaimed) {
                 check.firstClaimed = true;
                 check.firstReactorId = userId;
+                check.firstReactionTime = System.currentTimeMillis(); 
                 
                 int currentSparks = db.getSparks(userId);
                 db.updateSparks(userId, currentSparks + 5);
-                event.getChannel().sendMessage("⊹₊ ˚‧︵‿₊୨ ＰＬＡＹＥＲ １ ＳＴＡＲＴ ୧₊‿︵‧ ˚ ₊⊹\n" +
-                    "🎀 " + event.getUser().getAsMention() + " found the hidden pixel first! (`+5 Sparks`) ✧.*👾").queue();
+
+                net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                        .setColor(new java.awt.Color(255, 182, 193)) 
+                        .setDescription("🎀 ⊹₊ ˚‧︵‿₊୨ **Shout out to " + event.getUser().getAsMention() + ", check out their profileee 💗** ୧₊‿︵‧ ˚ ₊⊹ 👾✨\n\n*( `+5 Sparks` )*")
+                        .setImage(event.getUser().getEffectiveAvatarUrl() + "?size=512");
+
+                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(10, TimeUnit.SECONDS);
             }
 
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
@@ -358,15 +365,6 @@ public class ChatListener extends ListenerAdapter {
                 }
                 
                 int numWinners = (int) (lotteryPool.size() * 0.25);
-
-                net.dv8tion.jda.api.EmbedBuilder finaleEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                        .setColor(new java.awt.Color(255, 182, 193)) 
-                        .setTitle("⋆｡°✩ ＳＴＡＧＥ ＣＬＥＡＲＥＤ: " + check.goal + " ✩°｡⋆")
-                        .setDescription("︶꒦꒷♡꒷꒦︶\nThe activity target has been hit! AMORA has loaded the bonus stage and rolled the RNG loot drop...\n. ♬ ݁˖. ݁₊ ⊹ 👾💖 ⊹ ݁₊. ˖݁ ♬ .");
-
-                if (check.firstReactorId != null) {
-                    finaleEmbed.addField("👑 Player 1 (MVP) ♡ ̆̈", "<@" + check.firstReactorId + ">", false);
-                }
 
                 if (numWinners > 0) {
                     java.util.Collections.shuffle(lotteryPool);
@@ -380,13 +378,17 @@ public class ChatListener extends ListenerAdapter {
                         db.updateSparks(winnerId, cur + 3);
                     }
 
-                    finaleEmbed.addField("👾 RNG Bonus Loot Winners ⋆⁺₊⋆", winnersMentions.toString() + "\n*( Loot drop: `+3 Sparks` each! 🍬 ᯓ★ )*", false);
-                    finaleEmbed.setFooter("AMORA 8-Bit Engine 💾 ⸝⸝ • " + numWinners + " lucky players selected from " + lotteryPool.size() + " eligible reactors ʚĭɞ", null);
-                } else {
-                    finaleEmbed.setFooter("AMORA 8-Bit Engine 💾 ⸝⸝ • Level cleared, but player count too low for the RNG loot drop! 💔 ꒦꒷", null);
+                    net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                            .setColor(new java.awt.Color(255, 182, 193))
+                            .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
+
+                    long elapsed = System.currentTimeMillis() - check.firstReactionTime;
+                    long delayMs = 16000L - elapsed;
+                    if (delayMs < 0) delayMs = 0; 
+
+                    event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS);
                 }
 
-                event.getChannel().sendMessageEmbeds(finaleEmbed.build()).queue();
                 activeChecks.remove(event.getMessageId());
             }
         }
@@ -435,9 +437,15 @@ public class ChatListener extends ListenerAdapter {
 
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1);
-                int goal = Integer.parseInt(goalMatcher.group(1));
+                int originalGoal = Integer.parseInt(goalMatcher.group(1));
+                int finalGoal = originalGoal;
 
-                activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
+                if (originalGoal > 1 && originalGoal < 5) {
+                    finalGoal = 1;
+                    event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** You set the goal to `" + originalGoal + "`, but the RNG Bonus Loot requires a minimum of `5` players! I have automatically converted the goal to `1` so your players don't have to wait unnecessarily. 👾🎀").queue();
+                }
+
+                activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
             } else {
                 event.getChannel().sendMessage("⚠️ **System Glitch:** Trigger recognized, but I could not extract the Emoji or Goal. Please check formatting!").queue();
             }
