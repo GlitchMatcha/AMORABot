@@ -126,10 +126,13 @@ public class App {
                             new SubcommandData("complete", "Director Only: Run INSIDE a quest thread to mass-pay the party & lock!")
                                 .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
                         ),
+                        
+                    // ━━━ NEW: ACTIVITY CHECK CONFIGURATION COMMAND ━━━
                     Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords")
                         .addOption(OptionType.STRING, "trigger", "Required word/symbol in the message (e.g. ᯓ★)", true)
                         .addOption(OptionType.STRING, "react_phrase", "Phrase directly before the emoji (e.g. React with)", true)
                         .addOption(OptionType.STRING, "goal_phrase", "Phrase directly before the target number (e.g. Goal)", true),
+
                     Commands.slash("profile", "View your AMORA profile")
                         .addOption(OptionType.USER, "user", "Whose profile to view", false),
 
@@ -149,11 +152,7 @@ public class App {
                     new SubcommandData("list", "Show recent songs in the AMORA pool"),
                     new SubcommandData("suggest", "Get a random song recommendation from the pool"),
                     new SubcommandData("postnow", "Admin: force-post a song recommendation now")
-                    ),
-                Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords")
-                        .addOption(OptionType.STRING, "trigger", "Required word/symbol in the message (e.g. ACTIVITY CHECK)", true)
-                        .addOption(OptionType.STRING, "react_phrase", "Phrase directly before the emoji (e.g. React with)", true)
-                        .addOption(OptionType.STRING, "goal_phrase", "Phrase directly before the target number (e.g. Goal)", true),
+                    )
                 ).queue();
 
             System.out.println("✦ Slash commands registered successfully.");
@@ -226,7 +225,8 @@ public class App {
                 .addField("Source", song.source, true)
                 .addField("Song ID", "#" + song.songId, true)
                 .setFooter("AMORA Daily Recommendation • Curated by the community", null);
-
+                
+        // Fetch and attach the thumbnail!
         String artworkUrl = CommandListener.fetchSongArtwork(song.link);
         if (artworkUrl != null && !artworkUrl.isBlank()) {
             embed.setImage(artworkUrl);
