@@ -23,8 +23,6 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 public class ChatListener extends ListenerAdapter {
 
     private static final String CHAT_ACTIVITY_CHANNEL_ID = System.getenv("CHAT_ACTIVITY_CHANNEL_ID");
-    
-    // ━━━ NEW: Active Check Channel ━━━
     private static final String ACTIVE_CHECK_CHANNEL_ID = System.getenv("ACTIVE_CHECK_CHANNEL_ID");
 
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
@@ -318,6 +316,7 @@ public class ChatListener extends ListenerAdapter {
         prompts.addAll(CHAOTIC_FUN_PROMPTS);
         return List.copyOf(prompts);
     }
+
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
         if (event.getUser() == null || event.getUser().isBot()) return;
@@ -326,7 +325,10 @@ public class ChatListener extends ListenerAdapter {
         if (check == null) return;
 
         String reactionEmoji = event.getEmoji().getFormatted();
-        if (!reactionEmoji.equals(check.emojiCode)) return;
+        
+        if (!reactionEmoji.equals(check.emojiCode) && !reactionEmoji.contains(check.emojiCode) && !check.emojiCode.contains(reactionEmoji)) {
+            return;
+        }
 
         String userId = event.getUserId();
 
@@ -362,8 +364,11 @@ public class ChatListener extends ListenerAdapter {
                 net.dv8tion.jda.api.EmbedBuilder finaleEmbed = new net.dv8tion.jda.api.EmbedBuilder()
                         .setColor(new java.awt.Color(255, 215, 0))
                         .setTitle("✦ ACTIVITY GOAL REACHED: " + check.goal + " ✦")
-                        .setDescription("The target has been hit! The AMORA system has processed the engagement.")
-                        .addField("🏆 First Responder", "<@" + check.firstReactorId + ">", false);
+                        .setDescription("The target has been hit! The AMORA system has processed the engagement.");
+
+                if (check.firstReactorId != null) {
+                    finaleEmbed.addField("🏆 First Responder", "<@" + check.firstReactorId + ">", false);
+                }
 
                 if (numWinners > 0) {
                     java.util.Collections.shuffle(lotteryPool);
@@ -384,7 +389,6 @@ public class ChatListener extends ListenerAdapter {
                 }
 
                 event.getChannel().sendMessageEmbeds(finaleEmbed.build()).queue();
-
                 activeChecks.remove(event.getMessageId());
             }
         }
@@ -397,6 +401,7 @@ public class ChatListener extends ListenerAdapter {
         }
 
         String currentChannelId = event.getChannel().getId();
+        
         if (ACTIVE_CHECK_CHANNEL_ID != null && currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
             String rawContent = event.getMessage().getContentRaw();
             DatabaseManager db = DatabaseManager.getInstance();
@@ -410,25 +415,31 @@ public class ChatListener extends ListenerAdapter {
             String goalPhrase = db.getBotState("ac_goal");
             if (goalPhrase == null) goalPhrase = "Goal";
 
-            String normalizedContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC);
+            String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
+                    .replaceAll("[*_~`]", "")
+                    .replaceAll("\\p{Z}", " ");
             
-            if (rawContent.contains(trigger) || normalizedContent.contains(trigger)) {
+            if (rawContent.toLowerCase().contains(trigger.toLowerCase()) || cleanContent.toLowerCase().contains(trigger.toLowerCase())) {
                 String safeReact = Pattern.quote(reactPhrase);
                 String safeGoal = Pattern.quote(goalPhrase);
 
-                Matcher emojiMatcher = Pattern.compile("(?i)" + safeReact + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(normalizedContent);
-                Matcher goalMatcher = Pattern.compile("(?i)" + safeGoal + "\\s*:?\\s*`?(\\d+)`?").matcher(normalizedContent);
+                Matcher emojiMatcher = Pattern.compile("(?i)" + safeReact + "\\s*:?\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|\\S+)").matcher(cleanContent);
+                Matcher goalMatcher = Pattern.compile("(?i)" + safeGoal + "\\s*:?\\s*`?(\\d+)`?").matcher(cleanContent);
 
                 if (emojiMatcher.find() && goalMatcher.find()) {
-                    String emojiStr = emojiMatcher.group(1);
+                    String emojiStr = emojiMatcher.group(1).replaceAll("[.,!?]$", "");
                     int goal = Integer.parseInt(goalMatcher.group(1));
 
-                    event.getMessage().addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr)).queue(
-                        success -> {
-                            activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
-                        },
-                        error -> System.out.println("⚠️ Could not add Activity Check reaction. Invalid emoji format?")
-                    );
+                    try {
+                        net.dv8tion.jda.api.entities.emoji.Emoji emoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr);
+                        event.getMessage().addReaction(emoji).queue(
+                            success -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)),
+                            error -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)) // Save anyway
+                        );
+                    } catch (Exception e) {
+                        System.out.println("⚠️ Emoji parse exception handled. Tracker saved regardless: " + emojiStr);
+                        activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
+                    }
                 }
                 return; 
             }

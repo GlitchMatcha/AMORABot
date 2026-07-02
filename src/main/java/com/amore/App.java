@@ -127,7 +127,6 @@ public class App {
                                 .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
                         ),
                         
-                    // ━━━ NEW: ACTIVITY CHECK CONFIGURATION COMMAND ━━━
                     Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords")
                         .addOption(OptionType.STRING, "trigger", "Required word/symbol in the message (e.g. ᯓ★)", true)
                         .addOption(OptionType.STRING, "react_phrase", "Phrase directly before the emoji (e.g. React with)", true)
@@ -226,7 +225,6 @@ public class App {
                 .addField("Song ID", "#" + song.songId, true)
                 .setFooter("AMORA Daily Recommendation • Curated by the community", null);
                 
-        // Fetch and attach the thumbnail!
         String artworkUrl = CommandListener.fetchSongArtwork(song.link);
         if (artworkUrl != null && !artworkUrl.isBlank()) {
             embed.setImage(artworkUrl);
