@@ -227,7 +227,7 @@ public class ChatListener extends ListenerAdapter {
             "You can rename Monday. What do you call it?",
             "A dragon joins the server. What role do we give it?",
             "Your aura becomes a warning label. What does it say?",
-            "If this chat had a boss battle, what কাশী phase two look like?",
+            "If this chat had a boss battle, what would phase two look like?",
             "The room gets a theme song for 24 hours. What should it be like?",
             "If your life had patch notes this week, what changed?",
             "You unlock a useless but funny passive ability. What is it?",
@@ -320,7 +320,7 @@ public class ChatListener extends ListenerAdapter {
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
-        if (check == null) return;
+        if (check == null) return; 
 
         event.retrieveUser().queue(user -> {
             if (user.isBot()) return;
@@ -364,7 +364,7 @@ public class ChatListener extends ListenerAdapter {
                             .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
                             .setImage(user.getEffectiveAvatarUrl() + "?size=512");
 
-                    event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(3, TimeUnit.SECONDS, 
+                    event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS, 
                         success -> {}, 
                         error -> {
                             event.getChannel().sendMessage("⚠️ **ERROR:** " + user.getAsMention() + " claimed the shoutout, but my Embeds are disabled in this channel! Please turn on 'Embed Links' for AMORA.").queue();
@@ -398,7 +398,7 @@ public class ChatListener extends ListenerAdapter {
                                 .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
 
                         long elapsed = System.currentTimeMillis() - check.firstReactionTime;
-                        long delayMs = 6000L - elapsed;
+                        long delayMs = 9000L - elapsed;
                         if (delayMs < 0) delayMs = 0; 
 
                         event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS);
@@ -424,7 +424,7 @@ public class ChatListener extends ListenerAdapter {
         if (trigger == null) trigger = "ACTIVITY CHECK";
 
         String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                .replaceAll("[*_~`|]", "")
+                .replaceAll("[*_~`]", "")
                 .replaceAll("\\p{Z}", " ");
         
         String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
@@ -450,7 +450,7 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "\\s*[\\p{Punct}]*\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|[^\\s\\p{Punct}\\w]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
