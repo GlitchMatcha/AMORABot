@@ -23,7 +23,6 @@ import net.dv8tion.jda.api.hooks.ListenerAdapter;
 public class ChatListener extends ListenerAdapter {
 
     private static final String CHAT_ACTIVITY_CHANNEL_ID = System.getenv("CHAT_ACTIVITY_CHANNEL_ID");
-    
     private static final String ACTIVE_CHECK_CHANNEL_ID = System.getenv("ACTIVE_CHECK_CHANNEL_ID");
 
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
@@ -48,7 +47,6 @@ public class ChatListener extends ListenerAdapter {
     private static final long USER_ROLL_COOLDOWN_MS = 30_000L;
     private static final long QUESTION_COOLDOWN_MS = 6 * 60_000L;
     private static final long SPARK_COOLDOWN_MS = 30 * 60_000L;
-
     private static final long QUESTION_LIFETIME_MS = 2 * 60_000L;
     private static final long SPARK_LIFETIME_MS = 90_000L;
 
@@ -350,7 +348,7 @@ public class ChatListener extends ListenerAdapter {
                 db.updateSparks(userId, currentSparks + 5);
 
                 event.getChannel().sendMessage("⚡ " + event.getUser().getAsMention() 
-                    + " was the **FIRST** to respond to the Activity Check! (`+5 Sparks`)").queue();
+                    + " found the emoji **FIRST** and claimed the Activity Check! (`+5 Sparks`)").queue();
             }
 
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
@@ -439,24 +437,12 @@ public class ChatListener extends ListenerAdapter {
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1).replaceAll("[.,!?]$", "");
                 int goal = Integer.parseInt(goalMatcher.group(1));
-
-                try {
-                    net.dv8tion.jda.api.entities.emoji.Emoji emoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(emojiStr);
-                    event.getMessage().addReaction(emoji).queue(
-                        success -> activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal)),
-                        error -> {
-                            event.getChannel().sendMessage("⚠️ **Admin Note:** Triggered, but I am missing permissions to add the reaction `" + emojiStr + "`! Tracker started anyway.").queue();
-                            activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
-                        }
-                    );
-                } catch (Exception e) {
-                    event.getChannel().sendMessage("⚠️ **Admin Note:** Triggered, but I failed to parse the emoji `" + emojiStr + "`. Did a typo get attached to it? Tracker started anyway!").queue();
-                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
-                }
+                activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
+                
             } else {
                 event.getChannel().sendMessage("⚠️ **Admin Note:** Trigger recognized, but I could not find the exact `Reaction Phrase` or `Goal Phrase`. Ensure there are no typos!").queue();
             }
-            return;
+            return; 
         }
 
         if (CHAT_ACTIVITY_CHANNEL_ID != null
