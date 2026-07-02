@@ -227,7 +227,7 @@ public class ChatListener extends ListenerAdapter {
             "You can rename Monday. What do you call it?",
             "A dragon joins the server. What role do we give it?",
             "Your aura becomes a warning label. What does it say?",
-            "If this chat had a boss battle, what would phase two look like?",
+            "If this chat had a boss battle, what কাশী phase two look like?",
             "The room gets a theme song for 24 hours. What should it be like?",
             "If your life had patch notes this week, what changed?",
             "You unlock a useless but funny passive ability. What is it?",
@@ -319,91 +319,95 @@ public class ChatListener extends ListenerAdapter {
 
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
-        if (event.getUser() == null || event.getUser().isBot()) return;
-
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
-        if (check == null) return; 
+        if (check == null) return;
 
-        String reactionEmoji = event.getEmoji().getFormatted();
-        String reactionName = event.getEmoji().getName();
-        
-        if (!reactionEmoji.equals(check.emojiCode) 
-            && !reactionEmoji.contains(check.emojiCode) 
-            && !check.emojiCode.contains(reactionEmoji)
-            && !check.emojiCode.contains(reactionName)) {
-            return;
-        }
+        event.retrieveUser().queue(user -> {
+            if (user.isBot()) return;
 
-        String userId = event.getUserId();
+            String reactionEmoji = event.getEmoji().getFormatted();
+            String reactionName = event.getEmoji().getName();
+            
+            String strippedCheck = check.emojiCode.replaceAll("[\\p{Cf}]", "");
+            String strippedReact = reactionEmoji.replaceAll("[\\p{Cf}]", "");
+            String strippedName = reactionName.replaceAll("[\\p{Cf}]", "");
 
-        synchronized (check) {
-            if (!check.allReactors.contains(userId)) {
-                check.allReactors.add(userId);
-            } else {
+            if (!strippedReact.equals(strippedCheck) 
+                && !strippedReact.contains(strippedCheck) 
+                && !strippedCheck.contains(strippedReact)
+                && !strippedName.contains(strippedCheck)
+                && !strippedCheck.contains(strippedName)) {
                 return; 
             }
 
-            DatabaseManager db = DatabaseManager.getInstance();
+            String userId = user.getId();
 
-            if (!check.firstClaimed) {
-                check.firstClaimed = true;
-                check.firstReactorId = userId;
-                check.firstReactionTime = System.currentTimeMillis(); 
-                
-                int currentSparks = db.getSparks(userId);
-                db.updateSparks(userId, currentSparks + 5);
-
-                net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                        .setColor(new java.awt.Color(255, 182, 193)) 
-                        .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + event.getUser().getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
-                        .setImage(event.getUser().getEffectiveAvatarUrl() + "?size=512");
-
-                event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(3, TimeUnit.SECONDS, 
-                    success -> {}, 
-                    error -> {
-                        event.getChannel().sendMessage("⚠️ **ERROR:** " + event.getUser().getAsMention() + " claimed the shoutout, but my Embeds are disabled in this channel! Please turn on 'Embed Links' for AMORA.").queue();
-                    }
-                );
-            }
-
-            if (check.allReactors.size() >= check.goal && !check.goalReached) {
-                check.goalReached = true;
-                List<String> lotteryPool = new ArrayList<>(check.allReactors);
-                if (check.firstReactorId != null) {
-                    lotteryPool.remove(check.firstReactorId);
+            synchronized (check) {
+                if (!check.allReactors.contains(userId)) {
+                    check.allReactors.add(userId);
+                } else {
+                    return; 
                 }
-                
-                int numWinners = (int) (lotteryPool.size() * 0.25);
 
-                if (numWinners > 0) {
-                    java.util.Collections.shuffle(lotteryPool);
-                    StringBuilder winnersMentions = new StringBuilder();
+                DatabaseManager db = DatabaseManager.getInstance();
 
-                    for (int i = 0; i < numWinners; i++) {
-                        String winnerId = lotteryPool.get(i);
-                        winnersMentions.append("<@").append(winnerId).append("> ");
-                        
-                        int cur = db.getSparks(winnerId);
-                        db.updateSparks(winnerId, cur + 3);
-                    }
+                if (!check.firstClaimed) {
+                    check.firstClaimed = true;
+                    check.firstReactorId = userId;
+                    check.firstReactionTime = System.currentTimeMillis(); 
+                    
+                    int currentSparks = db.getSparks(userId);
+                    db.updateSparks(userId, currentSparks + 5);
 
-                    net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                            .setColor(new java.awt.Color(255, 182, 193))
-                            .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
+                    net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                            .setColor(new java.awt.Color(255, 182, 193)) 
+                            .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
+                            .setImage(user.getEffectiveAvatarUrl() + "?size=512");
 
-                    long elapsed = System.currentTimeMillis() - check.firstReactionTime;
-                    long delayMs = 6000L - elapsed;
-                    if (delayMs < 0) delayMs = 0; 
-
-                    event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS,
+                    event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(3, TimeUnit.SECONDS, 
                         success -> {}, 
-                        error -> {}
+                        error -> {
+                            event.getChannel().sendMessage("⚠️ **ERROR:** " + user.getAsMention() + " claimed the shoutout, but my Embeds are disabled in this channel! Please turn on 'Embed Links' for AMORA.").queue();
+                        }
                     );
                 }
 
-                activeChecks.remove(event.getMessageId());
+                if (check.allReactors.size() >= check.goal && !check.goalReached) {
+                    check.goalReached = true;
+                    List<String> lotteryPool = new ArrayList<>(check.allReactors);
+                    if (check.firstReactorId != null) {
+                        lotteryPool.remove(check.firstReactorId);
+                    }
+                    
+                    int numWinners = (int) (lotteryPool.size() * 0.25);
+
+                    if (numWinners > 0) {
+                        java.util.Collections.shuffle(lotteryPool);
+                        StringBuilder winnersMentions = new StringBuilder();
+
+                        for (int i = 0; i < numWinners; i++) {
+                            String winnerId = lotteryPool.get(i);
+                            winnersMentions.append("<@").append(winnerId).append("> ");
+                            
+                            int cur = db.getSparks(winnerId);
+                            db.updateSparks(winnerId, cur + 3);
+                        }
+
+                        net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                                .setColor(new java.awt.Color(255, 182, 193))
+                                .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
+
+                        long elapsed = System.currentTimeMillis() - check.firstReactionTime;
+                        long delayMs = 6000L - elapsed;
+                        if (delayMs < 0) delayMs = 0; 
+
+                        event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS);
+                    }
+
+                    activeChecks.remove(event.getMessageId());
+                }
             }
-        }
+        });
     }
 
     @Override
@@ -450,7 +454,7 @@ public class ChatListener extends ListenerAdapter {
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
-                String emojiStr = emojiMatcher.group(1);
+                String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
                 int originalGoal = Integer.parseInt(goalMatcher.group(1));
                 int finalGoal = originalGoal;
 
