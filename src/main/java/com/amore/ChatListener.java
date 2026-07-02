@@ -327,16 +327,16 @@ public class ChatListener extends ListenerAdapter {
 
             String reactionEmoji = event.getEmoji().getFormatted();
             String reactionName = event.getEmoji().getName();
+            String cleanCheck = check.emojiCode.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+            String cleanName = reactionName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
             
-            String strippedCheck = check.emojiCode.replaceAll("[\\p{Cf}]", "");
-            String strippedReact = reactionEmoji.replaceAll("[\\p{Cf}]", "");
-            String strippedName = reactionName.replaceAll("[\\p{Cf}]", "");
+            String rawReact = reactionEmoji.replaceAll("[\\p{Cf}]", "");
+            String rawCheck = check.emojiCode.replaceAll("[\\p{Cf}]", "");
 
-            if (!strippedReact.equals(strippedCheck) 
-                && !strippedReact.contains(strippedCheck) 
-                && !strippedCheck.contains(strippedReact)
-                && !strippedName.contains(strippedCheck)
-                && !strippedCheck.contains(strippedName)) {
+            boolean isCustomMatch = !cleanCheck.isEmpty() && (cleanName.equals(cleanCheck) || cleanName.contains(cleanCheck) || cleanCheck.contains(cleanName));
+            boolean isUnicodeMatch = rawReact.equals(rawCheck) || rawReact.contains(rawCheck) || rawCheck.contains(rawReact);
+
+            if (!isCustomMatch && !isUnicodeMatch) {
                 return; 
             }
 
@@ -450,7 +450,7 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_\\-]+:\\d+>|:[a-zA-Z0-9_\\-]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
