@@ -324,6 +324,7 @@ public class ChatListener extends ListenerAdapter {
         if (check == null) return;
 
         String reactionEmoji = event.getEmoji().getFormatted();
+        
         if (!reactionEmoji.equals(check.emojiCode) && !reactionEmoji.contains(check.emojiCode) && !check.emojiCode.contains(reactionEmoji)) {
             return;
         }
@@ -338,16 +339,17 @@ public class ChatListener extends ListenerAdapter {
             }
 
             DatabaseManager db = DatabaseManager.getInstance();
+
             if (!check.firstClaimed) {
                 check.firstClaimed = true;
                 check.firstReactorId = userId;
                 
                 int currentSparks = db.getSparks(userId);
                 db.updateSparks(userId, currentSparks + 5);
-
-                event.getChannel().sendMessage("⚡ " + event.getUser().getAsMention() 
-                    + " found the emoji **FIRST** and claimed the Activity Check! (`+5 Sparks`)").queue();
+                event.getChannel().sendMessage("⊹₊ ˚‧︵‿₊୨ ＰＬＡＹＥＲ １ ＳＴＡＲＴ ୧₊‿︵‧ ˚ ₊⊹\n" +
+                    "🎀 " + event.getUser().getAsMention() + " found the hidden pixel first! (`+5 Sparks`) ✧.*👾").queue();
             }
+
             if (check.allReactors.size() >= check.goal && !check.goalReached) {
                 check.goalReached = true;
                 List<String> lotteryPool = new ArrayList<>(check.allReactors);
@@ -358,12 +360,12 @@ public class ChatListener extends ListenerAdapter {
                 int numWinners = (int) (lotteryPool.size() * 0.25);
 
                 net.dv8tion.jda.api.EmbedBuilder finaleEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                        .setColor(new java.awt.Color(255, 215, 0))
-                        .setTitle("✦ ACTIVITY GOAL REACHED: " + check.goal + " ✦")
-                        .setDescription("The target has been hit! The AMORA system has processed the engagement.");
+                        .setColor(new java.awt.Color(255, 182, 193)) 
+                        .setTitle("⋆｡°✩ ＳＴＡＧＥ ＣＬＥＡＲＥＤ: " + check.goal + " ✩°｡⋆")
+                        .setDescription("︶꒦꒷♡꒷꒦︶\nThe activity target has been hit! AMORA has loaded the bonus stage and rolled the RNG loot drop...\n. ♬ ݁˖. ݁₊ ⊹ 👾💖 ⊹ ݁₊. ˖݁ ♬ .");
 
                 if (check.firstReactorId != null) {
-                    finaleEmbed.addField("🏆 First Responder", "<@" + check.firstReactorId + ">", false);
+                    finaleEmbed.addField("👑 Player 1 (MVP) ♡ ̆̈", "<@" + check.firstReactorId + ">", false);
                 }
 
                 if (numWinners > 0) {
@@ -378,10 +380,10 @@ public class ChatListener extends ListenerAdapter {
                         db.updateSparks(winnerId, cur + 3);
                     }
 
-                    finaleEmbed.addField("🎲 Lucky Lottery Winners", winnersMentions.toString() + "\n*(Awarded `+3 Sparks` each!)*", false);
-                    finaleEmbed.setFooter("AMORA RNG Engine • " + numWinners + " winners selected from " + lotteryPool.size() + " eligible reactors.", null);
+                    finaleEmbed.addField("👾 RNG Bonus Loot Winners ⋆⁺₊⋆", winnersMentions.toString() + "\n*( Loot drop: `+3 Sparks` each! 🍬 ᯓ★ )*", false);
+                    finaleEmbed.setFooter("AMORA 8-Bit Engine 💾 ⸝⸝ • " + numWinners + " lucky players selected from " + lotteryPool.size() + " eligible reactors ʚĭɞ", null);
                 } else {
-                    finaleEmbed.setFooter("AMORA System • Goal reached. Crowd size too small to trigger the RNG lottery.", null);
+                    finaleEmbed.setFooter("AMORA 8-Bit Engine 💾 ⸝⸝ • Level cleared, but player count too low for the RNG loot drop! 💔 ꒦꒷", null);
                 }
 
                 event.getChannel().sendMessageEmbeds(finaleEmbed.build()).queue();
@@ -399,15 +401,19 @@ public class ChatListener extends ListenerAdapter {
         String currentChannelId = event.getChannel().getId();
         String rawContent = event.getMessage().getContentRaw();
         DatabaseManager db = DatabaseManager.getInstance();
+        
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
+
         String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC);
+        
         String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
         String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
+
         if (ultraCleanContent.contains(ultraCleanTrigger)) {
             
             if (ACTIVE_CHECK_CHANNEL_ID == null || !currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
-                event.getChannel().sendMessage("⚠️ **Admin Note:** Activity Check detected, but this channel (`" + currentChannelId + "`) is NOT the configured `ACTIVE_CHECK_CHANNEL_ID` in Render! Ignoring.").queue();
+                event.getChannel().sendMessage("⚠️ **System Glitch:** Activity Check detected, but this channel (`" + currentChannelId + "`) is NOT the configured `ACTIVE_CHECK_CHANNEL_ID` in Render! Ignoring.").queue();
                 return;
             }
 
@@ -416,24 +422,28 @@ public class ChatListener extends ListenerAdapter {
             
             String goalPhrase = db.getBotState("ac_goal");
             if (goalPhrase == null) goalPhrase = "Goal";
+
             String reactRegex = java.util.Arrays.stream(reactPhrase.trim().split("\\s+"))
                                   .map(Pattern::quote)
                                   .collect(java.util.stream.Collectors.joining("\\s*"));
             String goalRegex = java.util.Arrays.stream(goalPhrase.trim().split("\\s+"))
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
+
             Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "\\s*[\\p{Punct}]*\\s*(<a?:[a-zA-Z0-9_]+:\\d+>|[^\\s\\p{Punct}\\w]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1);
                 int goal = Integer.parseInt(goalMatcher.group(1));
+
                 activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, goal));
             } else {
-                event.getChannel().sendMessage("⚠️ **Admin Note:** Trigger recognized, but I could not extract the Emoji or Goal. Please check formatting!").queue();
+                event.getChannel().sendMessage("⚠️ **System Glitch:** Trigger recognized, but I could not extract the Emoji or Goal. Please check formatting!").queue();
             }
             return; 
         }
+
         if (CHAT_ACTIVITY_CHANNEL_ID != null
                 && !CHAT_ACTIVITY_CHANNEL_ID.isBlank()
                 && !currentChannelId.equals(CHAT_ACTIVITY_CHANNEL_ID)) {
