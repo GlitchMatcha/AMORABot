@@ -360,49 +360,83 @@ public class ChatListener extends ListenerAdapter {
         return circle;
     }
 
-    private static byte[] generateProfileCard(String username, String avatarUrl, int sparks) {
+    private static byte[] generateProfileCard(String username, String avatarUrl, String bannerUrl, int sparks) {
         try {
-            int width = 600;
-            int height = 350;
+            int width = 380;
+            int height = 520;
             BufferedImage card = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = card.createGraphics();
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            g2d.setColor(new Color(43, 45, 49));
-            g2d.fillRoundRect(0, 0, width, height, 40, 40);
+            g2d.setColor(new Color(30, 27, 36)); 
+            g2d.fillRoundRect(0, 0, width, height, 30, 30);
 
-            g2d.setColor(new Color(255, 182, 193));
-            g2d.fillRoundRect(0, 0, width, 140, 40, 40);
-            g2d.fillRect(0, 100, width, 40); 
+            if (bannerUrl != null) {
+                BufferedImage banner = fetchAvatar(bannerUrl + "?size=512");
+                g2d.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, width, 140, 30, 30));
+                g2d.drawImage(banner, 0, 0, width, 140, null);
+                g2d.setClip(null);
+            } else {
+                g2d.setColor(new Color(139, 65, 107)); 
+                g2d.fillRoundRect(0, 0, width, 140, 30, 30);
+                g2d.fillRect(0, 100, width, 40);
+            }
 
-            int avatarX = 40;
-            int avatarY = 60; 
-            int avatarSize = 160;
-            int borderThickness = 16;
+            int avatarSize = 110;
+            int avatarX = 20;
+            int avatarY = 80;
             
-            g2d.setColor(new Color(43, 45, 49));
-            g2d.fillOval(avatarX - borderThickness/2, avatarY - borderThickness/2, avatarSize + borderThickness, avatarSize + borderThickness);
+            g2d.setColor(new Color(30, 27, 36));
+            g2d.fillOval(avatarX - 8, avatarY - 8, avatarSize + 16, avatarSize + 16);
 
-            BufferedImage avatar = fetchAvatar(avatarUrl);
+            BufferedImage avatar = fetchAvatar(avatarUrl + "?size=256");
             BufferedImage circleAvatar = makeCircle(avatar);
             g2d.drawImage(circleAvatar, avatarX, avatarY, avatarSize, avatarSize, null);
 
-            g2d.setColor(new Color(43, 45, 49));
-            g2d.fillOval(avatarX + 110, avatarY + 110, 46, 46); 
-            g2d.setColor(new Color(35, 165, 89)); 
-            g2d.fillOval(avatarX + 116, avatarY + 116, 34, 34);
+            g2d.setColor(new Color(30, 27, 36));
+            g2d.fillOval(avatarX + 75, avatarY + 75, 34, 34); 
+            g2d.setColor(new Color(242, 63, 67)); // DND Red
+            g2d.fillOval(avatarX + 78, avatarY + 78, 28, 28);
+            g2d.setColor(new Color(30, 27, 36)); // DND Line
+            g2d.fillRect(avatarX + 84, avatarY + 90, 16, 4);
 
             g2d.setColor(Color.WHITE);
-            g2d.setFont(new Font("SansSerif", Font.BOLD, 36));
-            g2d.drawString(username, 40, 260);
+            g2d.setFont(new Font("SansSerif", Font.BOLD, 26));
+            String safeName = username.replaceAll("[^\\p{L}\\p{N}\\p{Punct}\\s]", "").trim();
+            if (safeName.isEmpty()) safeName = "Player";
+            g2d.drawString(safeName, 20, 230);
 
-            g2d.setColor(new Color(181, 186, 193));
-            g2d.setFont(new Font("SansSerif", Font.PLAIN, 24));
-            g2d.drawString("🏆 Action: +5 Sparks", 40, 310);
+            g2d.setColor(new Color(43, 45, 49)); // Inner box color
+            g2d.fillRoundRect(20, 260, 340, 60, 20, 20);
             
-            g2d.setColor(new Color(255, 182, 193)); 
-            g2d.drawString("💎 Total Sparks: " + sparks, 310, 310);
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("SansSerif", Font.BOLD, 14));
+            g2d.drawString("Game Collection", 35, 295);
+
+            BufferedImage robloxIcon = fetchAvatar("https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Roblox_player_icon_black.svg/256px-Roblox_player_icon_black.svg.png");
+            g2d.drawImage(robloxIcon, 250, 275, 30, 30, null);
+
+            g2d.setColor(new Color(30, 27, 36));
+            g2d.fillRoundRect(310, 275, 35, 30, 10, 10);
+            g2d.setColor(Color.WHITE);
+            g2d.drawString("+3", 317, 295);
+
+            g2d.setColor(new Color(43, 45, 49));
+            g2d.fillRoundRect(20, 340, 200, 35, 17, 17);
+            g2d.setColor(Color.WHITE);
+            g2d.drawString("✨ Event Winner", 45, 363);
+
+            g2d.setColor(new Color(43, 45, 49));
+            g2d.fillRoundRect(20, 385, 160, 35, 17, 17);
+            g2d.setColor(new Color(255, 182, 193)); // Pink text
+            g2d.drawString("💎 " + sparks + " Sparks", 45, 408);
+
+            g2d.setColor(new Color(139, 65, 107)); // Magenta Button
+            g2d.fillRoundRect(20, 450, 340, 45, 15, 15);
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("SansSerif", Font.BOLD, 16));
+            g2d.drawString("View Profile", 145, 478);
 
             g2d.dispose();
 
@@ -465,25 +499,38 @@ public class ChatListener extends ListenerAdapter {
                     check.firstReactorId = userId;
                     check.firstReactionTime = System.currentTimeMillis(); 
                     
-                    int currentSparks = db.getSparks(userId);
+                   int currentSparks = db.getSparks(userId);
                     int newTotal = currentSparks + 5;
                     db.updateSparks(userId, newTotal);
+                    user.retrieveProfile().queue(profile -> {
+                        String bannerUrl = profile.getBannerUrl();
+                        
+                        byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), bannerUrl, newTotal);
+                        
+                        String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
 
-                    byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl() + "?size=256", newTotal);
-
-                    if (cardData != null) {
-                        FileUpload upload = FileUpload.fromData(cardData, "profile.png");
-                        event.getChannel().sendFiles(upload).queueAfter(5, TimeUnit.SECONDS, 
-                            success -> {}, 
-                            error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
-                        );
-                    } else {
-                        net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                                .setColor(new java.awt.Color(255, 182, 193)) 
-                                .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + "!** ‹3 ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*");
-                        event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS);
-                    }
-                }
+                        if (cardData != null) {
+                            net.dv8tion.jda.api.utils.FileUpload upload = net.dv8tion.jda.api.utils.FileUpload.fromData(cardData, "profile.png");
+                            
+                            event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS, 
+                                success -> {}, 
+                                error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
+                            );
+                        } else {
+                            net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                                    .setColor(new java.awt.Color(255, 182, 193)) 
+                                    .setDescription(shoutoutText + "\n\n*( `+5 Sparks` )*");
+                            event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS);
+                        }
+                    }, error -> {
+                        byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), null, newTotal);
+                        String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
+                        
+                        if (cardData != null) {
+                            net.dv8tion.jda.api.utils.FileUpload upload = net.dv8tion.jda.api.utils.FileUpload.fromData(cardData, "profile.png");
+                            event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS);
+                        }
+                    });
 
                 if (check.allReactors.size() >= check.goal && !check.goalReached) {
                     check.goalReached = true;
