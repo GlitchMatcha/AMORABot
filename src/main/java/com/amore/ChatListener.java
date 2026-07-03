@@ -17,6 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 
@@ -36,6 +37,7 @@ public class ChatListener extends ListenerAdapter {
         boolean goalReached = false;
         String firstReactorId = null;
         long firstReactionTime = 0L; 
+        long createdAt = System.currentTimeMillis(); 
         List<String> allReactors = new ArrayList<>(); 
 
         ActiveCheckTracker(String emojiCode, int goal) {
@@ -317,6 +319,11 @@ public class ChatListener extends ListenerAdapter {
         return List.copyOf(prompts);
     }
 
+    private void lazyCleanup() {
+        long now = System.currentTimeMillis();
+        activeChecks.entrySet().removeIf(entry -> (now - entry.getValue().createdAt) > TimeUnit.HOURS.toMillis(24));
+    }
+
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
@@ -327,14 +334,26 @@ public class ChatListener extends ListenerAdapter {
 
             String reactionEmoji = event.getEmoji().getFormatted();
             String reactionName = event.getEmoji().getName();
+            
             String cleanCheck = check.emojiCode.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
             String cleanName = reactionName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
             
             String rawReact = reactionEmoji.replaceAll("[\\p{Cf}]", "");
             String rawCheck = check.emojiCode.replaceAll("[\\p{Cf}]", "");
 
-            boolean isCustomMatch = !cleanCheck.isEmpty() && (cleanName.equals(cleanCheck) || cleanName.contains(cleanCheck) || cleanCheck.contains(cleanName));
-            boolean isUnicodeMatch = rawReact.equals(rawCheck) || rawReact.contains(rawCheck) || rawCheck.contains(rawReact);
+            boolean isCustomMatch = false;
+            if (!cleanCheck.isEmpty() && !cleanName.isEmpty()) {
+                if (cleanCheck.equals(cleanName)) {
+                    isCustomMatch = true;
+                }
+            }
+
+            boolean isUnicodeMatch = false;
+            if (!rawReact.isEmpty() && !rawCheck.isEmpty()) {
+                if (rawReact.equals(rawCheck) || rawReact.contains(rawCheck) || rawCheck.contains(rawReact)) {
+                    isUnicodeMatch = true;
+                }
+            }
 
             if (!isCustomMatch && !isUnicodeMatch) {
                 return; 
@@ -409,12 +428,78 @@ public class ChatListener extends ListenerAdapter {
             }
         });
     }
+    @Override
+    public void onMessageUpdate(MessageUpdateEvent event) {
+        if (event.getAuthor().isBot() || !event.isFromGuild()) {
+            return;
+        }
+        lazyCleanup();
+
+        String currentChannelId = event.getChannel().getId();
+        String rawContent = event.getMessage().getContentRaw();
+        DatabaseManager db = DatabaseManager.getInstance();
+        
+        String trigger = db.getBotState("ac_trigger");
+        if (trigger == null) trigger = "ACTIVITY CHECK";
+
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
+                .replaceAll("[*_~`|]", "")
+                .replaceAll("\\p{Z}", " ");
+        
+        String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
+        String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
+
+        if (ultraCleanContent.contains(ultraCleanTrigger)) {
+            
+            if (ACTIVE_CHECK_CHANNEL_ID == null || !currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
+                return; 
+            }
+
+            String reactPhrase = db.getBotState("ac_react");
+            if (reactPhrase == null) reactPhrase = "React with";
+            
+            String goalPhrase = db.getBotState("ac_goal");
+            if (goalPhrase == null) goalPhrase = "Goal";
+
+            String reactRegex = java.util.Arrays.stream(reactPhrase.trim().split("\\s+"))
+                                  .map(Pattern::quote)
+                                  .collect(java.util.stream.Collectors.joining("\\s*"));
+            String goalRegex = java.util.Arrays.stream(goalPhrase.trim().split("\\s+"))
+                                 .map(Pattern::quote)
+                                 .collect(java.util.stream.Collectors.joining("\\s*"));
+
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_\\-]+:\\d+>|:[a-zA-Z0-9_\\-]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
+            Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
+
+            if (emojiMatcher.find() && goalMatcher.find()) {
+                String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
+                int finalGoal = 1;
+                try {
+                    int originalGoal = Integer.parseInt(goalMatcher.group(1));
+                    finalGoal = originalGoal;
+                    if (originalGoal > 1 && originalGoal < 5) {
+                        finalGoal = 1;
+                    }
+                } catch (NumberFormatException e) {
+                    finalGoal = 1;
+                }
+                ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
+                if (tracker != null) {
+                    tracker.emojiCode = emojiStr;
+                    tracker.goal = finalGoal;
+                } else {
+                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
+                }
+            }
+        }
+    }
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
             return;
         }
+        lazyCleanup();
 
         String currentChannelId = event.getChannel().getId();
         String rawContent = event.getMessage().getContentRaw();
@@ -455,12 +540,18 @@ public class ChatListener extends ListenerAdapter {
 
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
-                int originalGoal = Integer.parseInt(goalMatcher.group(1));
-                int finalGoal = originalGoal;
+                int finalGoal = 1;
+                try {
+                    int originalGoal = Integer.parseInt(goalMatcher.group(1));
+                    finalGoal = originalGoal;
 
-                if (originalGoal > 1 && originalGoal < 5) {
+                    if (originalGoal > 1 && originalGoal < 5) {
+                        finalGoal = 1;
+                        event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** You set the goal to `" + originalGoal + "`, but the RNG Bonus Loot requires a minimum of `5` players! I have automatically converted the goal to `1` so your players don't have to wait unnecessarily. 👾🎀").queue();
+                    }
+                } catch (NumberFormatException e) {
                     finalGoal = 1;
-                    event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** You set the goal to `" + originalGoal + "`, but the RNG Bonus Loot requires a minimum of `5` players! I have automatically converted the goal to `1` so your players don't have to wait unnecessarily. 👾🎀").queue();
+                    event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** The goal number you entered is impossibly huge! I have safely defaulted the goal to `1` to prevent a system crash. 👾🎀").queue();
                 }
 
                 activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
