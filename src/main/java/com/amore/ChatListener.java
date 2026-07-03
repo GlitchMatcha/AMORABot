@@ -336,7 +336,6 @@ public class ChatListener extends ListenerAdapter {
         activeChecks.entrySet().removeIf(entry -> (now - entry.getValue().createdAt) > TimeUnit.HOURS.toMillis(24));
     }
 
-
     private static BufferedImage fetchAvatar(String urlStr) {
         try {
             URL url = new URL(urlStr);
@@ -396,9 +395,9 @@ public class ChatListener extends ListenerAdapter {
 
             g2d.setColor(new Color(30, 27, 36));
             g2d.fillOval(avatarX + 75, avatarY + 75, 34, 34); 
-            g2d.setColor(new Color(242, 63, 67)); // DND Red
+            g2d.setColor(new Color(242, 63, 67)); 
             g2d.fillOval(avatarX + 78, avatarY + 78, 28, 28);
-            g2d.setColor(new Color(30, 27, 36)); // DND Line
+            g2d.setColor(new Color(30, 27, 36)); 
             g2d.fillRect(avatarX + 84, avatarY + 90, 16, 4);
 
             g2d.setColor(Color.WHITE);
@@ -407,7 +406,7 @@ public class ChatListener extends ListenerAdapter {
             if (safeName.isEmpty()) safeName = "Player";
             g2d.drawString(safeName, 20, 230);
 
-            g2d.setColor(new Color(43, 45, 49)); // Inner box color
+            g2d.setColor(new Color(43, 45, 49)); 
             g2d.fillRoundRect(20, 260, 340, 60, 20, 20);
             
             g2d.setColor(Color.WHITE);
@@ -429,10 +428,10 @@ public class ChatListener extends ListenerAdapter {
 
             g2d.setColor(new Color(43, 45, 49));
             g2d.fillRoundRect(20, 385, 160, 35, 17, 17);
-            g2d.setColor(new Color(255, 182, 193)); // Pink text
+            g2d.setColor(new Color(255, 182, 193)); 
             g2d.drawString("💎 " + sparks + " Sparks", 45, 408);
 
-            g2d.setColor(new Color(139, 65, 107)); // Magenta Button
+            g2d.setColor(new Color(139, 65, 107)); 
             g2d.fillRoundRect(20, 450, 340, 45, 15, 15);
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("SansSerif", Font.BOLD, 16));
@@ -448,7 +447,6 @@ public class ChatListener extends ListenerAdapter {
             return null; 
         }
     }
-
 
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
@@ -499,19 +497,17 @@ public class ChatListener extends ListenerAdapter {
                     check.firstReactorId = userId;
                     check.firstReactionTime = System.currentTimeMillis(); 
                     
-                   int currentSparks = db.getSparks(userId);
+                    int currentSparks = db.getSparks(userId);
                     int newTotal = currentSparks + 5;
                     db.updateSparks(userId, newTotal);
+                    
                     user.retrieveProfile().queue(profile -> {
                         String bannerUrl = profile.getBannerUrl();
-                        
                         byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), bannerUrl, newTotal);
-                        
                         String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
 
                         if (cardData != null) {
-                            net.dv8tion.jda.api.utils.FileUpload upload = net.dv8tion.jda.api.utils.FileUpload.fromData(cardData, "profile.png");
-                            
+                            FileUpload upload = FileUpload.fromData(cardData, "profile.png");
                             event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS, 
                                 success -> {}, 
                                 error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
@@ -527,10 +523,11 @@ public class ChatListener extends ListenerAdapter {
                         String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
                         
                         if (cardData != null) {
-                            net.dv8tion.jda.api.utils.FileUpload upload = net.dv8tion.jda.api.utils.FileUpload.fromData(cardData, "profile.png");
+                            FileUpload upload = FileUpload.fromData(cardData, "profile.png");
                             event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS);
                         }
                     });
+                } 
 
                 if (check.allReactors.size() >= check.goal && !check.goalReached) {
                     check.goalReached = true;
