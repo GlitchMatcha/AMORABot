@@ -428,6 +428,7 @@ public class ChatListener extends ListenerAdapter {
             }
         });
     }
+
     @Override
     public void onMessageUpdate(MessageUpdateEvent event) {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
@@ -473,6 +474,13 @@ public class ChatListener extends ListenerAdapter {
 
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
+                
+                if (emojiStr.matches("^<a?:[a-zA-Z0-9_\\-]+:\\d+>$")) {
+                    emojiStr = emojiStr.replaceAll("^<a?:([a-zA-Z0-9_\\-]+):\\d+>$", "$1");
+                } else if (emojiStr.matches("^:[a-zA-Z0-9_\\-]+:$")) {
+                    emojiStr = emojiStr.replaceAll("^:([a-zA-Z0-9_\\-]+):$", "$1");
+                }
+
                 int finalGoal = 1;
                 try {
                     int originalGoal = Integer.parseInt(goalMatcher.group(1));
@@ -540,6 +548,13 @@ public class ChatListener extends ListenerAdapter {
 
             if (emojiMatcher.find() && goalMatcher.find()) {
                 String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
+                
+                if (emojiStr.matches("^<a?:[a-zA-Z0-9_\\-]+:\\d+>$")) {
+                    emojiStr = emojiStr.replaceAll("^<a?:([a-zA-Z0-9_\\-]+):\\d+>$", "$1");
+                } else if (emojiStr.matches("^:[a-zA-Z0-9_\\-]+:$")) {
+                    emojiStr = emojiStr.replaceAll("^:([a-zA-Z0-9_\\-]+):$", "$1");
+                }
+
                 int finalGoal = 1;
                 try {
                     int originalGoal = Integer.parseInt(goalMatcher.group(1));
