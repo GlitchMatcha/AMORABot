@@ -336,6 +336,7 @@ public class ChatListener extends ListenerAdapter {
         activeChecks.entrySet().removeIf(entry -> (now - entry.getValue().createdAt) > TimeUnit.HOURS.toMillis(24));
     }
 
+
     private static BufferedImage fetchAvatar(String urlStr) {
         try {
             URL url = new URL(urlStr);
@@ -362,80 +363,78 @@ public class ChatListener extends ListenerAdapter {
     private static byte[] generateProfileCard(String username, String avatarUrl, String bannerUrl, int sparks) {
         try {
             int width = 380;
-            int height = 520;
+            int height = 480; 
             BufferedImage card = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2d = card.createGraphics();
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            g2d.setColor(new Color(30, 27, 36)); 
+            Color bgColor = new Color(38, 35, 43);
+            Color boxColor = new Color(28, 25, 33);
+            
+            g2d.setColor(bgColor); 
             g2d.fillRoundRect(0, 0, width, height, 30, 30);
 
             if (bannerUrl != null) {
                 BufferedImage banner = fetchAvatar(bannerUrl + "?size=512");
-                g2d.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, width, 140, 30, 30));
-                g2d.drawImage(banner, 0, 0, width, 140, null);
+                g2d.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, width, 120, 30, 30));
+                g2d.drawImage(banner, 0, 0, width, 120, null);
                 g2d.setClip(null);
             } else {
                 g2d.setColor(new Color(139, 65, 107)); 
-                g2d.fillRoundRect(0, 0, width, 140, 30, 30);
-                g2d.fillRect(0, 100, width, 40);
+                g2d.fillRoundRect(0, 0, width, 120, 30, 30);
+                g2d.fillRect(0, 100, width, 20);
             }
 
-            int avatarSize = 110;
+            int avatarSize = 100;
             int avatarX = 20;
-            int avatarY = 80;
+            int avatarY = 60;
             
-            g2d.setColor(new Color(30, 27, 36));
+            g2d.setColor(bgColor);
             g2d.fillOval(avatarX - 8, avatarY - 8, avatarSize + 16, avatarSize + 16);
 
             BufferedImage avatar = fetchAvatar(avatarUrl + "?size=256");
             BufferedImage circleAvatar = makeCircle(avatar);
             g2d.drawImage(circleAvatar, avatarX, avatarY, avatarSize, avatarSize, null);
 
-            g2d.setColor(new Color(30, 27, 36));
-            g2d.fillOval(avatarX + 75, avatarY + 75, 34, 34); 
-            g2d.setColor(new Color(242, 63, 67)); 
-            g2d.fillOval(avatarX + 78, avatarY + 78, 28, 28);
-            g2d.setColor(new Color(30, 27, 36)); 
-            g2d.fillRect(avatarX + 84, avatarY + 90, 16, 4);
-
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("SansSerif", Font.BOLD, 26));
             String safeName = username.replaceAll("[^\\p{L}\\p{N}\\p{Punct}\\s]", "").trim();
             if (safeName.isEmpty()) safeName = "Player";
-            g2d.drawString(safeName, 20, 230);
+            g2d.drawString(safeName, 20, 200);
 
-            g2d.setColor(new Color(43, 45, 49)); 
-            g2d.fillRoundRect(20, 260, 340, 60, 20, 20);
+            g2d.setColor(boxColor); 
+            g2d.fillRoundRect(20, 230, 340, 50, 16, 16);
             
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("SansSerif", Font.BOLD, 14));
-            g2d.drawString("Game Collection", 35, 295);
+            g2d.drawString("Game Collection", 35, 260);
 
-            BufferedImage robloxIcon = fetchAvatar("https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Roblox_player_icon_black.svg/256px-Roblox_player_icon_black.svg.png");
-            g2d.drawImage(robloxIcon, 250, 275, 30, 30, null);
+            g2d.setColor(new Color(45, 42, 50));
+            g2d.fillRoundRect(310, 240, 35, 30, 8, 8);
+            g2d.setColor(new Color(180, 175, 185));
+            g2d.drawString("+3", 317, 260);
 
-            g2d.setColor(new Color(30, 27, 36));
-            g2d.fillRoundRect(310, 275, 35, 30, 10, 10);
+            g2d.setColor(boxColor);
+            g2d.fillRoundRect(20, 300, 150, 32, 16, 16);
+            g2d.setColor(new Color(255, 105, 180)); 
+            g2d.fillOval(28, 308, 16, 16);
             g2d.setColor(Color.WHITE);
-            g2d.drawString("+3", 317, 295);
+            g2d.setFont(new Font("SansSerif", Font.PLAIN, 14));
+            g2d.drawString("Event Winner", 52, 322);
 
-            g2d.setColor(new Color(43, 45, 49));
-            g2d.fillRoundRect(20, 340, 200, 35, 17, 17);
+            g2d.setColor(boxColor);
+            g2d.fillRoundRect(20, 345, 130, 32, 16, 16);
+            g2d.setColor(new Color(88, 101, 242)); 
+            g2d.fillOval(28, 353, 16, 16);
             g2d.setColor(Color.WHITE);
-            g2d.drawString("✨ Event Winner", 45, 363);
+            g2d.drawString(sparks + " Sparks", 52, 367);
 
-            g2d.setColor(new Color(43, 45, 49));
-            g2d.fillRoundRect(20, 385, 160, 35, 17, 17);
-            g2d.setColor(new Color(255, 182, 193)); 
-            g2d.drawString("💎 " + sparks + " Sparks", 45, 408);
-
-            g2d.setColor(new Color(139, 65, 107)); 
-            g2d.fillRoundRect(20, 450, 340, 45, 15, 15);
+            g2d.setColor(new Color(139, 44, 94)); 
+            g2d.fillRoundRect(20, 410, 340, 45, 12, 12);
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("SansSerif", Font.BOLD, 16));
-            g2d.drawString("View Profile", 145, 478);
+            g2d.drawString("View Profile", 145, 438);
 
             g2d.dispose();
 
@@ -447,6 +446,7 @@ public class ChatListener extends ListenerAdapter {
             return null; 
         }
     }
+
 
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
@@ -497,17 +497,19 @@ public class ChatListener extends ListenerAdapter {
                     check.firstReactorId = userId;
                     check.firstReactionTime = System.currentTimeMillis(); 
                     
-                    int currentSparks = db.getSparks(userId);
+                   int currentSparks = db.getSparks(userId);
                     int newTotal = currentSparks + 5;
                     db.updateSparks(userId, newTotal);
-                    
                     user.retrieveProfile().queue(profile -> {
                         String bannerUrl = profile.getBannerUrl();
+                        
                         byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), bannerUrl, newTotal);
+                        
                         String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
 
                         if (cardData != null) {
                             FileUpload upload = FileUpload.fromData(cardData, "profile.png");
+                            
                             event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS, 
                                 success -> {}, 
                                 error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
