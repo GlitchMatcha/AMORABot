@@ -1,5 +1,16 @@
 package com.amore;
 
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import javax.imageio.ImageIO;
+
 import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -20,6 +31,7 @@ import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.utils.FileUpload;
 
 public class ChatListener extends ListenerAdapter {
 
@@ -324,6 +336,86 @@ public class ChatListener extends ListenerAdapter {
         activeChecks.entrySet().removeIf(entry -> (now - entry.getValue().createdAt) > TimeUnit.HOURS.toMillis(24));
     }
 
+
+    private static BufferedImage fetchAvatar(String urlStr) {
+        try {
+            URL url = new URL(urlStr);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+            return ImageIO.read(connection.getInputStream());
+        } catch (Exception e) {
+            return new BufferedImage(256, 256, BufferedImage.TYPE_INT_ARGB);
+        }
+    }
+
+    private static BufferedImage makeCircle(BufferedImage img) {
+        int width = img.getWidth();
+        BufferedImage circle = new BufferedImage(width, width, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = circle.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.fillOval(0, 0, width, width);
+        g2d.setComposite(AlphaComposite.SrcIn);
+        g2d.drawImage(img, 0, 0, null);
+        g2d.dispose();
+        return circle;
+    }
+
+    private static byte[] generateProfileCard(String username, String avatarUrl, int sparks) {
+        try {
+            int width = 600;
+            int height = 350;
+            BufferedImage card = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = card.createGraphics();
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            g2d.setColor(new Color(43, 45, 49));
+            g2d.fillRoundRect(0, 0, width, height, 40, 40);
+
+            g2d.setColor(new Color(255, 182, 193));
+            g2d.fillRoundRect(0, 0, width, 140, 40, 40);
+            g2d.fillRect(0, 100, width, 40); 
+
+            int avatarX = 40;
+            int avatarY = 60; 
+            int avatarSize = 160;
+            int borderThickness = 16;
+            
+            g2d.setColor(new Color(43, 45, 49));
+            g2d.fillOval(avatarX - borderThickness/2, avatarY - borderThickness/2, avatarSize + borderThickness, avatarSize + borderThickness);
+
+            BufferedImage avatar = fetchAvatar(avatarUrl);
+            BufferedImage circleAvatar = makeCircle(avatar);
+            g2d.drawImage(circleAvatar, avatarX, avatarY, avatarSize, avatarSize, null);
+
+            g2d.setColor(new Color(43, 45, 49));
+            g2d.fillOval(avatarX + 110, avatarY + 110, 46, 46); 
+            g2d.setColor(new Color(35, 165, 89)); 
+            g2d.fillOval(avatarX + 116, avatarY + 116, 34, 34);
+
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("SansSerif", Font.BOLD, 36));
+            g2d.drawString(username, 40, 260);
+
+            g2d.setColor(new Color(181, 186, 193));
+            g2d.setFont(new Font("SansSerif", Font.PLAIN, 24));
+            g2d.drawString("🏆 Action: +5 Sparks", 40, 310);
+            
+            g2d.setColor(new Color(255, 182, 193)); 
+            g2d.drawString("💎 Total Sparks: " + sparks, 310, 310);
+
+            g2d.dispose();
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(card, "png", baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null; 
+        }
+    }
+
+
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
@@ -340,16 +432,14 @@ public class ChatListener extends ListenerAdapter {
 
             if (rawReact.equals(savedEmoji)) {
                 isMatch = true;
-            } 
-            else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
+            } else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
                 String cleanSaved = savedEmoji.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
                 String cleanReactName = reactName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
                 
                 if (!cleanSaved.isEmpty() && cleanSaved.equals(cleanReactName)) {
                     isMatch = true;
                 }
-            }
-            else if (!savedEmoji.startsWith("<") && !savedEmoji.startsWith(":")) {
+            } else if (!savedEmoji.startsWith("<") && !savedEmoji.startsWith(":")) {
                 if (rawReact.contains(savedEmoji) || savedEmoji.contains(rawReact)) {
                     isMatch = true;
                 }
@@ -376,19 +466,23 @@ public class ChatListener extends ListenerAdapter {
                     check.firstReactionTime = System.currentTimeMillis(); 
                     
                     int currentSparks = db.getSparks(userId);
-                    db.updateSparks(userId, currentSparks + 5);
+                    int newTotal = currentSparks + 5;
+                    db.updateSparks(userId, newTotal);
 
-                    net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                            .setColor(new java.awt.Color(255, 182, 193)) 
-                            .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*")
-                            .setImage(user.getEffectiveAvatarUrl() + "?size=512");
+                    byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl() + "?size=256", newTotal);
 
-                    event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS, 
-                        success -> {}, 
-                        error -> {
-                            event.getChannel().sendMessage("⚠️ **ERROR:** " + user.getAsMention() + " claimed the shoutout, but my Embeds are disabled in this channel! Please turn on 'Embed Links' for AMORA.").queue();
-                        }
-                    );
+                    if (cardData != null) {
+                        FileUpload upload = FileUpload.fromData(cardData, "profile.png");
+                        event.getChannel().sendFiles(upload).queueAfter(5, TimeUnit.SECONDS, 
+                            success -> {}, 
+                            error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
+                        );
+                    } else {
+                        net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                                .setColor(new java.awt.Color(255, 182, 193)) 
+                                .setDescription("•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + "!** ‹3 ౿  • ᜊ ˚ .\n\n*( `+5 Sparks` )*");
+                        event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS);
+                    }
                 }
 
                 if (check.allReactors.size() >= check.goal && !check.goalReached) {
@@ -442,6 +536,7 @@ public class ChatListener extends ListenerAdapter {
         
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
+
         String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC).replaceAll("\\p{Z}", " ");
         
         String ultraCleanContent = cleanContent.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
@@ -466,7 +561,7 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
@@ -532,7 +627,7 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
