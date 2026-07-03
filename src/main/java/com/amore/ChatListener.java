@@ -332,30 +332,30 @@ public class ChatListener extends ListenerAdapter {
         event.retrieveUser().queue(user -> {
             if (user.isBot()) return;
 
-            String reactionEmoji = event.getEmoji().getFormatted();
-            String reactionName = event.getEmoji().getName();
-            
-            String cleanCheck = check.emojiCode.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
-            String cleanName = reactionName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
-            
-            String rawReact = reactionEmoji.replaceAll("[\\p{Cf}]", "");
-            String rawCheck = check.emojiCode.replaceAll("[\\p{Cf}]", "");
+            String rawReact = event.getEmoji().getFormatted().replace("\uFE0F", "");
+            String reactName = event.getEmoji().getName();
+            String savedEmoji = check.emojiCode;
 
-            boolean isCustomMatch = false;
-            if (!cleanCheck.isEmpty() && !cleanName.isEmpty()) {
-                if (cleanCheck.equals(cleanName)) {
-                    isCustomMatch = true;
+            boolean isMatch = false;
+
+            if (rawReact.equals(savedEmoji)) {
+                isMatch = true;
+            } 
+            else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
+                String cleanSaved = savedEmoji.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+                String cleanReactName = reactName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+                
+                if (!cleanSaved.isEmpty() && cleanSaved.equals(cleanReactName)) {
+                    isMatch = true;
+                }
+            }
+            else if (!savedEmoji.startsWith("<") && !savedEmoji.startsWith(":")) {
+                if (rawReact.contains(savedEmoji) || savedEmoji.contains(rawReact)) {
+                    isMatch = true;
                 }
             }
 
-            boolean isUnicodeMatch = false;
-            if (!rawReact.isEmpty() && !rawCheck.isEmpty()) {
-                if (rawReact.equals(rawCheck) || rawReact.contains(rawCheck) || rawCheck.contains(rawReact)) {
-                    isUnicodeMatch = true;
-                }
-            }
-
-            if (!isCustomMatch && !isUnicodeMatch) {
+            if (!isMatch) {
                 return; 
             }
 
@@ -442,13 +442,10 @@ public class ChatListener extends ListenerAdapter {
         
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
-
-        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                .replaceAll("[*_~`|]", "")
-                .replaceAll("\\p{Z}", " ");
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC).replaceAll("\\p{Z}", " ");
         
-        String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
-        String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
+        String ultraCleanContent = cleanContent.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+        String ultraCleanTrigger = trigger.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
 
         if (ultraCleanContent.contains(ultraCleanTrigger)) {
             
@@ -469,18 +466,12 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_\\-]+:\\d+>|:[a-zA-Z0-9_\\-]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
-                String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
+                String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
                 
-                if (emojiStr.matches("^<a?:[a-zA-Z0-9_\\-]+:\\d+>$")) {
-                    emojiStr = emojiStr.replaceAll("^<a?:([a-zA-Z0-9_\\-]+):\\d+>$", "$1");
-                } else if (emojiStr.matches("^:[a-zA-Z0-9_\\-]+:$")) {
-                    emojiStr = emojiStr.replaceAll("^:([a-zA-Z0-9_\\-]+):$", "$1");
-                }
-
                 int finalGoal = 1;
                 try {
                     int originalGoal = Integer.parseInt(goalMatcher.group(1));
@@ -516,12 +507,10 @@ public class ChatListener extends ListenerAdapter {
         String trigger = db.getBotState("ac_trigger");
         if (trigger == null) trigger = "ACTIVITY CHECK";
 
-        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC)
-                .replaceAll("[*_~`|]", "")
-                .replaceAll("\\p{Z}", " ");
+        String cleanContent = Normalizer.normalize(rawContent, Normalizer.Form.NFKC).replaceAll("\\p{Z}", " ");
         
-        String ultraCleanContent = cleanContent.replaceAll("\\s+", "").toLowerCase();
-        String ultraCleanTrigger = trigger.replaceAll("\\s+", "").toLowerCase();
+        String ultraCleanContent = cleanContent.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+        String ultraCleanTrigger = trigger.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
 
         if (ultraCleanContent.contains(ultraCleanTrigger)) {
             
@@ -543,18 +532,12 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_\\-]+:\\d+>|:[a-zA-Z0-9_\\-]+:|[^\\sA-Za-z0-9_\\p{Punct}]+)").matcher(cleanContent);
+            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + "[\\s\\p{Punct}]*?(<a?:[a-zA-Z0-9_]+:\\d+>|:[a-zA-Z0-9_]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
 
             if (emojiMatcher.find() && goalMatcher.find()) {
-                String emojiStr = emojiMatcher.group(1).replaceAll("[\\p{Cf}]", "");
+                String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
                 
-                if (emojiStr.matches("^<a?:[a-zA-Z0-9_\\-]+:\\d+>$")) {
-                    emojiStr = emojiStr.replaceAll("^<a?:([a-zA-Z0-9_\\-]+):\\d+>$", "$1");
-                } else if (emojiStr.matches("^:[a-zA-Z0-9_\\-]+:$")) {
-                    emojiStr = emojiStr.replaceAll("^:([a-zA-Z0-9_\\-]+):$", "$1");
-                }
-
                 int finalGoal = 1;
                 try {
                     int originalGoal = Integer.parseInt(goalMatcher.group(1));
