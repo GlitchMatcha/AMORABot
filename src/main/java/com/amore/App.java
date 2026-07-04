@@ -64,6 +64,7 @@ public class App {
 
             jda.awaitReady();
             System.out.println("✦ AMORA Bot is officially ONLINE 24/7!");
+            StatusRotator.start(jda);
 
             jda.updateCommands()
                 .addCommands(
