@@ -122,7 +122,8 @@ public class LoungeManager {
             "Take a moment to appreciate the aesthetic of the world around you.",
             "If you can't find the sunshine, be the sunshine.",
             "Every challenge is just a puzzle waiting for your specific genius.",
-            "Your journey is uniquely yours. Embrace every single pixel of it."
+            "Your journey is uniquely yours. Embrace every single pixel of it.",
+            "DEAD Fish: you've met your death, been through countLess cycles. Awaiting for yOur bitter sweet end, waking up to an island suRrounded by clouds with calming voicEs, Leading you to the path Of faith, Variating by the sins. The tEst that proves Your goOd in the soUl of what you've created."
     );
 
     public static void start(JDA jda) {
