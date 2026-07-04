@@ -17,6 +17,9 @@ public class LoungeManager {
     private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
     private static final String ROLES_CHANNEL_ID = System.getenv("ROLES_CHANNEL_ID");
 
+    private static volatile long lastQuoteMessageId = 0L;
+    private static volatile long lastRoleMessageId = 0L;
+
     private static final List<String> QUOTES = Arrays.asList(
             "No act of kindness, no matter how small, is ever wasted.",
             "Your potential is endless. Go do what you were created to do.",
@@ -116,14 +119,14 @@ public class LoungeManager {
             "When you share your knowledge, you multiply your impact.",
             "Find comfort in the process, not just the finished project.",
             "Keep your standards high and your compassion even higher.",
-            "You hold the blueprint to your own happiness.",
+            "You hold the blueprint to your happiness.",
             "Never apologize for being enthusiastic about the things you love.",
             "Harmony is created when different voices finally sing together.",
             "Take a moment to appreciate the aesthetic of the world around you.",
             "If you can't find the sunshine, be the sunshine.",
             "Every challenge is just a puzzle waiting for your specific genius.",
             "Your journey is uniquely yours. Embrace every single pixel of it.",
-            "DEAD Fish: you've met your death, been through countLess cycles. Awaiting for yOur bitter sweet end, waking up to an island suRrounded by clouds with calming voicEs, Leading you to the path Of faith, Variating by the sins. The tEst that proves Your goOd in the soUl of what you've created."
+            "DEAD Fish Quote: you've met your death, been through countLess cycles. Awaiting for yOur bitter sweet end, waking up to an island suRrounded by clouds with calming voicEs, Leading you to the path Of faith, Variating by the sins. The tEst that proves Your goOd in the soUl of what you've created."
     );
 
     public static void start(JDA jda) {
@@ -138,6 +141,10 @@ public class LoungeManager {
             try {
                 TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
                 if (lounge != null) {
+                    if (lastQuoteMessageId != 0L) {
+                        lounge.deleteMessageById(lastQuoteMessageId).queue(success -> {}, error -> {}); 
+                    }
+
                     String randomQuote = QUOTES.get(ThreadLocalRandom.current().nextInt(QUOTES.size()));
                     
                     EmbedBuilder embed = new EmbedBuilder()
@@ -146,7 +153,9 @@ public class LoungeManager {
                             .setDescription("*\u201C" + randomQuote + "\u201D*")
                             .setFooter("A little spark to keep you glowing ✨", null);
                     
-                    lounge.sendMessageEmbeds(embed.build()).queue();
+                    lounge.sendMessageEmbeds(embed.build()).queue(message -> {
+                        lastQuoteMessageId = message.getIdLong();
+                    });
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -157,6 +166,10 @@ public class LoungeManager {
             try {
                 TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
                 if (lounge != null) {
+                    if (lastRoleMessageId != 0L) {
+                        lounge.deleteMessageById(lastRoleMessageId).queue(success -> {}, error -> {});
+                    }
+
                     String roleChannelMention = (ROLES_CHANNEL_ID != null && !ROLES_CHANNEL_ID.isBlank()) 
                             ? "<#" + ROLES_CHANNEL_ID + ">" 
                             : "the roles channel";
@@ -170,7 +183,9 @@ public class LoungeManager {
                                     "*Choose your path and let's keep building something amazing together!*")
                             .setFooter("AMORA Automated Lounge Services", null);
                             
-                    lounge.sendMessageEmbeds(embed.build()).queue();
+                    lounge.sendMessageEmbeds(embed.build()).queue(message -> {
+                        lastRoleMessageId = message.getIdLong();
+                    });
                 }
             } catch (Exception e) {
                 e.printStackTrace();
