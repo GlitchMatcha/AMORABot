@@ -1619,7 +1619,7 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
                 
-                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(100);
+                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(5000);
 
                 if (songs.isEmpty()) {
                     event.reply("❌ The AMORA song pool is empty right now. Add one with `/song add`.")
@@ -1627,24 +1627,27 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                StringBuilder desc = new StringBuilder();
+                StringBuilder fileContent = new StringBuilder();
+                fileContent.append("✦ AMORA COMPLETE SONG POOL DIRECTORY ✦\n");
+                fileContent.append("Total Active Songs: ").append(songs.size()).append("\n");
+                fileContent.append("=========================================\n\n");
+
                 for (DatabaseManager.SongSuggestionRecord song : songs) {
-                    String entry = "`#" + song.songId + "` **" + truncateText(song.title, 30) + "** — " + truncateText(song.artist, 20) + " (<@" + song.addedBy + ">)\n";
-                    
-                    if (desc.length() + entry.length() > 4000) {
-                        desc.append("\n*...and more. (Discord display limit reached!)*");
-                        break;
-                    }
-                    desc.append(entry);
+                    fileContent.append("[ ID: #").append(song.songId).append(" ]\n");
+                    fileContent.append("Title   : ").append(song.title).append("\n");
+                    fileContent.append("Artist  : ").append(song.artist).append("\n");
+                    fileContent.append("Link    : ").append(song.link).append("\n");
+                    fileContent.append("Added By: ").append(song.addedBy).append("\n");
+                    fileContent.append("-----------------------------------------\n");
                 }
 
-                EmbedBuilder embed = new EmbedBuilder()
-                        .setColor(new Color(186, 85, 211))
-                        .setTitle("✦ AMORA SONG POOL DIRECTORY ✦")
-                        .setDescription(desc.toString())
-                        .setFooter("Showing up to 100 recent active song submissions", null);
+                byte[] fileBytes = fileContent.toString().getBytes(StandardCharsets.UTF_8);
+                FileUpload upload = FileUpload.fromData(fileBytes, "AMORA_Song_Directory.txt");
 
-                event.replyEmbeds(embed.build()).setEphemeral(true).queue();
+                event.reply("📂 **AMORA Song Directory**\nBecause the database is so large, I have compiled the entire active song pool into this text file. \n\n*Tip: Open it and use `Ctrl+F` to instantly search for the song ID you need to remove!*")
+                        .addFiles(upload)
+                        .setEphemeral(true) 
+                        .queue();
                 return;
             }
 
