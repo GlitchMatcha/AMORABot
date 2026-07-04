@@ -65,7 +65,8 @@ public class App {
             jda.awaitReady();
             System.out.println("✦ AMORA Bot is officially ONLINE 24/7!");
             StatusRotator.start(jda);
-
+            LoungeManager.start(jda);
+            
             jda.updateCommands()
                 .addCommands(
                     Commands.slash("pull", "Spend 50 Sparks to pull a random Gacha reward!"),
