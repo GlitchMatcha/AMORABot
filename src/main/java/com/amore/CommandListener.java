@@ -57,6 +57,7 @@ public class CommandListener extends ListenerAdapter {
     private static final String ADDSPARKS_ROLE_IDS = System.getenv("ADDSPARKS_ROLE_IDS");
     private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
     private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
+    private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -119,6 +120,16 @@ public class CommandListener extends ListenerAdapter {
         return true;
     }
 
+    private boolean isMusicStaff(SlashCommandInteractionEvent event) {
+        if (event.getMember() == null) return false;
+        if (event.getMember().hasPermission(Permission.ADMINISTRATOR)) return true;
+        
+        if (MUSIC_ADMIN_ROLE_IDS != null && !MUSIC_ADMIN_ROLE_IDS.isBlank()) {
+            return hasAnyAllowedRole(event, MUSIC_ADMIN_ROLE_IDS);
+        }
+        return false;
+    }
+
     private String getExactItemName(String inventory, String searchTerm) {
         if (inventory == null || inventory.isEmpty()) {
             return null;
@@ -131,89 +142,86 @@ public class CommandListener extends ListenerAdapter {
         }
         return null;
     }
-    // Add these helper methods inside CommandListener.java
 
-private String normalizeSongLink(String raw) {
-    if (raw == null) {
-        return "";
-    }
-
-    String link = raw.trim();
-    if (link.isBlank()) {
-        return "";
-    }
-
-    try {
-        URI uri = URI.create(link);
-        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        if (host.startsWith("www.")) {
-            host = host.substring(4);
+    private String normalizeSongLink(String raw) {
+        if (raw == null) {
+            return "";
         }
 
-        if (host.equals("youtu.be")) {
-            String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
-            if (!videoId.isBlank()) {
-                return "https://www.youtube.com/watch?v=" + videoId;
+        String link = raw.trim();
+        if (link.isBlank()) {
+            return "";
+        }
+
+        try {
+            URI uri = URI.create(link);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            if (host.startsWith("www.")) {
+                host = host.substring(4);
             }
-        }
 
-        if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
-            String videoId = getQueryParam(uri.getRawQuery(), "v");
-            if (videoId != null && !videoId.isBlank()) {
-                return "https://www.youtube.com/watch?v=" + videoId;
-            }
-        }
-
-        if (host.equals("open.spotify.com")) {
-            String path = uri.getPath() == null ? "" : uri.getPath().trim();
-            if (path.startsWith("/track/")) {
-                String trackId = path.substring("/track/".length());
-                int slashIndex = trackId.indexOf('/');
-                if (slashIndex != -1) {
-                    trackId = trackId.substring(0, slashIndex);
-                }
-                if (!trackId.isBlank()) {
-                    return "https://open.spotify.com/track/" + trackId;
+            if (host.equals("youtu.be")) {
+                String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
+                if (!videoId.isBlank()) {
+                    return "https://www.youtube.com/watch?v=" + videoId;
                 }
             }
+
+            if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
+                String videoId = getQueryParam(uri.getRawQuery(), "v");
+                if (videoId != null && !videoId.isBlank()) {
+                    return "https://www.youtube.com/watch?v=" + videoId;
+                }
+            }
+
+            if (host.equals("open.spotify.com")) {
+                String path = uri.getPath() == null ? "" : uri.getPath().trim();
+                if (path.startsWith("/track/")) {
+                    String trackId = path.substring("/track/".length());
+                    int slashIndex = trackId.indexOf('/');
+                    if (slashIndex != -1) {
+                        trackId = trackId.substring(0, slashIndex);
+                    }
+                    if (!trackId.isBlank()) {
+                        return "https://open.spotify.com/track/" + trackId;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
         }
-    } catch (Exception ignored) {
+
+        return link;
     }
 
-    return link;
-}
+    private String getQueryParam(String rawQuery, String key) {
+        if (rawQuery == null || rawQuery.isBlank()) {
+            return null;
+        }
 
+        for (String pair : rawQuery.split("&")) {
+            int idx = pair.indexOf('=');
+            if (idx <= 0) {
+                continue;
+            }
 
+            String paramKey = pair.substring(0, idx);
+            String paramValue = pair.substring(idx + 1);
 
-private String getQueryParam(String rawQuery, String key) {
-    if (rawQuery == null || rawQuery.isBlank()) {
+            if (paramKey.equals(key)) {
+                return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
+            }
+        }
+
         return null;
     }
 
-    for (String pair : rawQuery.split("&")) {
-        int idx = pair.indexOf('=');
-        if (idx <= 0) {
-            continue;
-        }
-
-        String paramKey = pair.substring(0, idx);
-        String paramValue = pair.substring(idx + 1);
-
-        if (paramKey.equals(key)) {
-            return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
-        }
+    private boolean isSupportedSongLink(String link) {
+        String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
+        return normalized.startsWith("https://open.spotify.com/track/")
+                || normalized.startsWith("https://www.youtube.com/watch?v=");
     }
 
-    return null;
-}
-
-private boolean isSupportedSongLink(String link) {
-    String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
-    return normalized.startsWith("https://open.spotify.com/track/")
-            || normalized.startsWith("https://www.youtube.com/watch?v=");
-}
-
-private boolean isYouTubePlaylistLink(String link) {
+    private boolean isYouTubePlaylistLink(String link) {
         if (link == null || link.isBlank()) {
             return false;
         }
@@ -229,45 +237,43 @@ private boolean isYouTubePlaylistLink(String link) {
         return false;
     }
 
-private String detectSongSource(String link) {
-    String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
-    if (normalized.contains("spotify")) {
-        return "Spotify";
+    private String detectSongSource(String link) {
+        String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
+        if (normalized.contains("spotify")) {
+            return "Spotify";
+        }
+        return "YouTube";
     }
-    return "YouTube";
-}
 
-private String truncateText(String text, int maxLength) {
-    if (text == null) {
-        return "";
+    private String truncateText(String text, int maxLength) {
+        if (text == null) {
+            return "";
+        }
+        if (text.length() <= maxLength) {
+            return text;
+        }
+        return text.substring(0, Math.max(0, maxLength - 3)) + "...";
     }
-    if (text.length() <= maxLength) {
-        return text;
-    }
-    return text.substring(0, Math.max(0, maxLength - 3)) + "...";
-}
 
-private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-    EmbedBuilder eb = new EmbedBuilder()
-            .setColor(new Color(255, 105, 180))
-            .setTitle(title)
-            .setDescription(
-                    "🎵 **" + song.title + "**\n" +
-                    "by **" + song.artist + "**\n\n" +
-                    "🎧 **Listen here:**\n" + song.link + "\n\n" +
-                    "🫶 **Suggested by:** <@" + song.addedBy + ">"
-            )
-            .addField("Source", song.source, true)
-            .addField("Song ID", "#" + song.songId, true)
-            .setFooter(footer, null);
-            String artworkUrl = fetchSongArtwork(song.link);
+    private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
+        EmbedBuilder eb = new EmbedBuilder()
+                .setColor(new Color(255, 105, 180))
+                .setTitle(title)
+                .setDescription(
+                        "🎵 **" + song.title + "**\n" +
+                        "by **" + song.artist + "**\n\n" +
+                        "🎧 **Listen here:**\n" + song.link + "\n\n" +
+                        "🫶 **Suggested by:** <@" + song.addedBy + ">"
+                )
+                .addField("Source", song.source, true)
+                .addField("Song ID", "#" + song.songId, true)
+                .setFooter(footer, null);
+        String artworkUrl = fetchSongArtwork(song.link);
         if (artworkUrl != null && !artworkUrl.isBlank()) {
             eb.setImage(artworkUrl);
         }
         return eb;
-}
-
-
+    }
 
     private String removeItem(String inventory, String exactItemName) {
         return removeMultipleItems(inventory, exactItemName, 1);
@@ -503,191 +509,194 @@ private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, S
         }
         return count;
     }
+    
     public static String fetchSongArtwork(String link) {
-    try {
-        String normalized = link.toLowerCase();
+        try {
+            String normalized = link.toLowerCase();
 
-        if (normalized.contains("spotify.com/")) {
-            return fetchSpotifyThumbnail(link);
-        }
-
-        if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
-            return fetchYouTubeThumbnail(link);
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-
-    return null;
-}
-
-private static String fetchSpotifyThumbnail(String link) {
-    try {
-        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-        String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(5000);
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
+            if (normalized.contains("spotify.com/")) {
+                return fetchSpotifyThumbnail(link);
             }
 
-            JSONObject json = new JSONObject(response.toString());
-            return json.optString("thumbnail_url", null);
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
-        return null;
-    }
-}
-
-public static String fetchYouTubeThumbnail(String link) {
-    try {
-        String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-        String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(5000);
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
+            if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
+                return fetchYouTubeThumbnail(link);
             }
-
-            JSONObject json = new JSONObject(response.toString());
-            return json.optString("thumbnail_url", null);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-    } catch (Exception e) {
-        e.printStackTrace();
+
         return null;
     }
-}
+
+    private static String fetchSpotifyThumbnail(String link) {
+        try {
+            String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
+            String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
+
+            HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+
+                JSONObject json = new JSONObject(response.toString());
+                return json.optString("thumbnail_url", null);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static String fetchYouTubeThumbnail(String link) {
+        try {
+            String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
+            String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
+
+            HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+
+                JSONObject json = new JSONObject(response.toString());
+                return json.optString("thumbnail_url", null);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
     
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
+
         if (event.getName().equals("pull")) {
-    String pullUserId = event.getUser().getId();
-    final int pullCost = 50;
+            String pullUserId = event.getUser().getId();
+            final int pullCost = 50;
 
-    List<String> ultraRarePool = Arrays.asList(
-            "Celestial Bloom",
-            "Velvet Halo",
-            "Starlit Promise",
-            "Rose Sovereign",
-            "Prism Heart"
-    );
+            List<String> ultraRarePool = Arrays.asList(
+                    "Celestial Bloom",
+                    "Velvet Halo",
+                    "Starlit Promise",
+                    "Rose Sovereign",
+                    "Prism Heart"
+            );
 
-    List<String> rarePool = Arrays.asList(
-            "Moon Ribbon",
-            "Silver Petal",
-            "Neon Kiss",
-            "Crystal Verse",
-            "Lunar Echo",
-            "Scarlet Pulse"
-    );
+            List<String> rarePool = Arrays.asList(
+                    "Moon Ribbon",
+                    "Silver Petal",
+                    "Neon Kiss",
+                    "Crystal Verse",
+                    "Lunar Echo",
+                    "Scarlet Pulse"
+            );
 
-    List<String> commonPool = Arrays.asList(
-            "Soft Echo",
-            "Night Polaroid",
-            "Sugar Frame",
-            "Paper Heart",
-            "Glow Ticket",
-            "Dream Static",
-            "Velvet Note",
-            "Cloud Sticker"
-    );
+            List<String> commonPool = Arrays.asList(
+                    "Soft Echo",
+                    "Night Polaroid",
+                    "Sugar Frame",
+                    "Paper Heart",
+                    "Glow Ticket",
+                    "Dream Static",
+                    "Velvet Note",
+                    "Cloud Sticker"
+            );
 
-    String reward;
-    String rarity;
-    Color embedColor;
-    int remainingSparks;
-    int newPity;
-    int oldPity;
-    boolean pityTriggered;
+            String reward;
+            String rarity;
+            Color embedColor;
+            int remainingSparks;
+            int newPity;
+            int oldPity;
+            boolean pityTriggered;
 
-    synchronized (this) {
-        int currentSparks = db.getSparks(pullUserId);
-        int currentPity = db.getPity(pullUserId);
+            synchronized (this) {
+                int currentSparks = db.getSparks(pullUserId);
+                int currentPity = db.getPity(pullUserId);
 
-        if (currentSparks < pullCost) {
-            event.replyEmbeds(new EmbedBuilder()
-                    .setColor(Color.RED)
-                    .setTitle("✦ PULL FAILED ✦")
-                    .setDescription("You need **50 Sparks** to perform a pull.")
-                    .addField("Current Balance", "`" + currentSparks + " Sparks`", true)
-                    .addField("Required", "`50 Sparks`", true)
-                    .setFooter("AMORA Gacha System", null)
-                    .build()).setEphemeral(true).queue();
+                if (currentSparks < pullCost) {
+                    event.replyEmbeds(new EmbedBuilder()
+                            .setColor(Color.RED)
+                            .setTitle("✦ PULL FAILED ✦")
+                            .setDescription("You need **50 Sparks** to perform a pull.")
+                            .addField("Current Balance", "`" + currentSparks + " Sparks`", true)
+                            .addField("Required", "`50 Sparks`", true)
+                            .setFooter("AMORA Gacha System", null)
+                            .build()).setEphemeral(true).queue();
+                    return;
+                }
+
+                Random random = new Random();
+                double roll = random.nextDouble();
+
+                oldPity = currentPity;
+                pityTriggered = currentPity >= 9;
+
+                if (pityTriggered || roll < 0.05) {
+                    reward = ultraRarePool.get(random.nextInt(ultraRarePool.size()));
+                    rarity = "ULTRA RARE";
+                    embedColor = new Color(255, 215, 0);
+                    newPity = 0;
+                } else if (roll < 0.25) {
+                    reward = rarePool.get(random.nextInt(rarePool.size()));
+                    rarity = "RARE";
+                    embedColor = new Color(186, 85, 211);
+                    newPity = currentPity + 1;
+                } else {
+                    reward = commonPool.get(random.nextInt(commonPool.size()));
+                    rarity = "COMMON";
+                    embedColor = new Color(70, 130, 180);
+                    newPity = currentPity + 1;
+                }
+
+                db.updateSparks(pullUserId, currentSparks - pullCost);
+                db.updatePity(pullUserId, newPity);
+                db.addInventoryItem(pullUserId, reward);
+
+                remainingSparks = currentSparks - pullCost;
+            }
+
+            EmbedBuilder pullEmbed = new EmbedBuilder()
+                    .setColor(embedColor)
+                    .setTitle("✦ GACHA PULL COMPLETE ✦")
+                    .setDescription(
+                            "The AMORA signal responded to your Sparks and delivered a new reward.\n\n" +
+                            "*Fate flickered. Something rare may have answered back.*"
+                    )
+                    .addField("🎁 Reward", "`" + reward + "`", false)
+                    .addField("🌟 Rarity", rarity, true)
+                    .addField("⚡ Sparks Left", "`" + remainingSparks + " Sparks`", true)
+                    .addField("🎯 Pity", "`" + oldPity + " → " + newPity + "`", true)
+                    .setFooter(pityTriggered ? "Pity activated on this pull." : "AMORA Gacha System", null);
+
+            event.replyEmbeds(pullEmbed.build()).queue();
+
+            sendAuditLog(event.getGuild(), "Gacha Pull",
+                    event.getUser().getAsMention() + " pulled **" + reward + "** [" + rarity + "] for `"
+                            + pullCost + " Sparks`.",
+                    embedColor);
             return;
         }
 
-        Random random = new Random();
-        double roll = random.nextDouble();
-
-        oldPity = currentPity;
-        pityTriggered = currentPity >= 9;
-
-        if (pityTriggered || roll < 0.05) {
-            reward = ultraRarePool.get(random.nextInt(ultraRarePool.size()));
-            rarity = "ULTRA RARE";
-            embedColor = new Color(255, 215, 0);
-            newPity = 0;
-        } else if (roll < 0.25) {
-            reward = rarePool.get(random.nextInt(rarePool.size()));
-            rarity = "RARE";
-            embedColor = new Color(186, 85, 211);
-            newPity = currentPity + 1;
-        } else {
-            reward = commonPool.get(random.nextInt(commonPool.size()));
-            rarity = "COMMON";
-            embedColor = new Color(70, 130, 180);
-            newPity = currentPity + 1;
-        }
-
-        db.updateSparks(pullUserId, currentSparks - pullCost);
-        db.updatePity(pullUserId, newPity);
-        db.addInventoryItem(pullUserId, reward);
-
-        remainingSparks = currentSparks - pullCost;
-    }
-
-    EmbedBuilder pullEmbed = new EmbedBuilder()
-            .setColor(embedColor)
-            .setTitle("✦ GACHA PULL COMPLETE ✦")
-            .setDescription(
-                    "The AMORA signal responded to your Sparks and delivered a new reward.\n\n" +
-                    "*Fate flickered. Something rare may have answered back.*"
-            )
-            .addField("🎁 Reward", "`" + reward + "`", false)
-            .addField("🌟 Rarity", rarity, true)
-            .addField("⚡ Sparks Left", "`" + remainingSparks + " Sparks`", true)
-            .addField("🎯 Pity", "`" + oldPity + " → " + newPity + "`", true)
-            .setFooter(pityTriggered ? "Pity activated on this pull." : "AMORA Gacha System", null);
-
-    event.replyEmbeds(pullEmbed.build()).queue();
-
-    sendAuditLog(event.getGuild(), "Gacha Pull",
-            event.getUser().getAsMention() + " pulled **" + reward + "** [" + rarity + "] for `"
-                    + pullCost + " Sparks`.",
-            embedColor);
-    return;
-}
         if (event.getName().equals("balance")) {
             int currentSparks = db.getSparks(userId);
             int currentPoints = db.getPoints(userId);
@@ -744,6 +753,7 @@ public static String fetchYouTubeThumbnail(String link) {
             event.replyEmbeds(profileEmbed.build()).queue();
             return;
         }
+
         if (event.getName().equals("activitycheck")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("❌ You do not have clearance to configure templates.").setEphemeral(true).queue();
@@ -773,6 +783,7 @@ public static String fetchYouTubeThumbnail(String link) {
                     new Color(0, 250, 154));
             return;
         }
+
         if (event.getName().equals("inventory")) {
             String rawInventory = db.getInventory(userId);
 
@@ -1408,7 +1419,8 @@ public static String fetchYouTubeThumbnail(String link) {
                             + amount + " Sparks` for **" + reason + "**.",
                     new Color(255, 215, 0));
         }
-                       if (event.getName().equals("song")) {
+
+        if (event.getName().equals("song")) {
             String subcommand = event.getSubcommandName();
 
             if (subcommand == null) {
@@ -1467,6 +1479,12 @@ public static String fetchYouTubeThumbnail(String link) {
             }
 
             if (subcommand.equals("importplaylist")) {
+                if (!isMusicStaff(event)) {
+                    event.reply("❌ Only AMORA Staff can mass-import playlists.")
+                            .setEphemeral(true).queue();
+                    return;
+                }
+                
                 String playlistLink = event.getOption("link").getAsString().trim();
 
                 if (playlistLink.isBlank()) {
@@ -1494,7 +1512,6 @@ public static String fetchYouTubeThumbnail(String link) {
                             int skippedInvalid = 0;
                             Set<String> seenThisImport = new HashSet<>();
                             
-                            // 🛑 BATCH LISTS
                             List<String> bulkLinks = new ArrayList<>();
                             List<String> bulkTitles = new ArrayList<>();
                             List<String> bulkArtists = new ArrayList<>();
@@ -1519,7 +1536,6 @@ public static String fetchYouTubeThumbnail(String link) {
                                     continue;
                                 }
 
-                                // 🛑 ADD TO BATCH INSTEAD OF SAVING IMMEDIATELY
                                 bulkLinks.add(normalizedLink);
                                 bulkTitles.add(imported.title());
                                 bulkArtists.add(imported.artist());
@@ -1531,7 +1547,6 @@ public static String fetchYouTubeThumbnail(String link) {
                                 }
                             }
 
-                            // 🛑 FIRE THE BULK IMPORTER
                             int added = 0;
                             if (!bulkLinks.isEmpty()) {
                                 added = db.bulkAddSongSuggestions(userId, bulkLinks, bulkTitles, bulkArtists, "YouTube");
@@ -1577,11 +1592,10 @@ public static String fetchYouTubeThumbnail(String link) {
                 }
 
                 boolean isOwner = userId.equals(song.addedBy);
-                boolean isAdmin = event.getMember() != null
-                        && event.getMember().hasPermission(Permission.ADMINISTRATOR);
+                boolean isStaff = isMusicStaff(event);
 
-                if (!isOwner && !isAdmin) {
-                    event.reply("❌ You can only remove songs you added yourself unless you are an admin.")
+                if (!isOwner && !isStaff) {
+                    event.reply("❌ You can only remove songs you added yourself unless you are AMORA Staff.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1599,7 +1613,13 @@ public static String fetchYouTubeThumbnail(String link) {
             }
 
             if (subcommand.equals("list")) {
-                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(10);
+                if (!isMusicStaff(event)) {
+                    event.reply("❌ Only AMORA Staff can view the full song pool directory.")
+                            .setEphemeral(true).queue();
+                    return;
+                }
+                
+                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(100);
 
                 if (songs.isEmpty()) {
                     event.reply("❌ The AMORA song pool is empty right now. Add one with `/song add`.")
@@ -1609,19 +1629,20 @@ public static String fetchYouTubeThumbnail(String link) {
 
                 StringBuilder desc = new StringBuilder();
                 for (DatabaseManager.SongSuggestionRecord song : songs) {
-                    desc.append("`#").append(song.songId).append("` ")
-                            .append("**").append(truncateText(song.title, 40)).append("**")
-                            .append(" — ").append(truncateText(song.artist, 30))
-                            .append("\n↳ ").append(song.source)
-                            .append(" • added by <@").append(song.addedBy).append(">")
-                            .append("\n\n");
+                    String entry = "`#" + song.songId + "` **" + truncateText(song.title, 30) + "** — " + truncateText(song.artist, 20) + " (<@" + song.addedBy + ">)\n";
+                    
+                    if (desc.length() + entry.length() > 4000) {
+                        desc.append("\n*...and more. (Discord display limit reached!)*");
+                        break;
+                    }
+                    desc.append(entry);
                 }
 
                 EmbedBuilder embed = new EmbedBuilder()
                         .setColor(new Color(186, 85, 211))
-                        .setTitle("✦ AMORA SONG POOL ✦")
+                        .setTitle("✦ AMORA SONG POOL DIRECTORY ✦")
                         .setDescription(desc.toString())
-                        .setFooter("Showing the 10 most recent active song submissions", null);
+                        .setFooter("Showing up to 100 recent active song submissions", null);
 
                 event.replyEmbeds(embed.build()).setEphemeral(true).queue();
                 return;
@@ -1643,11 +1664,8 @@ public static String fetchYouTubeThumbnail(String link) {
             }
 
             if (subcommand.equals("postnow")) {
-                boolean isAdmin = event.getMember() != null
-                        && event.getMember().hasPermission(Permission.ADMINISTRATOR);
-
-                if (!isAdmin) {
-                    event.reply("❌ Only admins can force-post the daily song.")
+                if (!isMusicStaff(event)) {
+                    event.reply("❌ Only AMORA Staff can force-post the daily song.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1673,8 +1691,8 @@ public static String fetchYouTubeThumbnail(String link) {
             event.reply("❌ Unknown song subcommand.")
                     .setEphemeral(true).queue();
             return;
-            }
         }
+    }
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
