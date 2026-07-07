@@ -21,6 +21,7 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 public class App {
 
     private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
+    private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
     private static final int DAILY_SONG_POST_HOUR_UTC = parseUtcHour(System.getenv("DAILY_SONG_POST_HOUR_UTC"));
     private static final ScheduledExecutorService DAILY_SONG_SCHEDULER = Executors.newSingleThreadScheduledExecutor();
 
@@ -239,6 +240,13 @@ public class App {
 
             if (lockForToday) {
                 db.setBotState("daily_song_last_post_date", LocalDate.now(ZoneOffset.UTC).toString());
+            }
+
+            if (LOUNGE_CHANNEL_ID != null && !LOUNGE_CHANNEL_ID.isBlank()) {
+                TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
+                if (lounge != null) {
+                    lounge.sendMessage("🎶 ✦ **A new Song of the Day just dropped!** ✦\nHead over to <#" + DAILY_SONG_CHANNEL_ID + "> to listen to **" + song.title + "** by **" + song.artist + "**! ✨").queue();
+                }
             }
 
             return true;
