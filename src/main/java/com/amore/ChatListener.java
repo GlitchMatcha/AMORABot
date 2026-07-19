@@ -580,7 +580,7 @@ public class ChatListener extends ListenerAdapter {
                     });
                 } 
 
-                if (check.allReactors.size() >= check.goal && !check.goalReached) {
+               if (check.allReactors.size() >= check.goal && !check.goalReached) {
                     check.goalReached = true;
                     List<String> lotteryPool = new ArrayList<>(check.allReactors);
                     if (check.firstReactorId != null) {
@@ -591,10 +591,11 @@ public class ChatListener extends ListenerAdapter {
 
                     if (numWinners > 0) {
                         java.util.Collections.shuffle(lotteryPool);
+                        
+                        List<String> finalWinners = new ArrayList<>(lotteryPool.subList(0, numWinners));
                         StringBuilder winnersMentions = new StringBuilder();
 
-                        for (int i = 0; i < numWinners; i++) {
-                            String winnerId = lotteryPool.get(i);
+                        for (String winnerId : finalWinners) {
                             winnersMentions.append("<@").append(winnerId).append("> ");
                             
                             int cur = db.getSparks(winnerId);
@@ -609,7 +610,29 @@ public class ChatListener extends ListenerAdapter {
                         long delayMs = 9000L - elapsed;
                         if (delayMs < 0) delayMs = 0; 
 
-                        event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS);
+                        event.getChannel().sendMessageEmbeds(lotteryEmbed.build()).queueAfter(delayMs, TimeUnit.MILLISECONDS, message -> {
+                            
+                            for (String winnerId : finalWinners) {
+                                event.getJDA().retrieveUserById(winnerId).queue(wUser -> {
+                                    wUser.retrieveProfile().queue(profile -> {
+                                        String bannerUrl = profile.getBannerUrl();
+                                        int updatedSparks = db.getSparks(winnerId);
+                                        byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
+                                        if (cardData != null) {
+                                            FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **RNG Loot Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                        }
+                                    }, error -> {
+                                        int updatedSparks = db.getSparks(winnerId);
+                                        byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), null, updatedSparks);
+                                        if (cardData != null) {
+                                            FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **RNG Loot Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                        }
+                                    });
+                                });
+                            }
+                        });
                     }
 
                     activeChecks.remove(event.getMessageId());
