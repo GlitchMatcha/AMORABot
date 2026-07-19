@@ -656,7 +656,7 @@ public class ChatListener extends ListenerAdapter {
 
                         net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
                                 .setColor(new java.awt.Color(138, 43, 226)) // Purple Aesthetic 
-                                .setDescription("✧ ˚ · .  ⊹ ࣪ ﹏𓊈 \n\n" +
+                                .setDescription("✧ ˚ · . **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** ⊹ ࣪ ﹏𓊈 \n\n" +
                                                 "🎊 **Secondary Active Check Winners:** " + winnersMentions.toString() + "\n" +
                                                 "*(Chosen randomly from the party!)*\n\n" +
                                                 "🎐 `+3 Sparks` & the Active Check Winner role have been awarded! ⋆.ೃ࿔");
@@ -672,7 +672,8 @@ public class ChatListener extends ListenerAdapter {
                                     wUser.retrieveProfile().queue(profile -> {
                                         String bannerUrl = profile.getBannerUrl();
                                         int updatedSparks = db.getSparks(winnerId);
-                                                                                byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
+                                        
+                                        byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
                                             event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
