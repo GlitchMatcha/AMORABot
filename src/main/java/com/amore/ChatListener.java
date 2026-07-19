@@ -594,7 +594,7 @@ public class ChatListener extends ListenerAdapter {
                         
                         List<String> finalWinners = new ArrayList<>(lotteryPool.subList(0, numWinners));
                         StringBuilder winnersMentions = new StringBuilder();
-                        DatabaseManager db = DatabaseManager.getInstance();
+                        
                         net.dv8tion.jda.api.entities.Guild guild = event.getGuild();
 
                         for (String winnerId : finalWinners) {
@@ -656,7 +656,7 @@ public class ChatListener extends ListenerAdapter {
 
                         net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
                                 .setColor(new java.awt.Color(138, 43, 226)) // Purple Aesthetic 
-                                .setDescription("✧ ˚ · . **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** ⊹ ࣪ ﹏𓊈 \n\n" +
+                                .setDescription("✧ ˚ · .  ⊹ ࣪ ﹏𓊈 \n\n" +
                                                 "🎊 **Secondary Active Check Winners:** " + winnersMentions.toString() + "\n" +
                                                 "*(Chosen randomly from the party!)*\n\n" +
                                                 "🎐 `+3 Sparks` & the Active Check Winner role have been awarded! ⋆.ೃ࿔");
