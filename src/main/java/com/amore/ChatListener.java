@@ -594,17 +594,72 @@ public class ChatListener extends ListenerAdapter {
                         
                         List<String> finalWinners = new ArrayList<>(lotteryPool.subList(0, numWinners));
                         StringBuilder winnersMentions = new StringBuilder();
+                        DatabaseManager db = DatabaseManager.getInstance();
+                        net.dv8tion.jda.api.entities.Guild guild = event.getGuild();
 
                         for (String winnerId : finalWinners) {
                             winnersMentions.append("<@").append(winnerId).append("> ");
                             
                             int cur = db.getSparks(winnerId);
                             db.updateSparks(winnerId, cur + 3);
+
+                            int currentWins = db.getAcWins(winnerId);
+                            int newWins = currentWins + 1;
+                            db.updateAcWins(winnerId, newWins);
+
+                            guild.retrieveMemberById(winnerId).queue(member -> {
+                                String todaysWinnerId = System.getenv("ROLE_TODAYS_WINNER");
+                                if (todaysWinnerId != null) {
+                                    net.dv8tion.jda.api.entities.Role r = guild.getRoleById(todaysWinnerId);
+                                    if(r != null) {
+                                        guild.addRoleToMember(member, r).queue();
+                                        db.scheduleRoleRemoval(winnerId, todaysWinnerId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(2));
+                                    }
+                                }
+
+                                if (newWins == 10) {
+                                    String mostActiveId = System.getenv("ROLE_MOST_ACTIVE");
+                                    if (mostActiveId != null) {
+                                        net.dv8tion.jda.api.entities.Role r = guild.getRoleById(mostActiveId);
+                                        if(r != null) {
+                                            guild.addRoleToMember(member, r).queue();
+                                            db.scheduleRoleRemoval(winnerId, mostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                                            event.getChannel().sendMessage("🎉 ✦ **MILESTONE REACHED!** ✦ " + member.getAsMention() + " just hit 10 Active Check wins and unlocked the **MOST ACTIVE** role!").queue();
+                                        }
+                                    }
+                                }
+
+                                if (newWins == 25) {
+                                    String superMostActiveId = System.getenv("ROLE_SUPER_MOST_ACTIVE");
+                                    if (superMostActiveId != null) {
+                                        net.dv8tion.jda.api.entities.Role r = guild.getRoleById(superMostActiveId);
+                                        if(r != null) {
+                                            guild.addRoleToMember(member, r).queue();
+                                            db.scheduleRoleRemoval(winnerId, superMostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                                            event.getChannel().sendMessage("🔥 ✦ **MILESTONE REACHED!** ✦ " + member.getAsMention() + " is unstoppable! 25 Wins grants them the **SUPER MOST ACTIVE** role!").queue();
+                                        }
+                                    }
+                                }
+
+                                if (newWins == 50) {
+                                    String frenzyKillerId = System.getenv("ROLE_FRENZY_KILLER");
+                                    if (frenzyKillerId != null) {
+                                        net.dv8tion.jda.api.entities.Role r = guild.getRoleById(frenzyKillerId);
+                                        if(r != null) {
+                                            guild.addRoleToMember(member, r).queue();
+                                            event.getChannel().sendMessage("👑 ✦ **LEGENDARY ACHIEVEMENT!** ✦ " + member.getAsMention() + " just claimed their 50th Active Check win! They have permanently earned the **ACTIVE CHECK FRENZY KILLER** title!").queue();
+                                        }
+                                    }
+                                }
+                            }, error -> {});
                         }
 
                         net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                                .setColor(new java.awt.Color(255, 182, 193))
-                                .setDescription("🌸 ⋆｡°✩ **ＳＴＡＧＥ ＣＬＥＡＲＥＤ!** Bonus RNG Loot (`+3 Sparks`): " + winnersMentions.toString() + " 🍬 ᯓ★");
+                                .setColor(new java.awt.Color(138, 43, 226)) // Purple Aesthetic 
+                                .setDescription("✧ ˚ · .  ⊹ ࣪ ﹏𓊈 \n\n" +
+                                                "🎊 **Secondary Active Check Winners:** " + winnersMentions.toString() + "\n" +
+                                                "*(Chosen randomly from the party!)*\n\n" +
+                                                "🎐 `+3 Sparks` & the Active Check Winner role have been awarded! ⋆.ೃ࿔");
 
                         long elapsed = System.currentTimeMillis() - check.firstReactionTime;
                         long delayMs = 9000L - elapsed;
@@ -617,17 +672,17 @@ public class ChatListener extends ListenerAdapter {
                                     wUser.retrieveProfile().queue(profile -> {
                                         String bannerUrl = profile.getBannerUrl();
                                         int updatedSparks = db.getSparks(winnerId);
-                                        byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
+                                                                                byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
-                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **RNG Loot Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
                                         }
                                     }, error -> {
                                         int updatedSparks = db.getSparks(winnerId);
                                         byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), null, updatedSparks);
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
-                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **RNG Loot Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
                                         }
                                     });
                                 });
