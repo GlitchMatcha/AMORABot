@@ -71,7 +71,7 @@ public class ChatListener extends ListenerAdapter {
     private static final int RECENT_PROMPT_MEMORY = 12;
     private static final int PROMPT_REWARD_SLOTS = 3;
     private static final int PROMPT_REWARD_AMOUNT = 1;
-    private static final int MIN_PROMPT_REPLY_LENGTH = 8;
+    private static final int MIN_PROMPT_REPLY_LENGTH = 2; 
 
     private static volatile long lastQuestionAt = 0L;
     private static volatile long lastSparkDropAt = 0L;
@@ -500,11 +500,60 @@ public class ChatListener extends ListenerAdapter {
                    int currentSparks = db.getSparks(userId);
                     int newTotal = currentSparks + 5;
                     db.updateSparks(userId, newTotal);
+                    
+                    int currentWins = db.getAcWins(userId); 
+                    int newWins = currentWins + 1;
+                    db.updateAcWins(userId, newWins);
+
+                    net.dv8tion.jda.api.entities.Guild guild = event.getGuild();
+                    
+                    String todaysWinnerId = System.getenv("ROLE_TODAYS_WINNER");
+                    if (todaysWinnerId != null) {
+                        net.dv8tion.jda.api.entities.Role r = guild.getRoleById(todaysWinnerId);
+                        if(r != null) {
+                            guild.addRoleToMember(user, r).queue();
+                            db.scheduleRoleRemoval(userId, todaysWinnerId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(2));
+                        }
+                    }
+
+                    if (newWins == 10) {
+                        String mostActiveId = System.getenv("ROLE_MOST_ACTIVE");
+                        if (mostActiveId != null) {
+                            net.dv8tion.jda.api.entities.Role r = guild.getRoleById(mostActiveId);
+                            if(r != null) {
+                                guild.addRoleToMember(user, r).queue();
+                                db.scheduleRoleRemoval(userId, mostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                                event.getChannel().sendMessage("🎉 ✦ **MILESTONE REACHED!** ✦ " + user.getAsMention() + " just hit 10 Active Check wins and unlocked the **MOST ACTIVE** role!").queue();
+                            }
+                        }
+                    }
+
+                    if (newWins == 25) {
+                        String superMostActiveId = System.getenv("ROLE_SUPER_MOST_ACTIVE");
+                        if (superMostActiveId != null) {
+                            net.dv8tion.jda.api.entities.Role r = guild.getRoleById(superMostActiveId);
+                            if(r != null) {
+                                guild.addRoleToMember(user, r).queue();
+                                db.scheduleRoleRemoval(userId, superMostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                                event.getChannel().sendMessage("🔥 ✦ **MILESTONE REACHED!** ✦ " + user.getAsMention() + " is unstoppable! 25 Wins grants them the **SUPER MOST ACTIVE** role!").queue();
+                            }
+                        }
+                    }
+
+                    if (newWins == 50) {
+                        String frenzyKillerId = System.getenv("ROLE_FRENZY_KILLER");
+                        if (frenzyKillerId != null) {
+                            net.dv8tion.jda.api.entities.Role r = guild.getRoleById(frenzyKillerId);
+                            if(r != null) {
+                                guild.addRoleToMember(user, r).queue();
+                                event.getChannel().sendMessage("👑 ✦ **LEGENDARY ACHIEVEMENT!** ✦ " + user.getAsMention() + " just claimed their 50th Active Check win! They have permanently earned the **ACTIVE CHECK FRENZY KILLER** title!").queue();
+                            }
+                        }
+                    }
+                    
                     user.retrieveProfile().queue(profile -> {
                         String bannerUrl = profile.getBannerUrl();
-                        
                         byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), bannerUrl, newTotal);
-                        
                         String shoutoutText = "•  ᜊ ˚ .  ౨ **Shout out to " + user.getAsMention() + ", check out their profile! ‹3** ౿  • ᜊ ˚ .";
 
                         if (cardData != null) {
@@ -796,8 +845,9 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
 
-        if (activePrompt.messageId != 0L && event.getMessage().getIdLong() == activePrompt.messageId) {
-            return;
+        if (event.getMessage().getMessageReference() == null || 
+            event.getMessage().getMessageReference().getMessageIdLong() != activePrompt.messageId) {
+            return; 
         }
 
         String userId = event.getAuthor().getId();
@@ -1049,7 +1099,8 @@ public class ChatListener extends ListenerAdapter {
                         + prompt + "\n\n"
                         + "First **" + PROMPT_REWARD_SLOTS + "** unique valid replies earn **"
                         + PROMPT_REWARD_AMOUNT + " Spark** each.\n"
-                        + "Reply before it fades <t:" + unix + ":R>.")
+                        + "*(You MUST use Discord's 'Reply' feature on this message to answer!)*\n"
+                        + "Fades <t:" + unix + ":R>.")
                 .queue(message -> {
                     activePrompt.messageId = message.getIdLong();
                     message.delete().queueAfter(QUESTION_LIFETIME_MS, TimeUnit.MILLISECONDS);
