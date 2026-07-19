@@ -878,17 +878,21 @@ public class CommandListener extends ListenerAdapter {
             Color color = Color.WHITE;
 
             if (category.equals("wealth")) {
-                title = "💰 SERVER WEALTH RANKINGS";
+                title = "AM0RA SERVER WEALTH RANKINGS";
                 color = new Color(255, 215, 0);
                 topList = db.getTopWealth();
             } else if (category.equals("bounties")) {
-                title = "🎯 TOP DIRECTIVE HUNTERS";
+                title = "AM0RA TOP DIRECTIVE HUNTERS";
                 color = new Color(0, 250, 154);
                 topList = db.getTopBounties();
             } else if (category.equals("urgent")) {
-                title = "🚨 TOP URGENT RESPONDERS";
+                title = "AM0RA TOP URGENT RESPONDERS";
                 color = new Color(255, 69, 0);
                 topList = db.getTopUrgent();
+            } else if (category.equals("acwins")) {
+                title = "⏱ AM0RA TOP ACTIVE CHECK WINNERS";
+                color = new Color(138, 43, 226);
+                topList = db.getTopAcWins();
             }
 
             StringBuilder desc = new StringBuilder();

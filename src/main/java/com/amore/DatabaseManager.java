@@ -15,6 +15,15 @@ public class DatabaseManager {
     private static DatabaseManager instance;
     private Connection connection;
 
+    public static class ExpiredRole {
+        public final String userId;
+        public final String roleId;
+        public ExpiredRole(String userId, String roleId) {
+            this.userId = userId;
+            this.roleId = roleId;
+        }
+    }
+
     public static class PendingTradeSetupRecord {
         public final String setupId;
         public final String senderId;
@@ -80,50 +89,49 @@ public class DatabaseManager {
     }
 
     private DatabaseManager() {
-    if (URL == null || URL.isBlank()) {
-        throw new IllegalStateException("DATABASE_URL environment variable is not set!");
+        if (URL == null || URL.isBlank()) {
+            throw new IllegalStateException("DATABASE_URL environment variable is not set!");
+        }
+        connect();
+        if (connection == null) {
+            throw new IllegalStateException("Failed to establish PostgreSQL connection.");
+        }
+        initializeDatabase();
     }
 
-    connect();
-
-    if (connection == null) {
-        throw new IllegalStateException("Failed to establish PostgreSQL connection.");
-    }
-
-    initializeDatabase();
-    }
     public static synchronized DatabaseManager getInstance() {
-    if (instance == null) {
-        instance = new DatabaseManager();
+        if (instance == null) {
+            instance = new DatabaseManager();
+        }
+        return instance;
     }
-    return instance;
-    }
+
     private void connect() {
-    try {
-        Class.forName("org.postgresql.Driver");
-        connection = DriverManager.getConnection(URL);
-        System.out.println("✦ PostgreSQL Database Connected Successfully.");
-    } catch (Exception e) {
-        System.out.println("❌ Failed to connect to the PostgreSQL database.");
-        e.printStackTrace();
-        connection = null;
+        try {
+            Class.forName("org.postgresql.Driver");
+            connection = DriverManager.getConnection(URL);
+            System.out.println("✦ PostgreSQL Database Connected Successfully.");
+        } catch (Exception e) {
+            System.out.println("❌ Failed to connect to the PostgreSQL database.");
+            e.printStackTrace();
+            connection = null;
+        }
     }
-}
 
     private void initializeDatabase() {
-    if (connection == null) {
-        throw new IllegalStateException("Cannot initialize database because connection is null.");
-    }
+        if (connection == null) {
+            throw new IllegalStateException("Cannot initialize database because connection is null.");
+        }
 
-    String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
-            + "user_id TEXT PRIMARY KEY, "
-            + "sparks INTEGER DEFAULT 0, "
-            + "points INTEGER DEFAULT 0, "
-            + "inventory TEXT DEFAULT '', "
-            + "pity INTEGER DEFAULT 0, "
-            + "bounties_cleared INTEGER DEFAULT 0, "
-            + "urgent_cleared INTEGER DEFAULT 0"
-            + ");";
+        String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
+                + "user_id TEXT PRIMARY KEY, "
+                + "sparks INTEGER DEFAULT 0, "
+                + "points INTEGER DEFAULT 0, "
+                + "inventory TEXT DEFAULT '', "
+                + "pity INTEGER DEFAULT 0, "
+                + "bounties_cleared INTEGER DEFAULT 0, "
+                + "urgent_cleared INTEGER DEFAULT 0"
+                + ");";
 
         String createShopTable = "CREATE TABLE IF NOT EXISTS shop_items ("
                 + "item_name TEXT PRIMARY KEY, "
@@ -153,6 +161,7 @@ public class DatabaseManager {
                 + "ingredient TEXT NOT NULL, "
                 + "expires_at BIGINT NOT NULL"
                 + ");";
+
         String createSongSuggestionsTable = "CREATE TABLE IF NOT EXISTS song_suggestions ("
                 + "song_id SERIAL PRIMARY KEY, "
                 + "added_by TEXT NOT NULL, "
@@ -170,6 +179,13 @@ public class DatabaseManager {
                 + "state_value TEXT NOT NULL"
                 + ");";
 
+        String createRoleTimersTable = "CREATE TABLE IF NOT EXISTS role_timers ("
+                + "user_id TEXT, "
+                + "role_id TEXT, "
+                + "expires_at BIGINT NOT NULL, "
+                + "PRIMARY KEY (user_id, role_id)"
+                + ");";
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
@@ -178,11 +194,18 @@ public class DatabaseManager {
             stmt.execute(createPendingForgesTable);
             stmt.execute(createSongSuggestionsTable);
             stmt.execute(createBotStateTable);
-            System.out.println("✦ Core tables, Shop Vault, session tables, and music tables verified (PostgreSQL).");
+            stmt.execute(createRoleTimersTable);
+            
+            try {
+                stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;");
+            } catch (SQLException ignored) { } 
+            
+            System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
-        e.printStackTrace();
+            e.printStackTrace();
+        }
     }
-}
+
     public void cleanupExpiredSessions() {
         long now = System.currentTimeMillis();
         String deletePendingTradeSetups = "DELETE FROM pending_trade_setups WHERE expires_at < ?;";
@@ -205,14 +228,90 @@ public class DatabaseManager {
 
     private void createNewUser(String userId) {
         String query = "INSERT INTO users "
-                + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared) "
-                + "VALUES (?, 0, 0, '', 0, 0, 0) ON CONFLICT (user_id) DO NOTHING;";
+                + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared, ac_wins) "
+                + "VALUES (?, 0, 0, '', 0, 0, 0, 0) ON CONFLICT (user_id) DO NOTHING;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    public void scheduleRoleRemoval(String userId, String roleId, long expiresAt) {
+        String query = "INSERT INTO role_timers (user_id, role_id, expires_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT (user_id, role_id) DO UPDATE SET expires_at = EXCLUDED.expires_at;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, roleId);
+            pstmt.setLong(3, expiresAt);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<ExpiredRole> getExpiredRoles(long currentTimeMillis) {
+        List<ExpiredRole> expired = new ArrayList<>();
+        String query = "SELECT user_id, role_id FROM role_timers WHERE expires_at <= ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setLong(1, currentTimeMillis);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    expired.add(new ExpiredRole(rs.getString("user_id"), rs.getString("role_id")));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return expired;
+    }
+
+    public void deleteRoleTimer(String userId, String roleId) {
+        String query = "DELETE FROM role_timers WHERE user_id = ? AND role_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, roleId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public int getAcWins(String userId) {
+        String query = "SELECT ac_wins FROM users WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt("ac_wins");
+                createNewUser(userId);
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public void updateAcWins(String userId, int newWins) {
+        getAcWins(userId);
+        String query = "UPDATE users SET ac_wins = ? WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, newWins);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public List<String> getTopAcWins() {
+        List<String> top = new ArrayList<>();
+        String query = "SELECT user_id, ac_wins FROM users WHERE ac_wins > 0 ORDER BY ac_wins DESC LIMIT 10;";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            int rank = 1;
+            while (rs.next() && rank <= 10) {
+                top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
+                        + rs.getInt("ac_wins") + " Check Wins**");
+                rank++;
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return top;
     }
 
     public void incrementBountyStats(String userId, boolean isUrgent) {

@@ -67,6 +67,7 @@ public class App {
             System.out.println("✦ AMORA Bot is officially ONLINE 24/7!");
             StatusRotator.start(jda);
             LoungeManager.start(jda);
+            RoleManager.start(jda);
             
             jda.updateCommands()
                 .addCommands(
@@ -77,9 +78,10 @@ public class App {
 
                     Commands.slash("leaderboard", "View the Top 10 rankings in the server")
                         .addOptions(new OptionData(OptionType.STRING, "category", "Which leaderboard to view", true)
-                            .addChoice("💰 Wealth & Assets", "wealth")
-                            .addChoice("🎯 Standard Directives", "bounties")
-                            .addChoice("🚨 Urgent Directives", "urgent")
+                            .addChoice("Wealth & Assets", "wealth")
+                            .addChoice("Standard Directives", "bounties")
+                            .addChoice("Urgent Directives", "urgent")
+                            .addChoice("⏱ Active Check Wins", "acwins") 
                         ),
 
                     Commands.slash("addsparks", "Admin: Add sparks to a user")
