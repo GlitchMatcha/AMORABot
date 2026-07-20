@@ -784,8 +784,8 @@ public class ChatListener extends ListenerAdapter {
                     
                     String msgContent = event.getMessage().getContentRaw().toLowerCase();
                     
-                    boolean isExplicitListing = msgContent.matches("(?i).*(price|cost|selling)\\s*[:]?\\s*\\d+.*") 
-                                             || msgContent.matches("(?i).*\\d+\\s*(robux|r\\$).*")
+                    boolean isExplicitListing = msgContent.matches("(?is).*(price|cost|selling)\\s*[:\\-]?\\s*\\d+.*") 
+                                             || msgContent.matches("(?is).*\\d+\\s*(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>).*")
                                              || msgContent.contains("🛒") 
                                              || msgContent.contains("🏷️");
                     
@@ -822,7 +822,6 @@ public class ChatListener extends ListenerAdapter {
                             pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + event.getAuthor().getId(), "🎭 Ping Faces"));
                         }
 
-                        // 4. Send the pop-up prompt if they have valid tags!
                         if (!pingButtons.isEmpty()) {
                             pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.secondary("shopnoping_" + event.getAuthor().getId(), "❌ No Ping"));
                             
