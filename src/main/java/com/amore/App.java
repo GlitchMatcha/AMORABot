@@ -84,6 +84,18 @@ public class App {
                             .addChoice("⏱ Active Check Wins", "acwins") 
                         ),
 
+                    Commands.slash("shop", "AMORA Creator Marketplace")
+                        .addSubcommands(
+                            new SubcommandData("evaluate", "Director Only: Run the monthly evaluation")
+                                .addOption(OptionType.INTEGER, "points", "Points to award creators with 0 sales", true)
+                        ),
+
+                    Commands.slash("order", "Place an official order with an AMORA Creator")
+                        .addOption(OptionType.USER, "creator", "The creator you are buying from", true)
+                        .addOption(OptionType.STRING, "item", "What are you buying? (e.g., Goth Outfit)", true)
+                        .addOption(OptionType.STRING, "payment", "Your payment offer (e.g., 400 Robux)", true)
+                        .addOption(OptionType.STRING, "details", "Any specific notes or references?", false),
+
                     Commands.slash("addsparks", "Admin: Add sparks to a user")
                         .addOption(OptionType.USER, "target", "The user receiving the Sparks", true)
                         .addOption(OptionType.INTEGER, "amount", "Amount of Sparks to give", true),

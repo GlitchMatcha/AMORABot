@@ -186,6 +186,12 @@ public class DatabaseManager {
                 + "PRIMARY KEY (user_id, role_id)"
                 + ");";
 
+        String createCreatorStatsTable = "CREATE TABLE IF NOT EXISTS creator_stats ("
+                + "user_id TEXT PRIMARY KEY, "
+                + "listed_this_month INTEGER DEFAULT 0, "
+                + "sold_this_month INTEGER DEFAULT 0"
+                + ");";
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
@@ -195,6 +201,7 @@ public class DatabaseManager {
             stmt.execute(createSongSuggestionsTable);
             stmt.execute(createBotStateTable);
             stmt.execute(createRoleTimersTable);
+            stmt.execute(createCreatorStatsTable);
             
             try {
                 stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;");
@@ -965,5 +972,43 @@ public class DatabaseManager {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    public void incrementCreatorListed(String userId) {
+        String query = "INSERT INTO creator_stats (user_id, listed_this_month, sold_this_month) VALUES (?, 1, 0) "
+                + "ON CONFLICT (user_id) DO UPDATE SET listed_this_month = creator_stats.listed_this_month + 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void incrementCreatorSold(String userId) {
+        String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + 1 WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public List<String> runMonthlyCreatorEvaluation(int compensationPoints) {
+        List<String> logs = new ArrayList<>();
+        String selectQuery = "SELECT user_id FROM creator_stats WHERE listed_this_month > 0 AND sold_this_month = 0;";
+        String resetQuery = "UPDATE creator_stats SET listed_this_month = 0, sold_this_month = 0;";
+
+        try (Statement stmt = connection.createStatement(); 
+             ResultSet rs = stmt.executeQuery(selectQuery)) {
+            
+            while (rs.next()) {
+                String uid = rs.getString("user_id");
+                int currentPoints = getPoints(uid);
+                updatePoints(uid, currentPoints + compensationPoints);
+                logs.add("<@" + uid + "> (Compensated `" + compensationPoints + " PTS`)");
+            }
+            
+            stmt.executeUpdate(resetQuery); 
+        } catch (SQLException e) { e.printStackTrace(); }
+        
+        return logs;
     }
 }
