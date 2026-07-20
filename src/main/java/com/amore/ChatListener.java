@@ -770,7 +770,7 @@ public class ChatListener extends ListenerAdapter {
         lazyCleanup();
 
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
-        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
+        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2"); 
 
         if (event.getChannel().getType().isThread()) {
             net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = event.getChannel().asThreadChannel();
@@ -784,16 +784,52 @@ public class ChatListener extends ListenerAdapter {
                     
                     String msgContent = event.getMessage().getContentRaw().toLowerCase();
                     
-                    boolean isExplicitListing = msgContent.contains("price:") 
-                                             || msgContent.contains("cost:") 
-                                             || msgContent.contains("selling:")
-                                             || msgContent.contains("🛒")
+                    boolean isExplicitListing = msgContent.matches("(?i).*(price|cost|selling)\\s*[:]?\\s*\\d+.*") 
+                                             || msgContent.matches("(?i).*\\d+\\s*(robux|r\\$).*")
+                                             || msgContent.contains("🛒") 
                                              || msgContent.contains("🏷️");
                     
                     if (isExplicitListing) {
                         DatabaseManager.getInstance().incrementCreatorListed(event.getAuthor().getId());
                         
                         event.getMessage().addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
+                        
+                        List<net.dv8tion.jda.api.entities.channel.forums.ForumTag> appliedTags = thread.getAppliedTags();
+                        List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
+                        
+                        String pingOutfits = System.getenv("PING_OUTFITS");
+                        String pingLyrics = System.getenv("PING_LYRICS");
+                        String pingFaces = System.getenv("PING_FACES");
+
+                        boolean canPingOutfits = false;
+                        boolean canPingLyrics = false;
+                        boolean canPingFaces = false;
+
+                        for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
+                            String tagName = tag.getName().toLowerCase();
+                            if (tagName.contains("outfit")) canPingOutfits = true;
+                            if (tagName.contains("lyric")) canPingLyrics = true;
+                            if (tagName.contains("face")) canPingFaces = true;
+                        }
+
+                        if (canPingOutfits && pingOutfits != null) {
+                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + event.getAuthor().getId(), "👗 Ping Outfits"));
+                        }
+                        if (canPingLyrics && pingLyrics != null) {
+                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingLyrics + "_" + event.getAuthor().getId(), "📝 Ping Lyrics"));
+                        }
+                        if (canPingFaces && pingFaces != null) {
+                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + event.getAuthor().getId(), "🎭 Ping Faces"));
+                        }
+
+                        // 4. Send the pop-up prompt if they have valid tags!
+                        if (!pingButtons.isEmpty()) {
+                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.secondary("shopnoping_" + event.getAuthor().getId(), "❌ No Ping"));
+                            
+                            event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ✦ **Listing tracked!** Do you want to notify your subscribers about this drop?")
+                                 .addActionRow(pingButtons)
+                                 .queue();
+                        }
                     }
                 }
             }

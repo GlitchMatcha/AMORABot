@@ -1947,7 +1947,33 @@ public class CommandListener extends ListenerAdapter {
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
             return;
         }
+        if (componentId.startsWith("shopping_")) {
+            String[] parts = componentId.split("_");
+            String roleId = parts[1];
+            String creatorId = parts[2];
 
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the shop owner can ping for this drop!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! 🛒✨").queue();
+
+            event.editMessage("✅ **Subscribers notified!**").setComponents().queue();
+            return;
+        }
+
+        if (componentId.startsWith("shopnoping_")) {
+            String creatorId = componentId.substring("shopnoping_".length());
+
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the shop owner can make this choice!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.editMessage("✅ **Silent drop logged.** No ping was sent.").setComponents().queue();
+            return;
+        }
         if (componentId.startsWith("orderdecline_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
