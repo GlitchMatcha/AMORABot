@@ -784,8 +784,8 @@ public class ChatListener extends ListenerAdapter {
                     
                     String msgContent = event.getMessage().getContentRaw().toLowerCase();
                     
-                    boolean isExplicitListing = msgContent.matches("(?is).*(price|cost|selling)\\s*[:\\-]?\\s*\\d+.*") 
-                                             || msgContent.matches("(?is).*\\d+\\s*(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>).*")
+                    boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)\\s*[:\\-]?\\s*\\d+").matcher(msgContent).find() 
+                                             || java.util.regex.Pattern.compile("(?i)\\d+\\s*[^\\s]*(robux|rbx|r\\$)[^\\s]*").matcher(msgContent).find()
                                              || msgContent.contains("🛒") 
                                              || msgContent.contains("🏷️");
                     
