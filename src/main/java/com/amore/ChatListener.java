@@ -655,7 +655,7 @@ public class ChatListener extends ListenerAdapter {
                         }
 
                         net.dv8tion.jda.api.EmbedBuilder lotteryEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                                .setColor(new java.awt.Color(138, 43, 226)) // Purple Aesthetic 
+                                .setColor(new java.awt.Color(138, 43, 226)) 
                                 .setDescription("✧ ˚ · .  ⊹ ࣪ ﹏𓊈 \n\n" +
                                                 "🎊 **Secondary Active Check Winners:** " + winnersMentions.toString() + "\n" +
                                                 "*(Chosen randomly from the party!)*\n\n" +
@@ -768,6 +768,36 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
         lazyCleanup();
+
+        String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
+        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
+
+        if (event.getChannel().getType().isThread()) {
+            net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = event.getChannel().asThreadChannel();
+            String parentId = thread.getParentChannel().getId();
+            
+            boolean isShopForum = (shopForumId1 != null && parentId.equals(shopForumId1)) || 
+                                  (shopForumId2 != null && parentId.equals(shopForumId2));
+
+            if (isShopForum) {
+                if (event.getAuthor().getId().equals(thread.getOwnerId())) {
+                    
+                    String msgContent = event.getMessage().getContentRaw().toLowerCase();
+                    
+                    boolean isExplicitListing = msgContent.contains("price:") 
+                                             || msgContent.contains("cost:") 
+                                             || msgContent.contains("selling:")
+                                             || msgContent.contains("🛒")
+                                             || msgContent.contains("🏷️");
+                    
+                    if (isExplicitListing) {
+                        DatabaseManager.getInstance().incrementCreatorListed(event.getAuthor().getId());
+                        
+                        event.getMessage().addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
+                    }
+                }
+            }
+        }
 
         String currentChannelId = event.getChannel().getId();
         String rawContent = event.getMessage().getContentRaw();
