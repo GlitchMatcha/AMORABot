@@ -58,6 +58,7 @@ public class CommandListener extends ListenerAdapter {
     private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
     private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
+    private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -588,6 +589,67 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
+
+        if (event.getName().equals("order")) {
+            if (ORDER_CHANNEL_ID != null && !event.getChannel().getId().equals(ORDER_CHANNEL_ID)) {
+                event.reply("❌ **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
+                return;
+            }
+
+            User creator = event.getOption("creator").getAsUser();
+            String item = event.getOption("item").getAsString();
+            String payment = event.getOption("payment").getAsString();
+            String details = event.getOption("details") != null ? event.getOption("details").getAsString() : "None provided.";
+
+            if (creator.isBot() || creator.getId().equals(event.getUser().getId())) {
+                event.reply("❌ You cannot place an order with yourself or a bot.").setEphemeral(true).queue();
+                return;
+            }
+
+            EmbedBuilder orderEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193))
+                    .setTitle("🛒 NEW COMMISSION ORDER")
+                    .setDescription("A new marketplace request has been submitted by " + event.getUser().getAsMention() + "!")
+                    .addField("Requested Creator", creator.getAsMention(), true)
+                    .addField("Item / Service", item, true)
+                    .addField("Payment Offer", payment, true)
+                    .addField("Order Notes", details, false)
+                    .setFooter("AMORA Designated Order System", null);
+
+            event.reply(creator.getAsMention() + " ✦ You have a new order request!")
+                 .addEmbeds(orderEmbed.build())
+                 .addActionRow(
+                     Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept & Log Sale"),
+                     Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
+                 ).queue();
+            return;
+        }
+
+        if (event.getName().equals("shop")) {
+            if ("evaluate".equals(event.getSubcommandName())) {
+                if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                    event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                    return;
+                }
+                
+                int compPoints = event.getOption("points").getAsInt();
+                List<String> compensated = db.runMonthlyCreatorEvaluation(compPoints);
+                
+                StringBuilder log = new StringBuilder("The monthly evaluation is complete. All shop counters have been reset to 0.\n\n**Compensated Creators (0 Sales):**\n");
+                if (compensated.isEmpty()) {
+                    log.append("_Everyone sold an item this month! No compensation needed._");
+                } else {
+                    for (String c : compensated) log.append("• ").append(c).append("\n");
+                }
+
+                event.replyEmbeds(new EmbedBuilder()
+                        .setColor(new Color(0, 250, 154))
+                        .setTitle("✦ MONTHLY CREATOR EVALUATION ✦")
+                        .setDescription(log.toString())
+                        .build()).queue();
+                return;
+            }
+        }
 
         if (event.getName().equals("pull")) {
             String pullUserId = event.getUser().getId();
@@ -1864,6 +1926,46 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+
+        if (componentId.startsWith("orderaccept_")) {
+            String[] parts = componentId.split("_");
+            String creatorId = parts[1];
+            String buyerId = parts[2];
+            
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the requested creator can accept this order!").setEphemeral(true).queue();
+                return;
+            }
+
+            db.incrementCreatorSold(creatorId); 
+            
+            EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            accepted.setColor(new Color(50, 205, 50));
+            accepted.addField("✅ STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
+            
+            event.editMessageEmbeds(accepted.build()).setComponents().queue(); 
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
+            return;
+        }
+
+        if (componentId.startsWith("orderdecline_")) {
+            String[] parts = componentId.split("_");
+            String creatorId = parts[1];
+            String buyerId = parts[2];
+            
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the requested creator can decline this order!").setEphemeral(true).queue();
+                return;
+            }
+
+            EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            declined.setColor(Color.RED);
+            declined.addField("❌ STATUS: DECLINED", "The creator is currently unable to take this order.", false);
+            
+            event.editMessageEmbeds(declined.build()).setComponents().queue();
+            event.getChannel().sendMessage("⚠️ <@" + buyerId + "> Your order was respectfully declined. The creator may be too busy right now!").queue();
+            return;
+        }
 
         if (componentId.equals("bjoin_button")) {
             if (!event.getChannel().getType().isThread()) {
