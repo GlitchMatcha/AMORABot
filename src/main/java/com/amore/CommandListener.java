@@ -178,7 +178,7 @@ public class CommandListener extends ListenerAdapter {
             if (host.equals("open.spotify.com")) {
                 String path = uri.getPath() == null ? "" : uri.getPath().trim();
                 if (path.startsWith("/track/")) {
-                    String trackId = path.substring("/track/".length());
+                    String trackId = path.substring("/track/length()");
                     int slashIndex = trackId.indexOf('/');
                     if (slashIndex != -1) {
                         trackId = trackId.substring(0, slashIndex);
@@ -1927,6 +1927,60 @@ public class CommandListener extends ListenerAdapter {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
 
+        if (componentId.startsWith("shopping_")) {
+            String[] parts = componentId.split("_");
+            String roleId = parts[1];
+            String creatorId = parts[2];
+
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the shop owner can ping for this drop!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! 🛒✨")
+                 .addActionRow(Button.danger("deleteping_" + creatorId, "🗑️ Undo Ping"))
+                 .queue();
+
+            List<Button> newButtons = new ArrayList<>();
+            for (Button b : event.getMessage().getButtons()) {
+                if (b.getId() != null && b.getId().equals(componentId)) {
+                    newButtons.add(b.asDisabled().withLabel("✅ Sent"));
+                } else {
+                    newButtons.add(b);
+                }
+            }
+            
+            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
+                 .setActionRow(newButtons)
+                 .queue();
+            return;
+        }
+
+        if (componentId.startsWith("shopnoping_")) {
+            String creatorId = componentId.substring("shopnoping_".length());
+
+            if (!event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the shop owner can make this choice!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.editMessage("✅ **Ping session closed.**").setComponents().queue();
+            return;
+        }
+
+        if (componentId.startsWith("deleteping_")) {
+            String creatorId = componentId.substring("deleteping_".length());
+
+            if (!event.getUser().getId().equals(creatorId) && !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Only the shop owner can delete this ping!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.getMessage().delete().queue();
+            event.reply("✅ False alarm ping successfully removed!").setEphemeral(true).queue();
+            return;
+        }
+
         if (componentId.startsWith("orderaccept_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
@@ -1947,33 +2001,7 @@ public class CommandListener extends ListenerAdapter {
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
             return;
         }
-        if (componentId.startsWith("shopping_")) {
-            String[] parts = componentId.split("_");
-            String roleId = parts[1];
-            String creatorId = parts[2];
 
-            if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the shop owner can ping for this drop!").setEphemeral(true).queue();
-                return;
-            }
-
-            event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! 🛒✨").queue();
-
-            event.editMessage("✅ **Subscribers notified!**").setComponents().queue();
-            return;
-        }
-
-        if (componentId.startsWith("shopnoping_")) {
-            String creatorId = componentId.substring("shopnoping_".length());
-
-            if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the shop owner can make this choice!").setEphemeral(true).queue();
-                return;
-            }
-
-            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
-            return;
-        }
         if (componentId.startsWith("orderdecline_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
