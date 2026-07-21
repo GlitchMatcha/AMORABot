@@ -17,9 +17,6 @@ public class LoungeManager {
     private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
     private static final String ROLES_CHANNEL_ID = System.getenv("ROLES_CHANNEL_ID");
 
-    private static volatile long lastQuoteMessageId = 0L;
-    private static volatile long lastRoleMessageId = 0L;
-
     private static final List<String> QUOTES = Arrays.asList(
             "No act of kindness, no matter how small, is ever wasted.",
             "Your potential is endless. Go do what you were created to do.",
@@ -141,12 +138,17 @@ public class LoungeManager {
             try {
                 TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
                 if (lounge != null) {
-                    if (lastQuoteMessageId != 0L) {
-                        lounge.deleteMessageById(lastQuoteMessageId).queue(success -> {}, error -> {}); 
+                    DatabaseManager db = DatabaseManager.getInstance();
+                    
+                    String savedQuoteIdStr = db.getBotState("last_quote_msg_id");
+                    if (savedQuoteIdStr != null && !savedQuoteIdStr.isEmpty()) {
+                        try {
+                            long idToDelete = Long.parseLong(savedQuoteIdStr);
+                            lounge.deleteMessageById(idToDelete).queue(success -> {}, error -> {}); 
+                        } catch (NumberFormatException ignored) {}
                     }
 
                     String randomQuote = QUOTES.get(ThreadLocalRandom.current().nextInt(QUOTES.size()));
-                    
                     EmbedBuilder embed = new EmbedBuilder()
                             .setColor(new Color(255, 182, 193)) 
                             .setTitle("✦ AMORA QUOTE DROP ✦")
@@ -154,7 +156,7 @@ public class LoungeManager {
                             .setFooter("A little spark to keep you glowing ✨", null);
                     
                     lounge.sendMessageEmbeds(embed.build()).queue(message -> {
-                        lastQuoteMessageId = message.getIdLong();
+                        db.setBotState("last_quote_msg_id", String.valueOf(message.getIdLong()));
                     });
                 }
             } catch (Exception e) {
@@ -166,8 +168,14 @@ public class LoungeManager {
             try {
                 TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
                 if (lounge != null) {
-                    if (lastRoleMessageId != 0L) {
-                        lounge.deleteMessageById(lastRoleMessageId).queue(success -> {}, error -> {});
+                    DatabaseManager db = DatabaseManager.getInstance();
+
+                    String savedRoleIdStr = db.getBotState("last_role_msg_id");
+                    if (savedRoleIdStr != null && !savedRoleIdStr.isEmpty()) {
+                        try {
+                            long idToDelete = Long.parseLong(savedRoleIdStr);
+                            lounge.deleteMessageById(idToDelete).queue(success -> {}, error -> {});
+                        } catch (NumberFormatException ignored) {}
                     }
 
                     String roleChannelMention = (ROLES_CHANNEL_ID != null && !ROLES_CHANNEL_ID.isBlank()) 
@@ -184,7 +192,7 @@ public class LoungeManager {
                             .setFooter("AMORA Automated Lounge Services", null);
                             
                     lounge.sendMessageEmbeds(embed.build()).queue(message -> {
-                        lastRoleMessageId = message.getIdLong();
+                        db.setBotState("last_role_msg_id", String.valueOf(message.getIdLong()));
                     });
                 }
             } catch (Exception e) {
