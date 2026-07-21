@@ -178,7 +178,7 @@ public class CommandListener extends ListenerAdapter {
             if (host.equals("open.spotify.com")) {
                 String path = uri.getPath() == null ? "" : uri.getPath().trim();
                 if (path.startsWith("/track/")) {
-                    String trackId = path.substring("/track/length()");
+                    String trackId = path.substring("/track/".length());
                     int slashIndex = trackId.indexOf('/');
                     if (slashIndex != -1) {
                         trackId = trackId.substring(0, slashIndex);
