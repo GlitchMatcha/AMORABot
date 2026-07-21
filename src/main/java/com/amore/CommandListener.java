@@ -1937,8 +1937,10 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
+            String menuMsgId = event.getMessageId();
+
             event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! 🛒✨")
-                 .addActionRow(Button.danger("deleteping_" + creatorId, "🗑️ Undo Ping"))
+                 .addActionRow(Button.danger("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId, "🗑️ Undo Ping"))
                  .queue();
 
             List<Button> newButtons = new ArrayList<>();
@@ -1964,12 +1966,19 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage("✅ **Ping session closed.**").setComponents().queue();
+            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
             return;
         }
 
         if (componentId.startsWith("deleteping_")) {
-            String creatorId = componentId.substring("deleteping_".length());
+            String[] parts = componentId.split("_");
+            if (parts.length < 4) {
+                event.reply("❌ Invalid undo payload.").setEphemeral(true).queue();
+                return;
+            }
+            String creatorId = parts[1];
+            String roleId = parts[2];
+            String menuMsgId = parts[3];
 
             if (!event.getUser().getId().equals(creatorId) && !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("❌ Only the shop owner can delete this ping!").setEphemeral(true).queue();
@@ -1977,7 +1986,36 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.getMessage().delete().queue();
-            event.reply("✅ False alarm ping successfully removed!").setEphemeral(true).queue();
+
+            event.getChannel().retrieveMessageById(menuMsgId).queue(menuMsg -> {
+                List<Button> newButtons = new ArrayList<>();
+                boolean foundButton = false;
+                String targetButtonId = "shopping_" + roleId + "_" + creatorId;
+                
+                for (Button b : menuMsg.getButtons()) {
+                    if (b.getId() != null && b.getId().equals(targetButtonId)) {
+                        
+                        String label = "📢 Ping";
+                        if (roleId.equals(System.getenv("PING_OUTFITS"))) label = "👗 Ping Outfits";
+                        else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "📝 Ping Lyrics";
+                        else if (roleId.equals(System.getenv("PING_FACES"))) label = "🎭 Ping Faces";
+                        
+                        newButtons.add(Button.primary(targetButtonId, label)); 
+                        foundButton = true;
+                    } else {
+                        newButtons.add(b);
+                    }
+                }
+                
+                if (foundButton && !newButtons.isEmpty()) {
+                    menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
+                    event.reply("✅ False alarm ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                } else {
+                     event.reply("✅ False alarm ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                }
+            }, error -> {
+                event.reply("✅ False alarm ping successfully removed!").setEphemeral(true).queue();
+            });
             return;
         }
 
