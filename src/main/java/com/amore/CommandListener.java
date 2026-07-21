@@ -619,7 +619,7 @@ public class CommandListener extends ListenerAdapter {
             event.reply(creator.getAsMention() + " ✦ You have a new order request!")
                  .addEmbeds(orderEmbed.build())
                  .addActionRow(
-                     Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept & Log Sale"),
+                     Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), " Accept & Log Sale"),
                      Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
                  ).queue();
             return;
@@ -1103,7 +1103,7 @@ public class CommandListener extends ListenerAdapter {
             forum.createForumPost(itemName, builder.build()).queue(
                     success -> {
                         db.addShopItem(safeName, secretDelivery);
-                        event.getHook().sendMessage("✅ Asset published!").queue();
+                        event.getHook().sendMessage(" Asset published!").queue();
                         sendAuditLog(event.getGuild(), "Asset Published",
                                 event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `"
                                         + price + " Points`.",
@@ -1185,7 +1185,7 @@ public class CommandListener extends ListenerAdapter {
 
                 forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
                         success -> {
-                            event.getHook().sendMessage("✅ Dynamic Party Bounty posted!").queue();
+                            event.getHook().sendMessage(" Dynamic Party Bounty posted!").queue();
                             sendAuditLog(event.getGuild(), "Bounty Posted",
                                     event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
                                             + reward + " Points`.", new Color(255, 69, 0));
@@ -1257,7 +1257,7 @@ public class CommandListener extends ListenerAdapter {
                                     )
                                     .queue();
 
-                            replyHook.editOriginal("✅ Successfully kicked " + userMention + " from the party.").queue();
+                            replyHook.editOriginal(" Successfully kicked " + userMention + " from the party.").queue();
                             thread.sendMessage("⚠️ Admin Action: " + userMention + " has been removed from the party by a Director.").queue();
                             sendAuditLog(event.getGuild(), "Bounty Kick",
                                     event.getUser().getAsMention() + " removed " + userMention + " from a party in thread `"
@@ -1354,7 +1354,7 @@ public class CommandListener extends ListenerAdapter {
                                 newEmbed.getFields().remove(partyFieldIndex);
                             }
 
-                            newEmbed.addField("✅ QUEST CLEARED",
+                            newEmbed.addField(" QUEST CLEARED",
                                     "Successfully completed by the party!\n\n" + payoutLog, false);
 
                             if (selfApprove) {
@@ -1623,7 +1623,7 @@ public class CommandListener extends ListenerAdapter {
                                     .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
                                     .setDescription(
                                             "🎵 Playlist scan finished.\n\n" +
-                                            "✅ Added: `" + added + "`\n" +
+                                            " Added: `" + added + "`\n" +
                                             "♻️ Already in pool: `" + skippedExisting + "`\n" +
                                             "⚠️ Skipped/invalid: `" + skippedInvalid + "`"
                                     )
@@ -1673,7 +1673,7 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                event.reply("✅ Removed **" + song.title + "** by **" + song.artist + "** from the AMORA pool.")
+                event.reply(" Removed **" + song.title + "** by **" + song.artist + "** from the AMORA pool.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1752,7 +1752,7 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                event.reply("✅ Song recommendation posted in <#" + DAILY_SONG_CHANNEL_ID + ">.")
+                event.reply(" Song recommendation posted in <#" + DAILY_SONG_CHANNEL_ID + ">.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1946,13 +1946,13 @@ public class CommandListener extends ListenerAdapter {
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
-                    newButtons.add(b.asDisabled().withLabel("✅ Sent"));
+                    newButtons.add(b.asDisabled().withLabel(" Sent"));
                 } else {
                     newButtons.add(b);
                 }
             }
             
-            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
+            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click ' Done / Close' to dismiss)")
                  .setActionRow(newButtons)
                  .queue();
             return;
@@ -1966,7 +1966,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+            event.editMessage(" **Ping session closed. Matcha luvs u <3**").setComponents().queue();
             return;
         }
 
@@ -1999,8 +1999,9 @@ public class CommandListener extends ListenerAdapter {
                         if (roleId.equals(System.getenv("PING_OUTFITS"))) label = "👗 Ping Outfits";
                         else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "📝 Ping Lyrics";
                         else if (roleId.equals(System.getenv("PING_FACES"))) label = "🎭 Ping Faces";
+                        else if (roleId.equals(System.getenv("PING_BUILDS"))) label = "🛠️ Ping Builds"; 
                         
-                        newButtons.add(Button.primary(targetButtonId, label)); 
+                        newButtons.add(Button.primary(targetButtonId, label));  
                         foundButton = true;
                     } else {
                         newButtons.add(b);
@@ -2009,12 +2010,12 @@ public class CommandListener extends ListenerAdapter {
                 
                 if (foundButton && !newButtons.isEmpty()) {
                     menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                    event.reply("✅ False alarm ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                    event.reply(" False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
                 } else {
-                     event.reply("✅ False alarm ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                     event.reply(" False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
                 }
             }, error -> {
-                event.reply("✅ False alarm ping successfully removed!").setEphemeral(true).queue();
+                event.reply(" False ping successfully removed!").setEphemeral(true).queue();
             });
             return;
         }
@@ -2033,7 +2034,7 @@ public class CommandListener extends ListenerAdapter {
             
             EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             accepted.setColor(new Color(50, 205, 50));
-            accepted.addField("✅ STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
+            accepted.addField(" STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
             
             event.editMessageEmbeds(accepted.build()).setComponents().queue(); 
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
@@ -2113,7 +2114,7 @@ public class CommandListener extends ListenerAdapter {
                         startMsg.editMessageEmbeds(newEmbed.build())
                                 .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
                                 .queue(
-                                        success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage(" You have successfully joined the party!").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2176,7 +2177,7 @@ public class CommandListener extends ListenerAdapter {
                                         Button.danger("bleave_button", "🛑 Leave Quest")
                                 )
                                 .queue(
-                                        success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage(" You have left the party.").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2308,7 +2309,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(tradeEmbed.build())
                     .addActionRow(
-                            Button.success("trade_accept_" + tradeId, "✅ Accept"),
+                            Button.success("trade_accept_" + tradeId, " Accept"),
                             Button.danger("trade_decline_" + tradeId, "❌ Decline")
                     )
                     .queue();
