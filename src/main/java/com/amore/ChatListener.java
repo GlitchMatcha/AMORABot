@@ -782,12 +782,14 @@ public class ChatListener extends ListenerAdapter {
             if (isShopForum) {
                 if (event.getAuthor().getId().equals(thread.getOwnerId())) {
                     
-                    String msgContent = event.getMessage().getContentRaw().toLowerCase();
+                    String rawContent = event.getMessage().getContentRaw();
                     
-                    boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)\\s*[:\\-]?\\s*\\d+").matcher(msgContent).find() 
-                                             || java.util.regex.Pattern.compile("(?i)\\d+\\s*[^\\s]*(robux|rbx|r\\$)[^\\s]*").matcher(msgContent).find()
-                                             || msgContent.contains("🛒") 
-                                             || msgContent.contains("🏷️");
+                    String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
+                    
+                    boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)[^0-9]{0,30}\\d+").matcher(normalizedContent).find() 
+                                             || java.util.regex.Pattern.compile("(?i)\\d+[^a-zA-Z0-9]{0,15}(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>)").matcher(normalizedContent).find()
+                                             || normalizedContent.contains("🛒") 
+                                             || normalizedContent.contains("🏷️");
                     
                     if (isExplicitListing) {
                         DatabaseManager.getInstance().incrementCreatorListed(event.getAuthor().getId());
@@ -828,6 +830,14 @@ public class ChatListener extends ListenerAdapter {
                             event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ✦ **Listing tracked!** Do you want to notify your subscribers about this drop?")
                                  .addActionRow(pingButtons)
                                  .queue();
+                        } else {
+                            event.getChannel().sendMessage(
+                                "⚠️ **System Diagnostic:** I logged the listing (✅), but I couldn't spawn the ping buttons.\n" +
+                                "- Tags found on this thread: `" + appliedTags.size() + "`\n" +
+                                "- Is PING_OUTFITS in Render? `" + (pingOutfits != null) + "`\n" +
+                                "- Is PING_LYRICS in Render? `" + (pingLyrics != null) + "`\n" +
+                                "- Is PING_FACES in Render? `" + (pingFaces != null) + "`"
+                            ).queue();
                         }
                     }
                 }
