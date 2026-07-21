@@ -41,6 +41,8 @@ public class ChatListener extends ListenerAdapter {
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
+    
+    private static final Deque<Long> processedShopMessages = new ArrayDeque<>();
 
     private static class ActiveCheckTracker {
         String emojiCode;
@@ -447,6 +449,89 @@ public class ChatListener extends ListenerAdapter {
         }
     }
 
+    private void handleInvisibleShopTracker(net.dv8tion.jda.api.entities.Message message, net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion channel, net.dv8tion.jda.api.entities.User author) {
+        if (!channel.getType().isThread()) return;
+        
+        net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = channel.asThreadChannel();
+        String parentId = thread.getParentChannel().getId();
+        
+        String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
+        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2"); 
+
+        boolean isShopForum = (shopForumId1 != null && parentId.equals(shopForumId1)) || 
+                              (shopForumId2 != null && parentId.equals(shopForumId2));
+
+        if (!isShopForum) return;
+        if (!author.getId().equals(thread.getOwnerId())) return;
+
+        long msgId = message.getIdLong();
+        if (processedShopMessages.contains(msgId)) return;
+        
+        boolean alreadyLogged = message.getReactions().stream()
+                .anyMatch(r -> r.getEmoji().getName().equals("✅") && r.isSelf());
+        if (alreadyLogged) return;
+
+        String rawContent = message.getContentRaw();
+        String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
+        
+        boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)[^0-9]{0,30}\\d+").matcher(normalizedContent).find() 
+                                 || java.util.regex.Pattern.compile("(?i)\\d+[^a-zA-Z0-9]{0,15}(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>)").matcher(normalizedContent).find()
+                                 || normalizedContent.contains("🛒") 
+                                 || normalizedContent.contains("🏷️");
+        
+        if (isExplicitListing) {
+            processedShopMessages.addLast(msgId);
+            if (processedShopMessages.size() > 500) processedShopMessages.removeFirst(); 
+
+            DatabaseManager.getInstance().incrementCreatorListed(author.getId());
+            message.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
+            
+            List<net.dv8tion.jda.api.entities.channel.forums.ForumTag> appliedTags = thread.getAppliedTags();
+            List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
+            
+            String pingOutfits = System.getenv("PING_OUTFITS");
+            String pingLyrics = System.getenv("PING_LYRICS");
+            String pingFaces = System.getenv("PING_FACES");
+
+            boolean canPingOutfits = false;
+            boolean canPingLyrics = false;
+            boolean canPingFaces = false;
+
+            for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
+                String tagName = tag.getName().toLowerCase();
+                if (tagName.contains("outfit")) canPingOutfits = true;
+                if (tagName.contains("lyric")) canPingLyrics = true;
+                if (tagName.contains("face")) canPingFaces = true;
+            }
+
+            if (canPingOutfits && pingOutfits != null) {
+                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + author.getId(), "👗 Ping Outfits"));
+            }
+            if (canPingLyrics && pingLyrics != null) {
+                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingLyrics + "_" + author.getId(), "📝 Ping Lyrics"));
+            }
+            if (canPingFaces && pingFaces != null) {
+                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + author.getId(), "🎭 Ping Faces"));
+            }
+
+            if (!pingButtons.isEmpty()) {
+                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
+                
+                channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!** Select the groups you want to ping:")
+                     .addActionRow(pingButtons)
+                     .queue();
+            } else {
+                channel.sendMessage(
+                    "⚠️ **System Diagnostic:** I logged the listing (✅), but I couldn't spawn the ping buttons.\n" +
+                    "- Tags found on this thread: `" + appliedTags.size() + "`\n" +
+                    "- Is PING_OUTFITS in Render? `" + (pingOutfits != null) + "`\n" +
+                    "- Is PING_LYRICS in Render? `" + (pingLyrics != null) + "`\n" +
+                    "- Is PING_FACES in Render? `" + (pingFaces != null) + "`"
+                ).queue();
+            }
+        }
+    }
+
 
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
@@ -703,6 +788,8 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
         lazyCleanup();
+        
+        handleInvisibleShopTracker(event.getMessage(), event.getChannel(), event.getAuthor());
 
         String currentChannelId = event.getChannel().getId();
         String rawContent = event.getMessage().getContentRaw();
@@ -769,80 +856,7 @@ public class ChatListener extends ListenerAdapter {
         }
         lazyCleanup();
 
-        String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
-        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2"); 
-
-        if (event.getChannel().getType().isThread()) {
-            net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = event.getChannel().asThreadChannel();
-            String parentId = thread.getParentChannel().getId();
-            
-            boolean isShopForum = (shopForumId1 != null && parentId.equals(shopForumId1)) || 
-                                  (shopForumId2 != null && parentId.equals(shopForumId2));
-
-            if (isShopForum) {
-                if (event.getAuthor().getId().equals(thread.getOwnerId())) {
-                    
-                    String rawContent = event.getMessage().getContentRaw();
-                    
-                    String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
-                    
-                    boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)[^0-9]{0,30}\\d+").matcher(normalizedContent).find() 
-                                             || java.util.regex.Pattern.compile("(?i)\\d+[^a-zA-Z0-9]{0,15}(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>)").matcher(normalizedContent).find()
-                                             || normalizedContent.contains("🛒") 
-                                             || normalizedContent.contains("🏷️");
-                    
-                    if (isExplicitListing) {
-                        DatabaseManager.getInstance().incrementCreatorListed(event.getAuthor().getId());
-                        
-                        event.getMessage().addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
-                        
-                        List<net.dv8tion.jda.api.entities.channel.forums.ForumTag> appliedTags = thread.getAppliedTags();
-                        List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
-                        
-                        String pingOutfits = System.getenv("PING_OUTFITS");
-                        String pingLyrics = System.getenv("PING_LYRICS");
-                        String pingFaces = System.getenv("PING_FACES");
-
-                        boolean canPingOutfits = false;
-                        boolean canPingLyrics = false;
-                        boolean canPingFaces = false;
-
-                        for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
-                            String tagName = tag.getName().toLowerCase();
-                            if (tagName.contains("outfit")) canPingOutfits = true;
-                            if (tagName.contains("lyric")) canPingLyrics = true;
-                            if (tagName.contains("face")) canPingFaces = true;
-                        }
-
-                        if (canPingOutfits && pingOutfits != null) {
-                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + event.getAuthor().getId(), "👗 Ping Outfits"));
-                        }
-                        if (canPingLyrics && pingLyrics != null) {
-                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingLyrics + "_" + event.getAuthor().getId(), "📝 Ping Lyrics"));
-                        }
-                        if (canPingFaces && pingFaces != null) {
-                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + event.getAuthor().getId(), "🎭 Ping Faces"));
-                        }
-
-                        if (!pingButtons.isEmpty()) {
-                            pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.secondary("shopnoping_" + event.getAuthor().getId(), "❌ No Ping"));
-                            
-                            event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ✦ **Listing tracked!** Do you want to notify your subscribers about this drop?")
-                                 .addActionRow(pingButtons)
-                                 .queue();
-                        } else {
-                            event.getChannel().sendMessage(
-                                "⚠️ **System Diagnostic:** I logged the listing (✅), but I couldn't spawn the ping buttons.\n" +
-                                "- Tags found on this thread: `" + appliedTags.size() + "`\n" +
-                                "- Is PING_OUTFITS in Render? `" + (pingOutfits != null) + "`\n" +
-                                "- Is PING_LYRICS in Render? `" + (pingLyrics != null) + "`\n" +
-                                "- Is PING_FACES in Render? `" + (pingFaces != null) + "`"
-                            ).queue();
-                        }
-                    }
-                }
-            }
-        }
+        handleInvisibleShopTracker(event.getMessage(), event.getChannel(), event.getAuthor());
 
         String currentChannelId = event.getChannel().getId();
         String rawContent = event.getMessage().getContentRaw();

@@ -1971,7 +1971,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage("✅ **Silent drop logged.** No ping was sent.").setComponents().queue();
+            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
             return;
         }
         if (componentId.startsWith("orderdecline_")) {
