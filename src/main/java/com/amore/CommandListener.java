@@ -1929,6 +1929,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.startsWith("shopping_")) {
             String[] parts = componentId.split("_");
+            if (parts.length < 3) return;
             String roleId = parts[1];
             String creatorId = parts[2];
 
@@ -1967,6 +1968,19 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.editMessage(" **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+
+            event.getChannel().getHistory().retrievePast(20).queue(messages -> {
+                for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                    if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId())) {
+                        if (!msg.getButtons().isEmpty()) {
+                            Button b = msg.getButtons().get(0);
+                            if (b.getId() != null && b.getId().startsWith("deleteping_" + creatorId + "_")) {
+                                msg.editMessageComponents().queue(); 
+                            }
+                        }
+                    }
+                }
+            });
             return;
         }
 
@@ -1980,7 +1994,7 @@ public class CommandListener extends ListenerAdapter {
             String roleId = parts[2];
             String menuMsgId = parts[3];
 
-            if (!event.getUser().getId().equals(creatorId) && !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+            if (!event.getUser().getId().equals(creatorId)) {
                 event.reply("❌ Only the shop owner can delete this ping!").setEphemeral(true).queue();
                 return;
             }
