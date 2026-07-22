@@ -991,8 +991,8 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
     }
 
-    public List<String> runMonthlyCreatorEvaluation(int compensationPoints) {
-        List<String> logs = new ArrayList<>();
+    public List<String> generateCompensationReport(boolean resetCounters) {
+        List<String> needsCompensation = new ArrayList<>();
         String selectQuery = "SELECT user_id FROM creator_stats WHERE listed_this_month > 0 AND sold_this_month = 0;";
         String resetQuery = "UPDATE creator_stats SET listed_this_month = 0, sold_this_month = 0;";
 
@@ -1000,15 +1000,20 @@ public class DatabaseManager {
              ResultSet rs = stmt.executeQuery(selectQuery)) {
             
             while (rs.next()) {
-                String uid = rs.getString("user_id");
-                int currentPoints = getPoints(uid);
-                updatePoints(uid, currentPoints + compensationPoints);
-                logs.add("<@" + uid + "> (Compensated `" + compensationPoints + " PTS`)");
+                needsCompensation.add(rs.getString("user_id"));
             }
-            
-            stmt.executeUpdate(resetQuery); 
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) { 
+            e.printStackTrace(); 
+        }
+
+        if (resetCounters) {
+            try (Statement stmt = connection.createStatement()) {
+                stmt.executeUpdate(resetQuery);
+            } catch (SQLException e) { 
+                e.printStackTrace(); 
+            }
+        }
         
-        return logs;
+        return needsCompensation;
     }
 }
