@@ -2024,33 +2024,58 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            db.incrementCreatorSold(creatorId); 
-            
             EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            accepted.setColor(new Color(50, 205, 50));
-            accepted.addField("✅ STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
+            accepted.setColor(new Color(255, 165, 0)); 
+            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery in DMs.\n\n<@" + buyerId + "> **Once you receive your item, click the button below to confirm!**", false);
             
-            event.editMessageEmbeds(accepted.build()).setComponents().queue(); 
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
+            event.editMessageEmbeds(accepted.build())
+                 .setActionRow(
+                     Button.primary("ordercomplete_" + creatorId + "_" + buyerId, "🛍️ Confirm Received & Paid"),
+                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, "❌ Cancel Order")
+                 ).queue(); 
+                 
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate payment/delivery in DMs.").queue();
             return;
         }
 
-        if (componentId.startsWith("orderdecline_")) {
+        if (componentId.startsWith("ordercomplete_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
             String buyerId = parts[2];
-            
-            if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the requested creator can decline this order!").setEphemeral(true).queue();
+
+            if (!event.getUser().getId().equals(buyerId)) {
+                event.reply("❌ Only the BUYER (<@" + buyerId + ">) can confirm that they received the item!").setEphemeral(true).queue();
+                return;
+            }
+
+            db.incrementCreatorSold(creatorId);
+
+            EmbedBuilder completed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            completed.setColor(new Color(50, 205, 50)); 
+            completed.getFields().remove(completed.getFields().size() - 1); 
+            completed.addField("✅ STATUS: COMPLETED & VERIFIED", "Item delivered and confirmed by buyer <@" + buyerId + ">. Sale officially logged!", false);
+
+            event.editMessageEmbeds(completed.build()).setComponents().queue(); 
+            event.reply("✅ Thank you for confirming! The sale has been officially logged for " + event.getJDA().getUserById(creatorId).getAsMention() + ".").queue();
+            return;
+        }
+
+        if (componentId.startsWith("ordercancel_") || componentId.startsWith("orderdecline_")) {
+            String[] parts = componentId.split("_");
+            String creatorId = parts[1];
+            String buyerId = parts[2];
+
+            if (!event.getUser().getId().equals(creatorId) && !event.getUser().getId().equals(buyerId)) {
+                event.reply("❌ Only the buyer or creator involved in this order can cancel it!").setEphemeral(true).queue();
                 return;
             }
 
             EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             declined.setColor(Color.RED);
-            declined.addField("❌ STATUS: DECLINED", "The creator is currently unable to take this order.", false);
+            declined.addField("❌ STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
             event.editMessageEmbeds(declined.build()).setComponents().queue();
-            event.getChannel().sendMessage("⚠️ <@" + buyerId + "> Your order was respectfully declined. The creator may be too busy right now!").queue();
+            event.reply("⚠️ Order ticket was marked as cancelled/declined.").queue();
             return;
         }
 
