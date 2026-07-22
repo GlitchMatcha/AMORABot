@@ -2026,7 +2026,7 @@ public class CommandListener extends ListenerAdapter {
 
             EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             accepted.setColor(new Color(255, 165, 0)); 
-            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery in DMs.\n\n<@" + buyerId + "> **Once you receive your item, click the button below to confirm!**", false);
+            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n<@" + buyerId + "> **Once you receive your item, click the button below to confirm!**", false);
             
             event.editMessageEmbeds(accepted.build())
                  .setActionRow(
@@ -2034,7 +2034,7 @@ public class CommandListener extends ListenerAdapter {
                      Button.danger("ordercancel_" + creatorId + "_" + buyerId, "❌ Cancel Order")
                  ).queue(); 
                  
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate payment/delivery in DMs.").queue();
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate payment/delivery in this thread.").queue();
             return;
         }
 
@@ -2449,11 +2449,10 @@ public class CommandListener extends ListenerAdapter {
                     .setColor(new java.awt.Color(255, 182, 193))
                     .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
                     .setDescription(
-                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
                             "🛍️ **Item Requested:**\n" +
                             "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                             "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                            "*(Creator: Accept this order below to log your sale!)*"
+                            "*(Creator: Accept this order below to begin the transaction!)*"
                     )
                     .setThumbnail(buyer.getEffectiveAvatarUrl())
                     .setFooter("AMORA Smart UI Order System", null);
@@ -2465,15 +2464,19 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            orderChannel.sendMessage(creator.getAsMention() + " ✦ You have a new automated order from " + buyer.getName() + "!")
-                 .addEmbeds(orderEmbed.build())
-                 .addActionRow(
-                     net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
-                     net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
-                 ).queue(
-                     success -> event.reply("✅ **Order placed!** I have forwarded your request to the creator in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue(),
-                     error -> event.reply("❌ System error: Could not route the order to the designated channel.").setEphemeral(true).queue()
-                 );
+            event.reply("✅ **Order placed!** I am setting up a transaction thread for you in " + orderChannel.getAsMention() + ".").setEphemeral(true).queue();
+
+            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!")
+                 .queue(mainMessage -> {
+                     mainMessage.createThreadChannel("🛒 Order: " + buyer.getName()).queue(thread -> {
+                         thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room! Please share all details and payment proofs here.")
+                               .addEmbeds(orderEmbed.build())
+                               .addActionRow(
+                                   net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
+                                   net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
+                               ).queue();
+                     });
+                 });
         }
     }
 }
