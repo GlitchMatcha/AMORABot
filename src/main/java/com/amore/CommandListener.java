@@ -590,41 +590,6 @@ public class CommandListener extends ListenerAdapter {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
 
-        if (event.getName().equals("order")) {
-            if (ORDER_CHANNEL_ID != null && !event.getChannel().getId().equals(ORDER_CHANNEL_ID)) {
-                event.reply("❌ **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
-                return;
-            }
-
-            User creator = event.getOption("creator").getAsUser();
-            String item = event.getOption("item").getAsString();
-            String payment = event.getOption("payment").getAsString();
-            String details = event.getOption("details") != null ? event.getOption("details").getAsString() : "None provided.";
-
-            if (creator.isBot() || creator.getId().equals(event.getUser().getId())) {
-                event.reply("❌ You cannot place an order with yourself or a bot.").setEphemeral(true).queue();
-                return;
-            }
-
-            EmbedBuilder orderEmbed = new EmbedBuilder()
-                    .setColor(new Color(255, 182, 193))
-                    .setTitle("🛒 NEW COMMISSION ORDER")
-                    .setDescription("A new marketplace request has been submitted by " + event.getUser().getAsMention() + "!")
-                    .addField("Requested Creator", creator.getAsMention(), true)
-                    .addField("Item / Service", item, true)
-                    .addField("Payment Offer", payment, true)
-                    .addField("Order Notes", details, false)
-                    .setFooter("AMORA Designated Order System", null);
-
-            event.reply(creator.getAsMention() + " ✦ You have a new order request!")
-                 .addEmbeds(orderEmbed.build())
-                 .addActionRow(
-                     Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), " Accept & Log Sale"),
-                     Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
-                 ).queue();
-            return;
-        }
-
         if (event.getName().equals("shop")) {
             if ("evaluate".equals(event.getSubcommandName())) {
                 if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
@@ -632,20 +597,33 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
                 
-                int compPoints = event.getOption("points").getAsInt();
-                List<String> compensated = db.runMonthlyCreatorEvaluation(compPoints);
+                boolean doReset = event.getOption("reset") != null ? event.getOption("reset").getAsBoolean() : false;
+                List<String> compensated = db.generateCompensationReport(doReset);
                 
-                StringBuilder log = new StringBuilder("The monthly evaluation is complete. All shop counters have been reset to 0.\n\n**Compensated Creators (0 Sales):**\n");
-                if (compensated.isEmpty()) {
-                    log.append("_Everyone sold an item this month! No compensation needed._");
+                StringBuilder log = new StringBuilder("The monthly shop performance audit is complete.\n\n");
+                
+                if (doReset) {
+                    log.append("⚠️ **Notice:** All shop tracking counters have been permanently reset to `0` for the new cycle.\n\n");
                 } else {
-                    for (String c : compensated) log.append("• ").append(c).append("\n");
+                    log.append("ℹ️ **Notice:** Shop counters were NOT reset. The tracking continues.\n\n");
+                }
+
+                log.append("🔍 **Creators Flagged for Manual Review (0 Sales):**\n");
+                
+                if (compensated.isEmpty()) {
+                    log.append("_Amazing! Everyone who listed an item successfully made a sale! No compensation needed._");
+                } else {
+                    for (String c : compensated) {
+                        log.append("• <@").append(c).append(">\n");
+                    }
+                    log.append("\n*(Action Required: Please verify these creators did not post spam/fake listings, and use the `/payout` command to compensate them appropriately!)*");
                 }
 
                 event.replyEmbeds(new EmbedBuilder()
-                        .setColor(new Color(0, 250, 154))
-                        .setTitle("✦ MONTHLY CREATOR EVALUATION ✦")
+                        .setColor(new Color(255, 165, 0))
+                        .setTitle("✦ CREATOR EVALUATION REPORT ✦")
                         .setDescription(log.toString())
+                        .setFooter("AMORA Financial Auditing System", null)
                         .build()).queue();
                 return;
             }
@@ -1947,13 +1925,13 @@ public class CommandListener extends ListenerAdapter {
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
-                    newButtons.add(b.asDisabled().withLabel(" Sent"));
+                    newButtons.add(b.asDisabled().withLabel("✅ Sent"));
                 } else {
                     newButtons.add(b);
                 }
             }
             
-            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click ' Done / Close' to dismiss)")
+            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
                  .setActionRow(newButtons)
                  .queue();
             return;
@@ -1967,7 +1945,9 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage(" **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+            
+            event.getMessage().delete().queueAfter(5, java.util.concurrent.TimeUnit.SECONDS);
 
             event.getChannel().getHistory().retrievePast(20).queue(messages -> {
                 for (net.dv8tion.jda.api.entities.Message msg : messages) {
@@ -2024,12 +2004,12 @@ public class CommandListener extends ListenerAdapter {
                 
                 if (foundButton && !newButtons.isEmpty()) {
                     menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                    event.reply(" False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                    event.reply("✅ False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
                 } else {
-                     event.reply(" False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                     event.reply("✅ False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
                 }
             }, error -> {
-                event.reply(" False ping successfully removed!").setEphemeral(true).queue();
+                event.reply("✅ False ping successfully removed!").setEphemeral(true).queue();
             });
             return;
         }
@@ -2048,7 +2028,7 @@ public class CommandListener extends ListenerAdapter {
             
             EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             accepted.setColor(new Color(50, 205, 50));
-            accepted.addField(" STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
+            accepted.addField("✅ STATUS: ACCEPTED", "The creator has accepted this order and the sale has been logged.", false);
             
             event.editMessageEmbeds(accepted.build()).setComponents().queue(); 
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate the final payment in DMs.").queue();
@@ -2128,7 +2108,7 @@ public class CommandListener extends ListenerAdapter {
                         startMsg.editMessageEmbeds(newEmbed.build())
                                 .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
                                 .queue(
-                                        success -> hook.sendMessage(" You have successfully joined the party!").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2191,7 +2171,7 @@ public class CommandListener extends ListenerAdapter {
                                         Button.danger("bleave_button", "🛑 Leave Quest")
                                 )
                                 .queue(
-                                        success -> hook.sendMessage(" You have left the party.").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2323,7 +2303,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(tradeEmbed.build())
                     .addActionRow(
-                            Button.success("trade_accept_" + tradeId, " Accept"),
+                            Button.success("trade_accept_" + tradeId, "✅ Accept"),
                             Button.danger("trade_decline_" + tradeId, "❌ Decline")
                     )
                     .queue();
@@ -2405,6 +2385,70 @@ public class CommandListener extends ListenerAdapter {
                     "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@"
                             + trade.targetId + "> for **" + trade.requestItem + "**.",
                     new Color(50, 205, 50));
+        }
+    }
+
+    @Override
+    public void onMessageContextInteraction(net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent event) {
+        if (event.getName().equals("🛒 Order This")) {
+            net.dv8tion.jda.api.entities.Message targetMessage = event.getTarget();
+            User creator = targetMessage.getAuthor();
+            User buyer = event.getUser();
+
+            if (creator.isBot() || creator.getId().equals(buyer.getId())) {
+                event.reply("❌ You can only order items from other creators!").setEphemeral(true).queue();
+                return;
+            }
+
+            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
+            if (orderChannelId == null) {
+                event.reply("❌ The server's order channel is not configured.").setEphemeral(true).queue();
+                return;
+            }
+
+            net.dv8tion.jda.api.entities.channel.concrete.TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
+            if (orderChannel == null) {
+                event.reply("❌ Cannot find the official order channel.").setEphemeral(true).queue();
+                return;
+            }
+
+            String itemDescription = targetMessage.getContentRaw();
+            if (itemDescription.length() > 300) {
+                itemDescription = itemDescription.substring(0, 300) + "..."; 
+            }
+            if (itemDescription.isBlank()) itemDescription = "_Visual asset (See image below)_";
+
+            String messageLink = targetMessage.getJumpUrl();
+
+            net.dv8tion.jda.api.EmbedBuilder orderEmbed = new net.dv8tion.jda.api.EmbedBuilder()
+                    .setColor(new java.awt.Color(255, 182, 193))
+                    .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
+                    .setDescription(
+                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
+                            "🛍️ **Item Requested:**\n" +
+                            "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
+                            "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
+                            "*(Creator: Accept this order below to log your sale!)*"
+                    )
+                    .setThumbnail(buyer.getEffectiveAvatarUrl())
+                    .setFooter("AMORA Smart UI Order System", null);
+
+            if (!targetMessage.getAttachments().isEmpty()) {
+                net.dv8tion.jda.api.entities.Message.Attachment image = targetMessage.getAttachments().get(0);
+                if (image.isImage()) {
+                    orderEmbed.setImage(image.getUrl());
+                }
+            }
+
+            orderChannel.sendMessage(creator.getAsMention() + " ✦ You have a new automated order from " + buyer.getName() + "!")
+                 .addEmbeds(orderEmbed.build())
+                 .addActionRow(
+                     net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
+                     net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
+                 ).queue(
+                     success -> event.reply("✅ **Order placed!** I have forwarded your request to the creator in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue(),
+                     error -> event.reply("❌ System error: Could not route the order to the designated channel.").setEphemeral(true).queue()
+                 );
         }
     }
 }
