@@ -682,7 +682,7 @@ public class CommandListener extends ListenerAdapter {
                 if (thread.getName().startsWith("⏳")) {
                     event.getMessage().delete().queue();
                     
-                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ⚠️ **Hold on!** The creator must click **Accept Order** before you can start chatting.")
+                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " :1MikuSad: **Hold on!** The creator must click **Accept Order** before you can start chatting.")
                          .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
                 }
             }
