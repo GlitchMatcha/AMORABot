@@ -590,6 +590,54 @@ public class CommandListener extends ListenerAdapter {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
 
+        if (event.getName().equals("order")) {
+            if (ORDER_CHANNEL_ID != null && !event.getChannel().getId().equals(ORDER_CHANNEL_ID)) {
+                event.reply("❌ **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
+                return;
+            }
+
+            User creator = event.getOption("creator").getAsUser();
+            String request = event.getOption("request").getAsString();
+            String notes = event.getOption("notes") != null ? event.getOption("notes").getAsString() : "_None provided._";
+            Attachment image = event.getOption("image") != null ? event.getOption("image").getAsAttachment() : null;
+
+            if (creator.isBot() || creator.getId().equals(event.getUser().getId())) {
+                event.reply("❌ You cannot place an order with yourself or a bot.").setEphemeral(true).queue();
+                return;
+            }
+
+            EmbedBuilder orderEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193))
+                    .setTitle("✦ NEW COMMISSION ORDER ✦")
+                    .setDescription(
+                            "🛍️ **Request:** `" + request + "`\n\n" +
+                            "📝 **Notes & References:**\n" + notes + "\n\n" +
+                            "*(Creator: Accept this order below to begin the transaction!)*"
+                    )
+                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                    .setFooter("AMORA Designated Order System", null);
+
+            if (image != null && image.isImage()) {
+                orderEmbed.setImage(image.getUrl());
+            }
+
+            event.reply("✅ **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
+
+            TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
+            if (orderChannel != null) {
+                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!").queue();
+                orderChannel.createThreadChannel("🛒 Order: " + event.getUser().getName(), true).queue(thread -> {
+                     thread.sendMessage(creator.getAsMention() + " ✦ " + event.getUser().getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
+                           .addEmbeds(orderEmbed.build())
+                           .addActionRow(
+                               Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept Order"),
+                               Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
+                           ).queue();
+                });
+            }
+            return;
+        }
+
         if (event.getName().equals("shop")) {
             if ("evaluate".equals(event.getSubcommandName())) {
                 if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
@@ -2026,11 +2074,12 @@ public class CommandListener extends ListenerAdapter {
 
             EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             accepted.setColor(new Color(255, 165, 0)); 
-            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n<@" + buyerId + "> **Once you receive your item, click the button below to confirm!**", false);
+            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n**Both parties must click their confirm buttons below to officially log this sale!**", false);
             
             event.editMessageEmbeds(accepted.build())
                  .setActionRow(
-                     Button.primary("ordercomplete_" + creatorId + "_" + buyerId, "🛍️ Confirm Received & Paid"),
+                     Button.primary("buyerconfirm_" + creatorId + "_" + buyerId, "🛍️ Buyer Confirm"),
+                     Button.primary("sellerconfirm_" + creatorId + "_" + buyerId, "🤝 Seller Confirm"),
                      Button.danger("ordercancel_" + creatorId + "_" + buyerId, "❌ Cancel Order")
                  ).queue(); 
                  
@@ -2038,25 +2087,56 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.startsWith("ordercomplete_")) {
+        if (componentId.startsWith("buyerconfirm_") || componentId.startsWith("sellerconfirm_")) {
             String[] parts = componentId.split("_");
+            String type = parts[0];
             String creatorId = parts[1];
             String buyerId = parts[2];
 
-            if (!event.getUser().getId().equals(buyerId)) {
-                event.reply("❌ Only the BUYER (<@" + buyerId + ">) can confirm that they received the item!").setEphemeral(true).queue();
+            if (type.equals("buyerconfirm") && !event.getUser().getId().equals(buyerId)) {
+                event.reply("❌ Only the BUYER (<@" + buyerId + ">) can click this button!").setEphemeral(true).queue();
+                return;
+            }
+            if (type.equals("sellerconfirm") && !event.getUser().getId().equals(creatorId)) {
+                event.reply("❌ Only the SELLER (<@" + creatorId + ">) can click this button!").setEphemeral(true).queue();
                 return;
             }
 
-            db.incrementCreatorSold(creatorId);
+            List<Button> currentButtons = new ArrayList<>(event.getMessage().getButtons());
+            List<Button> newButtons = new ArrayList<>();
+            boolean buyerConfirmed = false;
+            boolean sellerConfirmed = false;
 
-            EmbedBuilder completed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            completed.setColor(new Color(50, 205, 50)); 
-            completed.getFields().remove(completed.getFields().size() - 1); 
-            completed.addField("✅ STATUS: COMPLETED & VERIFIED", "Item delivered and confirmed by buyer <@" + buyerId + ">. Sale officially logged!", false);
+            for (Button b : currentButtons) {
+                if (b.getId() != null && b.getId().equals(componentId)) {
+                    String label = type.equals("buyerconfirm") ? "✅ Buyer Confirmed" : "✅ Seller Confirmed";
+                    newButtons.add(b.asDisabled().withLabel(label).withStyle(net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle.SUCCESS));
+                } else {
+                    newButtons.add(b);
+                }
+            }
 
-            event.editMessageEmbeds(completed.build()).setComponents().queue(); 
-            event.reply("✅ Thank you for confirming! The sale has been officially logged for " + event.getJDA().getUserById(creatorId).getAsMention() + ".").queue();
+            for (Button b : newButtons) {
+                if (b.getLabel() != null && b.getLabel().contains("Buyer Confirmed")) buyerConfirmed = true;
+                if (b.getLabel() != null && b.getLabel().contains("Seller Confirmed")) sellerConfirmed = true;
+            }
+
+            if (buyerConfirmed && sellerConfirmed) {
+                db.incrementCreatorSold(creatorId);
+
+                EmbedBuilder completed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+                completed.setColor(new Color(50, 205, 50)); 
+                if (!completed.getFields().isEmpty()) {
+                    completed.getFields().remove(completed.getFields().size() - 1); 
+                }
+                completed.addField("✅ STATUS: COMPLETED & VERIFIED", "Both parties verified the transaction. Sale officially logged!", false);
+
+                event.editMessageEmbeds(completed.build()).setComponents().queue(); 
+                event.getChannel().sendMessage("✅ **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
+            } else {
+                event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
+                event.getHook().sendMessage("✅ Your confirmation has been logged! Waiting for the other party.").setEphemeral(true).queue();
+            }
             return;
         }
 
@@ -2449,10 +2529,11 @@ public class CommandListener extends ListenerAdapter {
                     .setColor(new java.awt.Color(255, 182, 193))
                     .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
                     .setDescription(
+                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
                             "🛍️ **Item Requested:**\n" +
                             "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                             "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                            "*(Creator: Accept this order below to begin the transaction!)*"
+                            "*(Creator: Accept this order below to log your sale!)*"
                     )
                     .setThumbnail(buyer.getEffectiveAvatarUrl())
                     .setFooter("AMORA Smart UI Order System", null);
@@ -2464,19 +2545,18 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.reply("✅ **Order placed!** I am setting up a transaction thread for you in " + orderChannel.getAsMention() + ".").setEphemeral(true).queue();
+            event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue();
 
-            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!")
-                 .queue(mainMessage -> {
-                     mainMessage.createThreadChannel("🛒 Order: " + buyer.getName()).queue(thread -> {
-                         thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room! Please share all details and payment proofs here.")
-                               .addEmbeds(orderEmbed.build())
-                               .addActionRow(
-                                   net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
-                                   net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
-                               ).queue();
-                     });
-                 });
+            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!").queue();
+            
+            orderChannel.createThreadChannel("🔒 Order: " + buyer.getName(), true).queue(thread -> {
+                 thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room! Please share all details and payment proofs here.")
+                       .addEmbeds(orderEmbed.build())
+                       .addActionRow(
+                           net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
+                           net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
+                       ).queue();
+            });
         }
     }
 }
