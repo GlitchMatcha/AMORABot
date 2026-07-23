@@ -463,9 +463,6 @@ public class ChatListener extends ListenerAdapter {
 
         if (!isShopForum) return;
         if (!author.getId().equals(thread.getOwnerId())) return;
-
-        long msgId = message.getIdLong();
-        if (processedShopMessages.contains(msgId)) return;
         
         boolean alreadyLogged = message.getReactions().stream()
                 .anyMatch(r -> r.getEmoji().getName().equals("✅") && r.isSelf());
@@ -480,8 +477,13 @@ public class ChatListener extends ListenerAdapter {
                                  || normalizedContent.contains("🏷️");
         
         if (isExplicitListing) {
-            processedShopMessages.addLast(msgId);
-            if (processedShopMessages.size() > 500) processedShopMessages.removeFirst(); 
+            long msgId = message.getIdLong();
+            
+            synchronized (processedShopMessages) {
+                if (processedShopMessages.contains(msgId)) return;
+                processedShopMessages.addLast(msgId);
+                if (processedShopMessages.size() > 500) processedShopMessages.removeFirst(); 
+            }
 
             DatabaseManager.getInstance().incrementCreatorListed(author.getId());
             message.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
