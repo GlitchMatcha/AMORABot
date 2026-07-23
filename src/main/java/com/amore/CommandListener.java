@@ -123,7 +123,16 @@ public class CommandListener extends ListenerAdapter {
             String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
             FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
 
-            logChannel.sendMessage("📂 **Automated Transcript Backup** | Thread: `" + thread.getName() + "` | Status: **" + status + "**")
+            EmbedBuilder transcriptEmbed = new EmbedBuilder()
+                    .setColor(status.equals("COMPLETED") ? new Color(50, 205, 50) : Color.RED)
+                    .setTitle("✦ AUTOMATED TRANSCRIPT BACKUP ✦")
+                    .setDescription("The chat history for this order has been successfully extracted and archived.")
+                    .addField("Thread Name", "`" + thread.getName() + "`", true)
+                    .addField("Final Status", "`" + status + "`", true)
+                    .setFooter("AMORA Secure Logging System", null)
+                    .setTimestamp(Instant.now());
+
+            logChannel.sendMessageEmbeds(transcriptEmbed.build())
                       .addFiles(upload)
                       .queue();
                       
