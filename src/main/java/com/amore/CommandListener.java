@@ -99,38 +99,57 @@ public class CommandListener extends ListenerAdapter {
         if (logChannel == null) return;
 
         thread.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
-            StringBuilder sb = new StringBuilder();
-            sb.append("✦ ORDER TRANSCRIPT: ").append(thread.getName()).append(" ✦\n");
-            sb.append("Status: ").append(status).append("\n");
-            sb.append("=========================================\n\n");
+            StringBuilder fileContent = new StringBuilder();
+            StringBuilder embedDesc = new StringBuilder();
+            String previewImage = null;
+
+            fileContent.append("✦ ORDER TRANSCRIPT: ").append(thread.getName()).append(" ✦\n");
+            fileContent.append("Status: ").append(status).append("\n");
+            fileContent.append("=========================================\n\n");
 
             java.util.Collections.reverse(messages);
 
             for (net.dv8tion.jda.api.entities.Message msg : messages) {
-                sb.append("[").append(msg.getTimeCreated().toLocalDateTime().toString()).append("] ");
-                sb.append(msg.getAuthor().getName()).append(": ");
-                sb.append(msg.getContentDisplay()).append("\n");
+                fileContent.append("[").append(msg.getTimeCreated().toLocalDateTime().toString()).append("] ");
+                fileContent.append(msg.getAuthor().getName()).append(": ");
+                fileContent.append(msg.getContentDisplay()).append("\n");
                 
+                String embedLine = "**" + msg.getAuthor().getName() + "**: " + msg.getContentDisplay() + "\n";
+                if (embedDesc.length() + embedLine.length() < 3800) {
+                    embedDesc.append(embedLine);
+                }
+
                 if (!msg.getAttachments().isEmpty()) {
-                    sb.append("   [Attachments Uploaded]:\n");
+                    fileContent.append("   [Attachments Uploaded]:\n");
                     for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
-                        sb.append("      -> ").append(attachment.getUrl()).append("\n");
+                        fileContent.append("      -> ").append(attachment.getUrl()).append("\n");
+                        
+                        if (attachment.isImage() && previewImage == null) {
+                            previewImage = attachment.getUrl();
+                        }
                     }
                 }
             }
 
-            byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+            if (embedDesc.length() >= 3800) {
+                embedDesc.append("\n*... (Chat truncated. Download the .txt file below to read the rest!)*");
+            }
+
+            byte[] fileBytes = fileContent.toString().getBytes(StandardCharsets.UTF_8);
             String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
             FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
 
             EmbedBuilder transcriptEmbed = new EmbedBuilder()
                     .setColor(status.equals("COMPLETED") ? new Color(50, 205, 50) : Color.RED)
-                    .setTitle("✦ AUTOMATED TRANSCRIPT BACKUP ✦")
-                    .setDescription("The chat history for this order has been successfully extracted and archived.")
-                    .addField("Thread Name", "`" + thread.getName() + "`", true)
+                    .setTitle("✦ TRANSCRIPT: " + thread.getName() + " ✦")
+                    .setDescription(embedDesc.length() > 0 ? embedDesc.toString() : "*No messages recorded.*")
                     .addField("Final Status", "`" + status + "`", true)
                     .setFooter("AMORA Secure Logging System", null)
                     .setTimestamp(Instant.now());
+
+            if (previewImage != null) {
+                transcriptEmbed.setImage(previewImage);
+            }
 
             logChannel.sendMessageEmbeds(transcriptEmbed.build())
                       .addFiles(upload)
