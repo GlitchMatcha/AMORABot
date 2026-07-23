@@ -607,34 +607,7 @@ public class CommandListener extends ListenerAdapter {
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
-
-        if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
-            ThreadChannel thread = event.getChannel().asThreadChannel();
-            
-            if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
-                if (SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) return;
-                TextChannel shopLogChannel = event.getGuild().getTextChannelById(SHOP_LOG_CHANNEL_ID);
-                
-                if (shopLogChannel != null) {
-                    String content = event.getMessage().getContentDisplay();
-                    EmbedBuilder chatLog = new EmbedBuilder()
-                        .setColor(new Color(211, 211, 211))
-                        .setAuthor(event.getAuthor().getName(), null, event.getAuthor().getEffectiveAvatarUrl())
-                        .setDescription(content.isEmpty() ? "_[Attachment Uploaded]_" : content)
-                        .setFooter("Thread: " + thread.getName(), null)
-                        .setTimestamp(Instant.now());
-                    
-                    if (!event.getMessage().getAttachments().isEmpty()) {
-                        Attachment attachment = event.getMessage().getAttachments().get(0);
-                        if (attachment.isImage()) {
-                            chatLog.setImage(attachment.getUrl());
-                        }
-                    }
-
-                    shopLogChannel.sendMessageEmbeds(chatLog.build()).queue();
-                }
-            }
-        }
+        
     }
     
     @Override
@@ -695,7 +668,55 @@ public class CommandListener extends ListenerAdapter {
             }
             return;
         }
+        if (event.getName().equals("transcript")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required to pull transcripts.").setEphemeral(true).queue();
+                return;
+            }
 
+            if (!event.getChannel().getType().isThread()) {
+                event.reply("❌ This command must be run inside a private order thread!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+
+            thread.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
+                StringBuilder sb = new StringBuilder();
+                sb.append("✦ ORDER TRANSCRIPT: ").append(thread.getName()).append(" ✦\n");
+                sb.append("=========================================\n\n");
+
+                java.util.Collections.reverse(messages);
+
+                for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                    sb.append("[").append(msg.getTimeCreated().toLocalDateTime().toString()).append("] ");
+                    sb.append(msg.getAuthor().getName()).append(": ");
+                    sb.append(msg.getContentDisplay()).append("\n");
+                    
+                    if (!msg.getAttachments().isEmpty()) {
+                        sb.append("   [Attachment(s) Uploaded: ").append(msg.getAttachments().size()).append("]\n");
+                    }
+                }
+
+                byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+                String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
+                FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
+
+                event.getHook().sendMessage("📂 **Transcript Generated!** Here is the complete chat log for this order.")
+                     .addFiles(upload)
+                     .queue();
+                     
+                sendAuditLog(event.getGuild(), "Transcript Exported", 
+                    event.getUser().getAsMention() + " exported a transcript for thread `" + thread.getName() + "`.", 
+                    Color.LIGHT_GRAY);
+
+            }).exceptionally(e -> {
+                event.getHook().sendMessage("❌ Failed to generate transcript: " + e.getMessage()).queue();
+                return null;
+            });
+            return;
+        }
         if (event.getName().equals("shop")) {
             if ("evaluate".equals(event.getSubcommandName())) {
                 if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
