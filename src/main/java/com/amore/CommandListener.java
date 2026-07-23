@@ -673,7 +673,20 @@ public class CommandListener extends ListenerAdapter {
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
-        
+
+        if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            
+            if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
+                
+                if (thread.getName().startsWith("⏳")) {
+                    event.getMessage().delete().queue();
+                    
+                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ⚠️ **Hold on!** The creator must click **Accept Order** before you can start chatting.")
+                         .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                }
+            }
+        }
     }
     
     @Override
@@ -717,7 +730,7 @@ public class CommandListener extends ListenerAdapter {
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
                 orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating Private Thread...*").queue(mainMessage -> {
-                    orderChannel.createThreadChannel("🔒 Order: " + event.getUser().getName(), true).queue(thread -> {
+                    orderChannel.createThreadChannel("⏳ Order: " + event.getUser().getName(), true).queue(thread -> {
                          mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                          
                          thread.addThreadMember(creator).queue();
@@ -2269,6 +2282,7 @@ public class CommandListener extends ListenerAdapter {
                  ).queue(); 
                  
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Nub Matcha begs: Please do orders in this thread instead of DMs >p<").queue();
+            event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
             return;
         }
 
@@ -2749,7 +2763,7 @@ public class CommandListener extends ListenerAdapter {
 
             orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
-                orderChannel.createThreadChannel("🔒 Order: " + buyer.getName(), true).queue(thread -> {
+                orderChannel.createThreadChannel("⏳ Order: " + buyer.getName(), true).queue(thread -> {
                      
                      mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                      
