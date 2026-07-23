@@ -733,7 +733,10 @@ public class CommandListener extends ListenerAdapter {
                     sb.append(msg.getContentDisplay()).append("\n");
                     
                     if (!msg.getAttachments().isEmpty()) {
-                        sb.append("   [Attachment(s) Uploaded: ").append(msg.getAttachments().size()).append("]\n");
+                        sb.append("   [Attachments Uploaded]:\n");
+                        for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
+                            sb.append("      -> ").append(attachment.getUrl()).append("\n");
+                        }
                     }
                 }
 
@@ -741,12 +744,12 @@ public class CommandListener extends ListenerAdapter {
                 String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
                 FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
 
-                event.getHook().sendMessage("📂 **Transcript Generated!** Here is the complete chat log for this order.")
+                event.getHook().sendMessage("📂 **Transcript Generated!** Here is the complete chat log with image links for this order.")
                      .addFiles(upload)
                      .queue();
                      
                 sendAuditLog(event.getGuild(), "Transcript Exported", 
-                    event.getUser().getAsMention() + " exported a transcript for thread `" + thread.getName() + "`.", 
+                    event.getUser().getAsMention() + " exported a manual transcript for thread `" + thread.getName() + "`.", 
                     Color.LIGHT_GRAY);
 
             }).exceptionally(e -> {
