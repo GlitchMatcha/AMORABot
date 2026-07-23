@@ -75,7 +75,7 @@ public class App {
                     Commands.slash("balance", "Check your current AMORA Sparks balance."),
                     Commands.slash("inventory", "View your collected Gacha photocards and assets"),
                     Commands.slash("forge", "Open the Synthesis Forge to craft or recycle items"),
-
+                    Commands.slash("transcript", "Director Only: Export a text transcript of the current order thread"),
                     Commands.slash("leaderboard", "View the Top 10 rankings in the server")
                         .addOptions(new OptionData(OptionType.STRING, "category", "Which leaderboard to view", true)
                             .addChoice("Wealth & Assets", "wealth")
@@ -90,7 +90,6 @@ public class App {
                                 .addOption(OptionType.BOOLEAN, "reset", "Reset all shop sales counters to 0 after generating?", true)
                         ),
 
-                    // 🛒 Context Menu Command (Right-click shop posts -> Apps -> "🛒 Order This")
                     Commands.context(net.dv8tion.jda.api.interactions.commands.Command.Type.MESSAGE, "🛒 Order This"),
 
                     Commands.slash("addsparks", "Admin: Add sparks to a user")
