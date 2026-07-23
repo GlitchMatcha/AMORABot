@@ -652,16 +652,9 @@ public class CommandListener extends ListenerAdapter {
                 }
                 
                 boolean doReset = event.getOption("reset") != null ? event.getOption("reset").getAsBoolean() : false;
-                List<String> compensated = db.generateCompensationReport(doReset);
+                List<String> compensated = db.generateCompensationReport(false); 
                 
                 StringBuilder log = new StringBuilder("The monthly shop performance audit is complete.\n\n");
-                
-                if (doReset) {
-                    log.append("⚠️ **Notice:** All shop tracking counters have been permanently reset to `0` for the new cycle.\n\n");
-                } else {
-                    log.append("ℹ️ **Notice:** Shop counters were NOT reset. The tracking continues.\n\n");
-                }
-
                 log.append("🔍 **Creators Flagged for Manual Review (0 Sales):**\n");
                 
                 if (compensated.isEmpty()) {
@@ -673,12 +666,23 @@ public class CommandListener extends ListenerAdapter {
                     log.append("\n*(Action Required: Please verify these creators did not post spam/fake listings, and use the `/payout` command to compensate them appropriately!)*");
                 }
 
-                event.replyEmbeds(new EmbedBuilder()
+                EmbedBuilder reportEmbed = new EmbedBuilder()
                         .setColor(new Color(255, 165, 0))
                         .setTitle("✦ CREATOR EVALUATION REPORT ✦")
                         .setDescription(log.toString())
-                        .setFooter("AMORA Financial Auditing System", null)
-                        .build()).queue();
+                        .setFooter("AMORA Financial Auditing System", null);
+                if (doReset) {
+                    reportEmbed.setColor(Color.RED);
+                    reportEmbed.addField("DATABASE WIPE REQUESTED ⚠️", "You chose to reset the counters. This action **cannot be undone**. Are you absolutely sure you want to wipe all shop tracking data for the new month?", false);
+                    
+                    event.replyEmbeds(reportEmbed.build())
+                         .addActionRow(
+                             Button.danger("confirm_shop_reset", "...CONFIRM WIPE"),
+                             Button.secondary("cancel_shop_reset", "❌ Cancel")
+                         ).queue();
+                } else {
+                    event.replyEmbeds(reportEmbed.build()).queue();
+                }
                 return;
             }
         }
