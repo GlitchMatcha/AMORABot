@@ -625,9 +625,9 @@ public class CommandListener extends ListenerAdapter {
 
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
-                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating secure room...*").queue(mainMessage -> {
+                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating Private Thread...*").queue(mainMessage -> {
                     orderChannel.createThreadChannel("🔒 Order: " + event.getUser().getName(), true).queue(thread -> {
-                         mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Secure Room:** " + thread.getAsMention()).queue();
+                         mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                          
                          thread.addThreadMember(creator).queue();
                          thread.addThreadMember(event.getUser()).queue();
@@ -2552,11 +2552,11 @@ public class CommandListener extends ListenerAdapter {
 
             event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue();
 
-            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating secure room...*").queue(mainMessage -> {
+            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
                 orderChannel.createThreadChannel("🔒 Order: " + buyer.getName(), true).queue(thread -> {
                      
-                     mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Secure Room:** " + thread.getAsMention()).queue();
+                     mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                      
                      thread.addThreadMember(creator).queue();
                      thread.addThreadMember(buyer).queue();
