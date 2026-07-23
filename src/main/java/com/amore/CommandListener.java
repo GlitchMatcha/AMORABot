@@ -112,7 +112,10 @@ public class CommandListener extends ListenerAdapter {
                 sb.append(msg.getContentDisplay()).append("\n");
                 
                 if (!msg.getAttachments().isEmpty()) {
-                    sb.append("   [Attachment(s) Uploaded: ").append(msg.getAttachments().size()).append("]\n");
+                    sb.append("   [Attachments Uploaded]:\n");
+                    for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
+                        sb.append("      -> ").append(attachment.getUrl()).append("\n");
+                    }
                 }
             }
 
@@ -2285,7 +2288,10 @@ public class CommandListener extends ListenerAdapter {
                 event.editMessageEmbeds(completed.build()).setComponents().queue(); 
                 event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
                 
-                generateAndLogTranscript(event.getChannel().asThreadChannel(), "COMPLETED");
+                ThreadChannel thread = event.getChannel().asThreadChannel();
+                generateAndLogTranscript(thread, "COMPLETED");
+                
+                thread.getManager().setLocked(true).setArchived(true).queue();
                 
                 sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction with <@" + buyerId + ">.", new Color(50, 205, 50));
 
@@ -2311,9 +2317,12 @@ public class CommandListener extends ListenerAdapter {
             declined.addField("❌ STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
             event.editMessageEmbeds(declined.build()).setComponents().queue();
-            event.reply("⚠️ Order ticket was marked as cancelled/declined.").queue();
+            event.reply("⚠️ Order ticket was marked as cancelled/declined. Locking thread...").queue();
             
-            generateAndLogTranscript(event.getChannel().asThreadChannel(), "CANCELLED/DECLINED");
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            generateAndLogTranscript(thread, "CANCELLED/DECLINED");
+            
+            thread.getManager().setLocked(true).setArchived(true).queue();
             
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
             return;
