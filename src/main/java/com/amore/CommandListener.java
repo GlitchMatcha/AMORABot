@@ -2049,9 +2049,9 @@ public class CommandListener extends ListenerAdapter {
                         
                         String label = "📢 Ping";
                         if (roleId.equals(System.getenv("PING_OUTFITS"))) label = "👗 Ping Outfits";
-                        else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "📝 Ping Lyrics";
-                        else if (roleId.equals(System.getenv("PING_FACES"))) label = "🎭 Ping Faces";
-                        else if (roleId.equals(System.getenv("PING_BUILDS"))) label = "🛠️ Ping Builds"; 
+                        else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "Ping Lyrics";
+                        else if (roleId.equals(System.getenv("PING_FACES"))) label = " Ping Faces";
+                        else if (roleId.equals(System.getenv("PING_BUILDS"))) label = "🛠️Ping Builds"; 
                         
                         newButtons.add(Button.primary(targetButtonId, label));  
                         foundButton = true;
