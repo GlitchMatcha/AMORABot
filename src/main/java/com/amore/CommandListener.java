@@ -621,7 +621,7 @@ public class CommandListener extends ListenerAdapter {
                 orderEmbed.setImage(image.getUrl());
             }
 
-            event.reply("✅ **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
+            event.reply(" **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
 
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
@@ -635,7 +635,7 @@ public class CommandListener extends ListenerAdapter {
                          thread.sendMessage(creator.getAsMention() + " ✦ " + event.getUser().getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                                .addEmbeds(orderEmbed.build())
                                .addActionRow(
-                                   Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept Order"),
+                                   Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), " Accept Order"),
                                    Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
                                ).queue();
                     });
@@ -1983,13 +1983,13 @@ public class CommandListener extends ListenerAdapter {
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
-                    newButtons.add(b.asDisabled().withLabel("✅ Sent"));
+                    newButtons.add(b.asDisabled().withLabel(" Sent"));
                 } else {
                     newButtons.add(b);
                 }
             }
             
-            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
+            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click ' Done / Close' to dismiss)")
                  .setActionRow(newButtons)
                  .queue();
             return;
@@ -2003,7 +2003,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+            event.editMessage(" **Ping session closed. Matcha luvs u <3**").setComponents().queue();
             
             event.getMessage().delete().queueAfter(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -2062,16 +2062,47 @@ public class CommandListener extends ListenerAdapter {
                 
                 if (foundButton && !newButtons.isEmpty()) {
                     menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                    event.reply("✅ False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                    event.reply(" False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
                 } else {
-                     event.reply("✅ False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                     event.reply(" False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
                 }
             }, error -> {
-                event.reply("✅ False ping successfully removed!").setEphemeral(true).queue();
+                event.reply(" False ping successfully removed!").setEphemeral(true).queue();
             });
             return;
         }
+        if (componentId.equals("confirm_shop_reset")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            db.generateCompensationReport(true); 
+            
+            EmbedBuilder successEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            successEmbed.setColor(new Color(0, 250, 154));
+            successEmbed.getFields().clear(); 
+            successEmbed.addField("DATABASE WIPED", "All shop tracking counters have been permanently reset to `0` for the new cycle.", false);
+            
+            event.editMessageEmbeds(successEmbed.build()).setComponents().queue();
+            sendAuditLog(event.getGuild(), "Shop Counters Reset", event.getUser().getAsMention() + " bypassed the safety lock and performed a global shop counter wipe.", Color.RED);
+            return;
+        }
 
+        if (componentId.equals("cancel_shop_reset")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            EmbedBuilder cancelEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            cancelEmbed.setColor(new Color(255, 165, 0));
+            cancelEmbed.getFields().clear(); 
+            cancelEmbed.addField("🛑 RESET CANCELLED", "The wipe was aborted. Shop tracking will continue normally.", false);
+            
+            event.editMessageEmbeds(cancelEmbed.build()).setComponents().queue();
+            return;
+        }
         if (componentId.startsWith("orderaccept_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
@@ -2119,7 +2150,7 @@ public class CommandListener extends ListenerAdapter {
 
             for (Button b : currentButtons) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
-                    String label = type.equals("buyerconfirm") ? "✅ Buyer Confirmed" : "✅ Seller Confirmed";
+                    String label = type.equals("buyerconfirm") ? " Buyer Confirmed" : " Seller Confirmed";
                     newButtons.add(b.asDisabled().withLabel(label).withStyle(net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle.SUCCESS));
                 } else {
                     newButtons.add(b);
@@ -2139,13 +2170,13 @@ public class CommandListener extends ListenerAdapter {
                 if (!completed.getFields().isEmpty()) {
                     completed.getFields().remove(completed.getFields().size() - 1); 
                 }
-                completed.addField("✅ STATUS: COMPLETED & VERIFIED", "Both parties verified the transaction. Sale officially logged!", false);
+                completed.addField(" STATUS: COMPLETED & VERIFIED", "Both parties verified the transaction. Sale officially logged!", false);
 
                 event.editMessageEmbeds(completed.build()).setComponents().queue(); 
-                event.getChannel().sendMessage("✅ **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
+                event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                event.getHook().sendMessage("✅ Your confirmation has been logged! Waiting for the other party.").setEphemeral(true).queue();
+                event.getHook().sendMessage(" Your confirmation has been logged! Waiting for the other party.").setEphemeral(true).queue();
             }
             return;
         }
@@ -2223,7 +2254,7 @@ public class CommandListener extends ListenerAdapter {
                         startMsg.editMessageEmbeds(newEmbed.build())
                                 .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
                                 .queue(
-                                        success -> hook.sendMessage("✅ You have successfully joined the party!").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage(" You have successfully joined the party!").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2286,7 +2317,7 @@ public class CommandListener extends ListenerAdapter {
                                         Button.danger("bleave_button", "🛑 Leave Quest")
                                 )
                                 .queue(
-                                        success -> hook.sendMessage("✅ You have left the party.").setEphemeral(true).queue(),
+                                        success -> hook.sendMessage(" You have left the party.").setEphemeral(true).queue(),
                                         error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
                     }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
@@ -2418,7 +2449,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(tradeEmbed.build())
                     .addActionRow(
-                            Button.success("trade_accept_" + tradeId, "✅ Accept"),
+                            Button.success("trade_accept_" + tradeId, " Accept"),
                             Button.danger("trade_decline_" + tradeId, "❌ Decline")
                     )
                     .queue();
@@ -2554,7 +2585,7 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
+            event.reply(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
 
             orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
@@ -2568,7 +2599,7 @@ public class CommandListener extends ListenerAdapter {
                      thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                            .addEmbeds(orderEmbed.build())
                            .addActionRow(
-                               net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
+                               net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
                                net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
                            ).queue();
                 });
