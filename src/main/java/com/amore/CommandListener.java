@@ -41,6 +41,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu;
@@ -51,6 +52,7 @@ public class CommandListener extends ListenerAdapter {
 
     private static final ExecutorService scheduler = Executors.newSingleThreadExecutor();
     private static final String AUDIT_LOG_CHANNEL_ID = System.getenv("AUDIT_LOG_CHANNEL_ID");
+    private static final String SHOP_LOG_CHANNEL_ID = System.getenv("SHOP_LOG_CHANNEL_ID");
     private static final String SHOP_FORUM_CHANNEL_ID = System.getenv("SHOP_FORUM_CHANNEL_ID");
     private static final String STANDARD_BOUNTY_FORUM_ID = System.getenv("STANDARD_BOUNTY_FORUM_ID");
     private static final String URGENT_BOUNTY_FORUM_ID = System.getenv("URGENT_BOUNTY_FORUM_ID");
@@ -73,6 +75,22 @@ public class CommandListener extends ListenerAdapter {
                     .setDescription(description)
                     .setTimestamp(Instant.now());
             auditChannel.sendMessageEmbeds(logEmbed.build()).queue();
+        }
+    }
+
+    private void sendShopLog(Guild guild, String title, String description, Color color) {
+        if (guild == null || SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) {
+            return;
+        }
+
+        TextChannel shopLogChannel = guild.getTextChannelById(SHOP_LOG_CHANNEL_ID);
+        if (shopLogChannel != null) {
+            EmbedBuilder logEmbed = new EmbedBuilder()
+                    .setColor(color)
+                    .setTitle("🛒 SHOP AUDIT: " + title)
+                    .setDescription(description)
+                    .setTimestamp(Instant.now());
+            shopLogChannel.sendMessageEmbeds(logEmbed.build()).queue();
         }
     }
 
@@ -582,6 +600,40 @@ public class CommandListener extends ListenerAdapter {
         } catch (Exception e) {
             e.printStackTrace();
             return null;
+        }
+    }
+    
+    @Override
+    public void onMessageReceived(MessageReceivedEvent event) {
+        if (!event.isFromGuild()) return;
+        if (event.getAuthor().isBot()) return;
+
+        if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            
+            if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
+                if (SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) return;
+                TextChannel shopLogChannel = event.getGuild().getTextChannelById(SHOP_LOG_CHANNEL_ID);
+                
+                if (shopLogChannel != null) {
+                    String content = event.getMessage().getContentDisplay();
+                    EmbedBuilder chatLog = new EmbedBuilder()
+                        .setColor(new Color(211, 211, 211))
+                        .setAuthor(event.getAuthor().getName(), null, event.getAuthor().getEffectiveAvatarUrl())
+                        .setDescription(content.isEmpty() ? "_[Attachment Uploaded]_" : content)
+                        .setFooter("Thread: " + thread.getName(), null)
+                        .setTimestamp(Instant.now());
+                    
+                    if (!event.getMessage().getAttachments().isEmpty()) {
+                        Attachment attachment = event.getMessage().getAttachments().get(0);
+                        if (attachment.isImage()) {
+                            chatLog.setImage(attachment.getUrl());
+                        }
+                    }
+
+                    shopLogChannel.sendMessageEmbeds(chatLog.build()).queue();
+                }
+            }
         }
     }
     
@@ -1140,7 +1192,7 @@ public class CommandListener extends ListenerAdapter {
                     success -> {
                         db.addShopItem(safeName, secretDelivery);
                         event.getHook().sendMessage(" Asset published!").queue();
-                        sendAuditLog(event.getGuild(), "Asset Published",
+                        sendShopLog(event.getGuild(), "Asset Published",
                                 event.getUser().getAsMention() + " published **" + safeName + "** to the shop for `"
                                         + price + " Points`.",
                                 new Color(0, 250, 154));
@@ -1962,6 +2014,39 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        
+        if (componentId.equals("confirm_shop_reset")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            db.generateCompensationReport(true); 
+            
+            EmbedBuilder successEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            successEmbed.setColor(new Color(0, 250, 154));
+            successEmbed.getFields().clear(); 
+            successEmbed.addField("DATABASE WIPED", "All shop tracking counters have been permanently reset to `0` for the new cycle.", false);
+            
+            event.editMessageEmbeds(successEmbed.build()).setComponents().queue();
+            sendShopLog(event.getGuild(), "Shop Counters Reset", event.getUser().getAsMention() + " bypassed the safety lock and performed a global shop counter wipe.", Color.RED);
+            return;
+        }
+
+        if (componentId.equals("cancel_shop_reset")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            EmbedBuilder cancelEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            cancelEmbed.setColor(new Color(255, 165, 0));
+            cancelEmbed.getFields().clear(); 
+            cancelEmbed.addField("🛑 RESET CANCELLED", "The wipe was aborted. Shop tracking will continue normally.", false);
+            
+            event.editMessageEmbeds(cancelEmbed.build()).setComponents().queue();
+            return;
+        }
 
         if (componentId.startsWith("shopping_")) {
             String[] parts = componentId.split("_");
@@ -1983,13 +2068,13 @@ public class CommandListener extends ListenerAdapter {
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
-                    newButtons.add(b.asDisabled().withLabel(" Sent"));
+                    newButtons.add(b.asDisabled().withLabel("✅ Sent"));
                 } else {
                     newButtons.add(b);
                 }
             }
             
-            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click ' Done / Close' to dismiss)")
+            event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
                  .setActionRow(newButtons)
                  .queue();
             return;
@@ -2003,7 +2088,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.editMessage(" **Ping session closed. Matcha luvs u <3**").setComponents().queue();
+            event.editMessage("✅ **Ping session closed. Matcha luvs u <3**").setComponents().queue();
             
             event.getMessage().delete().queueAfter(5, java.util.concurrent.TimeUnit.SECONDS);
 
@@ -2049,9 +2134,9 @@ public class CommandListener extends ListenerAdapter {
                         
                         String label = "📢 Ping";
                         if (roleId.equals(System.getenv("PING_OUTFITS"))) label = "👗 Ping Outfits";
-                        else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "Ping Lyrics";
-                        else if (roleId.equals(System.getenv("PING_FACES"))) label = " Ping Faces";
-                        else if (roleId.equals(System.getenv("PING_BUILDS"))) label = "🛠️Ping Builds"; 
+                        else if (roleId.equals(System.getenv("PING_LYRICS"))) label = "📝 Ping Lyrics";
+                        else if (roleId.equals(System.getenv("PING_FACES"))) label = "🎭 Ping Faces";
+                        else if (roleId.equals(System.getenv("PING_BUILDS"))) label = "🛠️ Ping Builds"; 
                         
                         newButtons.add(Button.primary(targetButtonId, label));  
                         foundButton = true;
@@ -2062,47 +2147,16 @@ public class CommandListener extends ListenerAdapter {
                 
                 if (foundButton && !newButtons.isEmpty()) {
                     menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                    event.reply(" False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                    event.reply("✅ False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
                 } else {
-                     event.reply(" False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                     event.reply("✅ False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
                 }
             }, error -> {
-                event.reply(" False ping successfully removed!").setEphemeral(true).queue();
+                event.reply("✅ False ping successfully removed!").setEphemeral(true).queue();
             });
             return;
         }
-        if (componentId.equals("confirm_shop_reset")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
-                return;
-            }
-            
-            db.generateCompensationReport(true); 
-            
-            EmbedBuilder successEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            successEmbed.setColor(new Color(0, 250, 154));
-            successEmbed.getFields().clear(); 
-            successEmbed.addField("DATABASE WIPED", "All shop tracking counters have been permanently reset to `0` for the new cycle.", false);
-            
-            event.editMessageEmbeds(successEmbed.build()).setComponents().queue();
-            sendAuditLog(event.getGuild(), "Shop Counters Reset", event.getUser().getAsMention() + " bypassed the safety lock and performed a global shop counter wipe.", Color.RED);
-            return;
-        }
 
-        if (componentId.equals("cancel_shop_reset")) {
-            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
-                return;
-            }
-            
-            EmbedBuilder cancelEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            cancelEmbed.setColor(new Color(255, 165, 0));
-            cancelEmbed.getFields().clear(); 
-            cancelEmbed.addField("🛑 RESET CANCELLED", "The wipe was aborted. Shop tracking will continue normally.", false);
-            
-            event.editMessageEmbeds(cancelEmbed.build()).setComponents().queue();
-            return;
-        }
         if (componentId.startsWith("orderaccept_")) {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
@@ -2174,6 +2228,9 @@ public class CommandListener extends ListenerAdapter {
 
                 event.editMessageEmbeds(completed.build()).setComponents().queue(); 
                 event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
+                
+                sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction with <@" + buyerId + ">.", new Color(50, 205, 50));
+
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
                 event.getHook().sendMessage(" Your confirmation has been logged! Waiting for the other party.").setEphemeral(true).queue();
@@ -2197,6 +2254,8 @@ public class CommandListener extends ListenerAdapter {
             
             event.editMessageEmbeds(declined.build()).setComponents().queue();
             event.reply("⚠️ Order ticket was marked as cancelled/declined.").queue();
+            
+            sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
             return;
         }
 
@@ -2383,10 +2442,10 @@ public class CommandListener extends ListenerAdapter {
                     event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed."
             ).queue());
 
-            sendAuditLog(
+            sendShopLog(
                     event.getGuild(),
-                    "Shop Purchase",
-                    event.getUser().getAsMention() + " purchased **" + itemName + "** from the market for `"
+                    "Shop Direct Purchase",
+                    event.getUser().getAsMention() + " bypassed manual ordering and instantly purchased **" + itemName + "** from the market for `"
                             + price + " Points`.",
                     new Color(138, 43, 226)
             );
@@ -2449,7 +2508,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(tradeEmbed.build())
                     .addActionRow(
-                            Button.success("trade_accept_" + tradeId, " Accept"),
+                            Button.success("trade_accept_" + tradeId, "✅ Accept"),
                             Button.danger("trade_decline_" + tradeId, "❌ Decline")
                     )
                     .queue();
@@ -2570,10 +2629,11 @@ public class CommandListener extends ListenerAdapter {
                     .setColor(new java.awt.Color(255, 182, 193))
                     .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
                     .setDescription(
+                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
                             "🛍️ **Item Requested:**\n" +
                             "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                             "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                            "*(Creator: Accept this order below to begin the transaction!)*"
+                            "*(Creator: Accept this order below to log your sale!)*"
                     )
                     .setThumbnail(buyer.getEffectiveAvatarUrl())
                     .setFooter("AMORA Smart UI Order System", null);
