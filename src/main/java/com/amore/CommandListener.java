@@ -625,14 +625,20 @@ public class CommandListener extends ListenerAdapter {
 
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
-                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!").queue();
-                orderChannel.createThreadChannel("🛒 Order: " + event.getUser().getName(), true).queue(thread -> {
-                     thread.sendMessage(creator.getAsMention() + " ✦ " + event.getUser().getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
-                           .addEmbeds(orderEmbed.build())
-                           .addActionRow(
-                               Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept Order"),
-                               Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
-                           ).queue();
+                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating secure room...*").queue(mainMessage -> {
+                    orderChannel.createThreadChannel("🔒 Order: " + event.getUser().getName(), true).queue(thread -> {
+                         mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Secure Room:** " + thread.getAsMention()).queue();
+                         
+                         thread.addThreadMember(creator).queue();
+                         thread.addThreadMember(event.getUser()).queue();
+
+                         thread.sendMessage(creator.getAsMention() + " ✦ " + event.getUser().getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
+                               .addEmbeds(orderEmbed.build())
+                               .addActionRow(
+                                   Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), "✅ Accept Order"),
+                                   Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
+                               ).queue();
+                    });
                 });
             }
             return;
@@ -2529,11 +2535,10 @@ public class CommandListener extends ListenerAdapter {
                     .setColor(new java.awt.Color(255, 182, 193))
                     .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
                     .setDescription(
-                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
                             "🛍️ **Item Requested:**\n" +
                             "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                             "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                            "*(Creator: Accept this order below to log your sale!)*"
+                            "*(Creator: Accept this order below to begin the transaction!)*"
                     )
                     .setThumbnail(buyer.getEffectiveAvatarUrl())
                     .setFooter("AMORA Smart UI Order System", null);
@@ -2547,15 +2552,22 @@ public class CommandListener extends ListenerAdapter {
 
             event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue();
 
-            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!").queue();
-            
-            orderChannel.createThreadChannel("🔒 Order: " + buyer.getName(), true).queue(thread -> {
-                 thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room! Please share all details and payment proofs here.")
-                       .addEmbeds(orderEmbed.build())
-                       .addActionRow(
-                           net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
-                           net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
-                       ).queue();
+            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating secure room...*").queue(mainMessage -> {
+                
+                orderChannel.createThreadChannel("🔒 Order: " + buyer.getName(), true).queue(thread -> {
+                     
+                     mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Secure Room:** " + thread.getAsMention()).queue();
+                     
+                     thread.addThreadMember(creator).queue();
+                     thread.addThreadMember(buyer).queue();
+
+                     thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
+                           .addEmbeds(orderEmbed.build())
+                           .addActionRow(
+                               net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), "✅ Accept Order"),
+                               net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
+                           ).queue();
+                });
             });
         }
     }
