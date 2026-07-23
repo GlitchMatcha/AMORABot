@@ -2061,7 +2061,7 @@ public class CommandListener extends ListenerAdapter {
 
             String menuMsgId = event.getMessageId();
 
-            event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! 🛒✨")
+            event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! ")
                  .addActionRow(Button.danger("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId, "🗑️ Undo Ping"))
                  .queue();
 
