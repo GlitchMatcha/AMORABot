@@ -2550,7 +2550,7 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Watch your DMs!").setEphemeral(true).queue();
+            event.reply("✅ **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
 
             orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
