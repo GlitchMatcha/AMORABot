@@ -2089,7 +2089,7 @@ public class CommandListener extends ListenerAdapter {
                      Button.danger("ordercancel_" + creatorId + "_" + buyerId, "❌ Cancel Order")
                  ).queue(); 
                  
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Please coordinate payment/delivery in this thread.").queue();
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Nub Matcha begs: Please do orders in this thread instead of DMs").queue();
             return;
         }
 
