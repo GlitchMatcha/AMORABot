@@ -93,7 +93,42 @@ public class CommandListener extends ListenerAdapter {
             shopLogChannel.sendMessageEmbeds(logEmbed.build()).queue();
         }
     }
+    private void generateAndLogTranscript(ThreadChannel thread, String status) {
+        if (SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) return;
+        TextChannel logChannel = thread.getGuild().getTextChannelById(SHOP_LOG_CHANNEL_ID);
+        if (logChannel == null) return;
 
+        thread.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("✦ ORDER TRANSCRIPT: ").append(thread.getName()).append(" ✦\n");
+            sb.append("Status: ").append(status).append("\n");
+            sb.append("=========================================\n\n");
+
+            java.util.Collections.reverse(messages);
+
+            for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                sb.append("[").append(msg.getTimeCreated().toLocalDateTime().toString()).append("] ");
+                sb.append(msg.getAuthor().getName()).append(": ");
+                sb.append(msg.getContentDisplay()).append("\n");
+                
+                if (!msg.getAttachments().isEmpty()) {
+                    sb.append("   [Attachment(s) Uploaded: ").append(msg.getAttachments().size()).append("]\n");
+                }
+            }
+
+            byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+            String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
+            FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
+
+            logChannel.sendMessage("📂 **Automated Transcript Backup** | Thread: `" + thread.getName() + "` | Status: **" + status + "**")
+                      .addFiles(upload)
+                      .queue();
+                      
+        }).exceptionally(e -> {
+            System.out.println("❌ Failed to automatically generate transcript: " + e.getMessage());
+            return null;
+        });
+    }
     private boolean hasAnyAllowedRole(SlashCommandInteractionEvent event, String rawRoleIds) {
         if (event.getMember() == null || rawRoleIds == null || rawRoleIds.isBlank()) {
             return false;
@@ -2250,6 +2285,8 @@ public class CommandListener extends ListenerAdapter {
                 event.editMessageEmbeds(completed.build()).setComponents().queue(); 
                 event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
                 
+                generateAndLogTranscript(event.getChannel().asThreadChannel(), "COMPLETED");
+                
                 sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction with <@" + buyerId + ">.", new Color(50, 205, 50));
 
             } else {
@@ -2269,12 +2306,14 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+           EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             declined.setColor(Color.RED);
             declined.addField("❌ STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
             event.editMessageEmbeds(declined.build()).setComponents().queue();
             event.reply("⚠️ Order ticket was marked as cancelled/declined.").queue();
+            
+            generateAndLogTranscript(event.getChannel().asThreadChannel(), "CANCELLED/DECLINED");
             
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
             return;
