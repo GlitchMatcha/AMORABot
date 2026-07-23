@@ -156,7 +156,7 @@ public class CommandListener extends ListenerAdapter {
                       .queue();
                       
         }).exceptionally(e -> {
-            System.out.println("❌ Failed to automatically generate transcript: " + e.getMessage());
+            System.out.println(" :002_bunnyplead: Failed to automatically generate transcript: " + e.getMessage());
             return null;
         });
     }
@@ -185,19 +185,19 @@ public class CommandListener extends ListenerAdapter {
        
     private boolean requireAnyConfiguredRole(SlashCommandInteractionEvent event, String rawRoleIds, String envName) {
         if (event.getMember() == null) {
-            event.reply("❌ This command can only be used inside a server.")
+            event.reply(" :002_bunnyplead: This command can only be used inside a server.")
                     .setEphemeral(true).queue();
             return false;
         }
 
         if (rawRoleIds == null || rawRoleIds.isBlank()) {
-            event.reply("❌ `" + envName + "` is not allowed to use this command wahhh T^T.")
+            event.reply(" :002_bunnyplead: `" + envName + "` is not allowed to use this command wahhh T^T.")
                     .setEphemeral(true).queue();
             return false;
         }
 
         if (!hasAnyAllowedRole(event, rawRoleIds)) {
-            event.reply("❌ You do not have any of the required roles to use this command.")
+            event.reply(" :002_bunnyplead: You do not have any of the required roles to use this command.")
                     .setEphemeral(true).queue();
             return false;
         }
@@ -446,7 +446,7 @@ public class CommandListener extends ListenerAdapter {
             try (InputStream in = txtFile.getProxy().download().join()) {
                 description = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             } catch (Exception e) {
-                description = "❌ Failed to read the attached .txt file.";
+                description = " :002_bunnyplead: Failed to read the attached .txt file.";
             }
         } else if (event.getOption("description") != null) {
             description = event.getOption("description").getAsString().replace("\\n", "\n");
@@ -696,7 +696,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("order")) {
             if (ORDER_CHANNEL_ID != null && !event.getChannel().getId().equals(ORDER_CHANNEL_ID)) {
-                event.reply("❌ **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
                 return;
             }
 
@@ -706,31 +706,50 @@ public class CommandListener extends ListenerAdapter {
             Attachment image = event.getOption("image") != null ? event.getOption("image").getAsAttachment() : null;
 
             if (creator.isBot() || creator.getId().equals(event.getUser().getId())) {
-                event.reply("❌ You cannot place an order with yourself or a bot.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You cannot place an order with yourself or a bot.").setEphemeral(true).queue();
                 return;
             }
 
-            EmbedBuilder orderEmbed = new EmbedBuilder()
-                    .setColor(new Color(255, 182, 193))
-                    .setTitle("✦ NEW COMMISSION ORDER ✦")
-                    .setDescription(
-                            "🛍️ **Request:** `" + request + "`\n\n" +
-                            "📝 **Notes & References:**\n" + notes + "\n\n" +
-                            "*(Creator: Accept this order below to begin the transaction!)*"
-                    )
-                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
-                    .setFooter("AMORA Designated Order System", null);
-
-            if (image != null && image.isImage()) {
-                orderEmbed.setImage(image.getUrl());
-            }
-
-            event.reply(" **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
-
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
+                // 1. Buyer Anti-Spam Limit (1 Active Order max)
+                boolean hasActiveOrder = orderChannel.getThreadChannels().stream()
+                        .anyMatch(t -> t.getName().contains(event.getUser().getName() + " ➔"));
+
+                if (hasActiveOrder) {
+                    event.reply(" :002_bunnyplead: **Hold on!** You already have an active order open. Please finish or cancel your current transaction before requesting another!").setEphemeral(true).queue();
+                    return;
+                }
+
+                long creatorActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains("➔ " + creator.getName()))
+                        .count();
+
+                if (creatorActiveOrders >= 3) {
+                    event.reply(" :1_xbcute: **Queue Full!** " + creator.getName() + " currently has too many active orders (" + creatorActiveOrders + "/3). Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
+                    return;
+                }
+
+                EmbedBuilder orderEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setTitle("✦ NEW COMMISSION ORDER ✦")
+                        .setDescription(
+                                " :009BCinnamoroll_Hide: **Request:** `" + request + "`\n\n" +
+                                " :BugCatOk: **Notes & References:**\n" + notes + "\n\n" +
+                                "*(Creator: Accept this order below to begin the transaction!)*"
+                        )
+                        .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                        .setFooter("AMORA Designated Order System", null);
+
+                if (image != null && image.isImage()) {
+                    orderEmbed.setImage(image.getUrl());
+                }
+
+                event.reply(" **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
+
                 orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating Private Thread...*").queue(mainMessage -> {
-                    orderChannel.createThreadChannel("⏳ Order: " + event.getUser().getName(), true).queue(thread -> {
+                    
+                    orderChannel.createThreadChannel("⏳ " + event.getUser().getName() + " ➔ " + creator.getName(), true).queue(thread -> {
                          mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                          
                          thread.addThreadMember(creator).queue();
@@ -740,7 +759,7 @@ public class CommandListener extends ListenerAdapter {
                                .addEmbeds(orderEmbed.build())
                                .addActionRow(
                                    Button.success("orderaccept_" + creator.getId() + "_" + event.getUser().getId(), " Accept Order"),
-                                   Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), "❌ Decline")
+                                   Button.danger("orderdecline_" + creator.getId() + "_" + event.getUser().getId(), " :002_bunnyplead: Decline")
                                ).queue();
                     });
                 });
@@ -749,12 +768,12 @@ public class CommandListener extends ListenerAdapter {
         }
         if (event.getName().equals("transcript")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Director clearance required to pull transcripts.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Director clearance required to pull transcripts.").setEphemeral(true).queue();
                 return;
             }
 
             if (!event.getChannel().getType().isThread()) {
-                event.reply("❌ This command must be run inside a private order thread!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This command must be run inside a private order thread!").setEphemeral(true).queue();
                 return;
             }
 
@@ -794,7 +813,7 @@ public class CommandListener extends ListenerAdapter {
                     Color.LIGHT_GRAY);
 
             }).exceptionally(e -> {
-                event.getHook().sendMessage("❌ Failed to generate transcript: " + e.getMessage()).queue();
+                event.getHook().sendMessage(" :002_bunnyplead: Failed to generate transcript: " + e.getMessage()).queue();
                 return null;
             });
             return;
@@ -802,7 +821,7 @@ public class CommandListener extends ListenerAdapter {
         if (event.getName().equals("shop")) {
             if ("evaluate".equals(event.getSubcommandName())) {
                 if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                    event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Director clearance required.").setEphemeral(true).queue();
                     return;
                 }
                 
@@ -833,7 +852,7 @@ public class CommandListener extends ListenerAdapter {
                     event.replyEmbeds(reportEmbed.build())
                          .addActionRow(
                              Button.danger("confirm_shop_reset", "...CONFIRM WIPE"),
-                             Button.secondary("cancel_shop_reset", "❌ Cancel")
+                             Button.secondary("cancel_shop_reset", " :002_bunnyplead: Cancel")
                          ).queue();
                 } else {
                     event.replyEmbeds(reportEmbed.build()).queue();
@@ -1009,7 +1028,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("activitycheck")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ You do not have clearance to configure templates.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You do not have clearance to configure templates.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1075,7 +1094,7 @@ public class CommandListener extends ListenerAdapter {
         if (event.getName().equals("forge")) {
             String inv = db.getInventory(userId);
             if (inv == null || inv.isEmpty()) {
-                event.reply("❌ Your inventory is empty! You have nothing to forge or recycle.")
+                event.reply(" :002_bunnyplead: Your inventory is empty! You have nothing to forge or recycle.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1172,7 +1191,7 @@ public class CommandListener extends ListenerAdapter {
             String targetId = targetUser.getId();
 
             if (targetUser.isBot() || senderId.equals(targetId)) {
-                event.reply("❌ Invalid target.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Invalid target.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1180,11 +1199,11 @@ public class CommandListener extends ListenerAdapter {
             String targetInv = db.getInventory(targetId);
 
             if (senderInv == null || senderInv.isEmpty()) {
-                event.reply("❌ You don't have assets!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You don't have assets!").setEphemeral(true).queue();
                 return;
             }
             if (targetInv == null || targetInv.isEmpty()) {
-                event.reply("❌ They don't have assets!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: They don't have assets!").setEphemeral(true).queue();
                 return;
             }
 
@@ -1209,19 +1228,19 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("publish")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ No clearance.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: No clearance.").setEphemeral(true).queue();
                 return;
             }
             if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: MUST be a Forum Channel!").setEphemeral(true).queue();
                 return;
             }
             if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
-                event.reply("❌ SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: SHOP_FORUM_CHANNEL_ID is not configured.").setEphemeral(true).queue();
                 return;
             }
             if (!event.getOption("forum").getAsChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
-                event.reply("❌ **Access Denied:** Wrong channel!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: **Access Denied:** Wrong channel!").setEphemeral(true).queue();
                 return;
             }
 
@@ -1229,7 +1248,7 @@ public class CommandListener extends ListenerAdapter {
             String safeName = itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
 
             if (db.shopItemExists(safeName)) {
-                event.reply("❌ Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Upload Aborted: This item already exists in the shop.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1284,7 +1303,7 @@ public class CommandListener extends ListenerAdapter {
                             .build());
                 }
             } catch (Exception e) {
-                event.getHook().sendMessage("❌ Failed to process uploaded files: " + e.getMessage()).queue();
+                event.getHook().sendMessage(" :002_bunnyplead: Failed to process uploaded files: " + e.getMessage()).queue();
                 return;
             }
 
@@ -1312,7 +1331,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("bounty")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ You do not have clearance to manage Bounties.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You do not have clearance to manage Bounties.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1320,17 +1339,17 @@ public class CommandListener extends ListenerAdapter {
 
             if ("post".equals(subCommand)) {
                 if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                    event.reply("❌ MUST be a Forum Channel!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: MUST be a Forum Channel!").setEphemeral(true).queue();
                     return;
                 }
                 if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
-                    event.reply("❌ Bounty forum IDs are not configured.").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Bounty forum IDs are not configured.").setEphemeral(true).queue();
                     return;
                 }
 
                 String selectedForumId = event.getOption("forum").getAsChannel().getId();
                 if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
-                    event.reply("❌ **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -1364,7 +1383,7 @@ public class CommandListener extends ListenerAdapter {
                         questEmbed.setImage(imageRef);
                     }
                 } catch (Exception e) {
-                    event.getHook().sendMessage("❌ Failed to process uploaded image: " + e.getMessage()).queue();
+                    event.getHook().sendMessage(" :002_bunnyplead: Failed to process uploaded image: " + e.getMessage()).queue();
                     return;
                 }
 
@@ -1393,7 +1412,7 @@ public class CommandListener extends ListenerAdapter {
 
             if ("kick".equals(subCommand)) {
                 if (!event.getChannel().getType().isThread()) {
-                    event.reply("❌ Run this inside the Quest Thread!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Run this inside the Quest Thread!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -1408,7 +1427,7 @@ public class CommandListener extends ListenerAdapter {
                             int fieldIndex = getPartyFieldIndex(oldEmbed);
 
                             if (partyField == null || fieldIndex == -1) {
-                                replyHook.editOriginal("❌ Party data not found.").queue();
+                                replyHook.editOriginal(" :002_bunnyplead: Party data not found.").queue();
                                 return;
                             }
 
@@ -1417,7 +1436,7 @@ public class CommandListener extends ListenerAdapter {
                             String userMention = target.getAsMention();
 
                             if (!partyValue.contains(userMention)) {
-                                replyHook.editOriginal("❌ " + userMention + " is not currently in the party!").queue();
+                                replyHook.editOriginal(" :002_bunnyplead: " + userMention + " is not currently in the party!").queue();
                                 return;
                             }
 
@@ -1453,13 +1472,13 @@ public class CommandListener extends ListenerAdapter {
                             sendAuditLog(event.getGuild(), "Bounty Kick",
                                     event.getUser().getAsMention() + " removed " + userMention + " from a party in thread `"
                                             + thread.getId() + "`.", Color.ORANGE);
-                        }, error -> replyHook.editOriginal("❌ Error fetching the starting message.").queue()));
+                        }, error -> replyHook.editOriginal(" :002_bunnyplead: Error fetching the starting message.").queue()));
                 return;
             }
 
             if ("cancel".equals(subCommand)) {
                 if (!event.getChannel().getType().isThread()) {
-                    event.reply("❌ Run this inside the Quest Thread!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Run this inside the Quest Thread!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -1475,7 +1494,7 @@ public class CommandListener extends ListenerAdapter {
                                 newEmbed.getFields().remove(partyFieldIndex);
                             }
 
-                            newEmbed.addField("❌ DIRECTIVE CANCELLED",
+                            newEmbed.addField(" :002_bunnyplead: DIRECTIVE CANCELLED",
                                     "This quest was aborted by " + event.getUser().getAsMention() + ". No points were awarded.", false);
 
                             startMsg.editMessageEmbeds(newEmbed.build()).setComponents().queue(done -> {
@@ -1490,13 +1509,13 @@ public class CommandListener extends ListenerAdapter {
                                         event.getUser().getAsMention() + " aborted the quest in thread `"
                                                 + thread.getId() + "`.", Color.RED);
                             });
-                        }, error -> replyHook.editOriginal("❌ Error fetching the starting message.").queue()));
+                        }, error -> replyHook.editOriginal(" :002_bunnyplead: Error fetching the starting message.").queue()));
                 return;
             }
 
             if ("complete".equals(subCommand)) {
                 if (!event.getChannel().getType().isThread()) {
-                    event.reply("❌ Run this inside the Quest Thread!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Run this inside the Quest Thread!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -1515,7 +1534,7 @@ public class CommandListener extends ListenerAdapter {
                             String partyData = partyField == null ? "None" : partyField[1];
 
                             if (partyData.equals("None") || partyData.isEmpty()) {
-                                replyHook.editOriginal("❌ Cannot complete. The party is empty!").queue();
+                                replyHook.editOriginal(" :002_bunnyplead: Cannot complete. The party is empty!").queue();
                                 return;
                             }
 
@@ -1573,7 +1592,7 @@ public class CommandListener extends ListenerAdapter {
                                             Color.GREEN);
                                 }
                             });
-                        }, error -> replyHook.editOriginal("❌ Error fetching the starting message.").queue()));
+                        }, error -> replyHook.editOriginal(" :002_bunnyplead: Error fetching the starting message.").queue()));
                 return;
             }
 
@@ -1589,7 +1608,7 @@ public class CommandListener extends ListenerAdapter {
             int amount = event.getOption("amount").getAsInt();
 
             if (amount <= 0) {
-                event.reply("❌ Amount must be greater than 0.")
+                event.reply(" :002_bunnyplead: Amount must be greater than 0.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1620,7 +1639,7 @@ public class CommandListener extends ListenerAdapter {
             String reason = event.getOption("reason").getAsString();
 
             if (amount <= 0) {
-                event.reply("❌ Amount must be greater than 0.")
+                event.reply(" :002_bunnyplead: Amount must be greater than 0.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1651,7 +1670,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("award")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ You do not have clearance to award performance Sparks.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You do not have clearance to award performance Sparks.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1681,7 +1700,7 @@ public class CommandListener extends ListenerAdapter {
             String subcommand = event.getSubcommandName();
 
             if (subcommand == null) {
-                event.reply("❌ Missing subcommand. Use `/song add`, `/song importplaylist`, `/song list`, `/song suggest`, or `/song remove`.")
+                event.reply(" :002_bunnyplead: Missing subcommand. Use `/song add`, `/song importplaylist`, `/song list`, `/song suggest`, or `/song remove`.")
                         .setEphemeral(true).queue();
                 return;
             }
@@ -1692,25 +1711,25 @@ public class CommandListener extends ListenerAdapter {
                 String link = normalizeSongLink(event.getOption("link").getAsString().trim());
 
                 if (title.isBlank() || artist.isBlank() || link.isBlank()) {
-                    event.reply("❌ Title, artist, and link are required.")
+                    event.reply(" :002_bunnyplead: Title, artist, and link are required.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 if (title.length() > 120 || artist.length() > 120 || link.length() > 500) {
-                    event.reply("❌ One or more fields are too long.")
+                    event.reply(" :002_bunnyplead: One or more fields are too long.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 if (!isSupportedSongLink(link)) {
-                    event.reply("❌ Please submit a valid Spotify track or YouTube song link.")
+                    event.reply(" :002_bunnyplead: Please submit a valid Spotify track or YouTube song link.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 if (db.songLinkExists(link)) {
-                    event.reply("❌ That exact song link is already in the AMORA pool.")
+                    event.reply(" :002_bunnyplead: That exact song link is already in the AMORA pool.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1724,7 +1743,7 @@ public class CommandListener extends ListenerAdapter {
                 );
 
                 if (created == null) {
-                    event.reply("❌ Failed to save the song suggestion.")
+                    event.reply(" :002_bunnyplead: Failed to save the song suggestion.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1737,7 +1756,7 @@ public class CommandListener extends ListenerAdapter {
 
             if (subcommand.equals("importplaylist")) {
                 if (!isMusicStaff(event)) {
-                    event.reply("❌ Only AMORA Staff can mass-import playlists.")
+                    event.reply(" :002_bunnyplead: Only AMORA Staff can mass-import playlists.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1745,12 +1764,12 @@ public class CommandListener extends ListenerAdapter {
                 String playlistLink = event.getOption("link").getAsString().trim();
 
                 if (playlistLink.isBlank()) {
-                    event.reply("❌ Playlist link is required.").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Playlist link is required.").setEphemeral(true).queue();
                     return;
                 }
 
                 if (!isYouTubePlaylistLink(playlistLink)) {
-                    event.reply("❌ Please provide a valid public YouTube playlist link or Playlist ID.").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: Please provide a valid public YouTube playlist link or Playlist ID.").setEphemeral(true).queue();
                     return;
                 }
 
@@ -1761,7 +1780,7 @@ public class CommandListener extends ListenerAdapter {
                                     YouTubePlaylistImporter.importPlaylist(playlistLink);
 
                             if (importedSongs.isEmpty()) {
-                                hook.editOriginal("❌ No usable songs were found in that playlist.").queue();
+                                hook.editOriginal(" :002_bunnyplead: No usable songs were found in that playlist.").queue();
                                 return;
                             }
 
@@ -1832,7 +1851,7 @@ public class CommandListener extends ListenerAdapter {
                             if (t instanceof java.util.concurrent.CompletionException && t.getCause() != null) {
                                 errorMsg = t.getCause().getMessage() != null ? t.getCause().getMessage() : t.getCause().getClass().getSimpleName();
                             }
-                            hook.editOriginal("❌ Failed to import playlist: " + errorMsg).queue();
+                            hook.editOriginal(" :002_bunnyplead: Failed to import playlist: " + errorMsg).queue();
                         }
                     });
                 });
@@ -1843,7 +1862,7 @@ public class CommandListener extends ListenerAdapter {
                 DatabaseManager.SongSuggestionRecord song = db.getSongSuggestionById(songId);
 
                 if (song == null || !song.active) {
-                    event.reply("❌ That song ID does not exist in the active pool.")
+                    event.reply(" :002_bunnyplead: That song ID does not exist in the active pool.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1852,14 +1871,14 @@ public class CommandListener extends ListenerAdapter {
                 boolean isStaff = isMusicStaff(event);
 
                 if (!isOwner && !isStaff) {
-                    event.reply("❌ You can only remove songs you added yourself unless you are AMORA Staff.")
+                    event.reply(" :002_bunnyplead: You can only remove songs you added yourself unless you are AMORA Staff.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 boolean removed = db.deactivateSongSuggestion(songId);
                 if (!removed) {
-                    event.reply("❌ Failed to remove that song.")
+                    event.reply(" :002_bunnyplead: Failed to remove that song.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1871,7 +1890,7 @@ public class CommandListener extends ListenerAdapter {
 
             if (subcommand.equals("list")) {
                 if (!isMusicStaff(event)) {
-                    event.reply("❌ Only AMORA Staff can view the full song pool directory.")
+                    event.reply(" :002_bunnyplead: Only AMORA Staff can view the full song pool directory.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1879,7 +1898,7 @@ public class CommandListener extends ListenerAdapter {
                 List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(5000);
 
                 if (songs.isEmpty()) {
-                    event.reply("❌ The AMORA song pool is empty right now. Add one with `/song add`.")
+                    event.reply(" :002_bunnyplead: The AMORA song pool is empty right now. Add one with `/song add`.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1912,7 +1931,7 @@ public class CommandListener extends ListenerAdapter {
                 DatabaseManager.SongSuggestionRecord song = db.getRandomActiveSongSuggestion();
 
                 if (song == null) {
-                    event.reply("❌ There are no active song suggestions yet.")
+                    event.reply(" :002_bunnyplead: There are no active song suggestions yet.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1925,20 +1944,20 @@ public class CommandListener extends ListenerAdapter {
 
             if (subcommand.equals("postnow")) {
                 if (!isMusicStaff(event)) {
-                    event.reply("❌ Only AMORA Staff can force-post the daily song.")
+                    event.reply(" :002_bunnyplead: Only AMORA Staff can force-post the daily song.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 if (DAILY_SONG_CHANNEL_ID == null || DAILY_SONG_CHANNEL_ID.isBlank()) {
-                    event.reply("❌ DAILY_SONG_CHANNEL_ID is not configured.")
+                    event.reply(" :002_bunnyplead: DAILY_SONG_CHANNEL_ID is not configured.")
                             .setEphemeral(true).queue();
                     return;
                 }
 
                 boolean posted = App.postSongRecommendation(event.getJDA(), false);
                 if (!posted) {
-                    event.reply("❌ Could not post a song right now. Check the channel ID or make sure the pool has songs.")
+                    event.reply(" :002_bunnyplead: Could not post a song right now. Check the channel ID or make sure the pool has songs.")
                             .setEphemeral(true).queue();
                     return;
                 }
@@ -1948,7 +1967,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            event.reply("❌ Unknown song subcommand.")
+            event.reply(" :002_bunnyplead: Unknown song subcommand.")
                     .setEphemeral(true).queue();
             return;
         }
@@ -1964,7 +1983,7 @@ public class CommandListener extends ListenerAdapter {
             DatabaseManager.PendingTradeSetupRecord setup = db.getPendingTradeSetup(setupId);
 
             if (setup == null) {
-                event.reply("❌ This trade setup has expired.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This trade setup has expired.").setEphemeral(true).queue();
                 return;
             }
 
@@ -1983,7 +2002,7 @@ public class CommandListener extends ListenerAdapter {
             String ownerId = componentId.substring("forge_craft_".length());
 
             if (!event.getUser().getId().equals(ownerId)) {
-                event.reply("❌ This is not your forge session!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This is not your forge session!").setEphemeral(true).queue();
                 return;
             }
 
@@ -1995,7 +2014,7 @@ public class CommandListener extends ListenerAdapter {
 
             String currentInv = db.getInventory(ownerId);
             if (getItemCount(currentInv, selectedIngredient) < 3) {
-                event.reply("❌ You no longer have 3 of these to craft!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You no longer have 3 of these to craft!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2021,7 +2040,7 @@ public class CommandListener extends ListenerAdapter {
             String ownerId = componentId.substring("forge_claim_".length());
 
             if (!event.getUser().getId().equals(ownerId)) {
-                event.reply("❌ Not your session!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Not your session!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2029,14 +2048,14 @@ public class CommandListener extends ListenerAdapter {
             String ingredient = db.getPendingForgeIngredient(ownerId);
 
             if (ingredient == null) {
-                event.reply("❌ Forge session expired. Try again.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Forge session expired. Try again.").setEphemeral(true).queue();
                 return;
             }
 
             synchronized (this) {
                 String currentInv = db.getInventory(ownerId);
                 if (getItemCount(currentInv, ingredient) < 3) {
-                    event.reply("❌ You no longer have 3x of the ingredient!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: You no longer have 3x of the ingredient!").setEphemeral(true).queue();
                     db.deletePendingForge(ownerId);
                     return;
                 }
@@ -2072,7 +2091,7 @@ public class CommandListener extends ListenerAdapter {
             String ownerId = componentId.substring("forge_recycle_".length());
 
             if (!event.getUser().getId().equals(ownerId)) {
-                event.reply("❌ This is not your forge session!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This is not your forge session!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2081,7 +2100,7 @@ public class CommandListener extends ListenerAdapter {
             synchronized (this) {
                 String currentInv = db.getInventory(ownerId);
                 if (getItemCount(currentInv, selected) < 1) {
-                    event.reply("❌ You do not have this item anymore!").setEphemeral(true).queue();
+                    event.reply(" :002_bunnyplead: You do not have this item anymore!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -2120,7 +2139,7 @@ public class CommandListener extends ListenerAdapter {
         
         if (componentId.equals("confirm_shop_reset")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Director clearance required.").setEphemeral(true).queue();
                 return;
             }
             
@@ -2138,7 +2157,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("cancel_shop_reset")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Director clearance required.").setEphemeral(true).queue();
                 return;
             }
             
@@ -2158,7 +2177,7 @@ public class CommandListener extends ListenerAdapter {
             String creatorId = parts[2];
 
             if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the shop owner can ping for this drop!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the shop owner can ping for this drop!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2187,7 +2206,7 @@ public class CommandListener extends ListenerAdapter {
             String creatorId = componentId.substring("shopnoping_".length());
 
             if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the shop owner can make this choice!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the shop owner can make this choice!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2213,7 +2232,7 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("deleteping_")) {
             String[] parts = componentId.split("_");
             if (parts.length < 4) {
-                event.reply("❌ Invalid undo payload.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Invalid undo payload.").setEphemeral(true).queue();
                 return;
             }
             String creatorId = parts[1];
@@ -2221,7 +2240,7 @@ public class CommandListener extends ListenerAdapter {
             String menuMsgId = parts[3];
 
             if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the shop owner can delete this ping!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the shop owner can delete this ping!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2266,7 +2285,7 @@ public class CommandListener extends ListenerAdapter {
             String buyerId = parts[2];
             
             if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the requested creator can accept this order!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the requested creator can accept this order!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2278,7 +2297,7 @@ public class CommandListener extends ListenerAdapter {
                  .setActionRow(
                      Button.primary("buyerconfirm_" + creatorId + "_" + buyerId, "🛍️ Buyer Confirm"),
                      Button.primary("sellerconfirm_" + creatorId + "_" + buyerId, "🤝 Seller Confirm"),
-                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, "❌ Cancel Order")
+                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, " :002_bunnyplead: Cancel Order")
                  ).queue(); 
                  
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Nub Matcha begs: Please do orders in this thread instead of DMs >p<").queue();
@@ -2293,11 +2312,11 @@ public class CommandListener extends ListenerAdapter {
             String buyerId = parts[2];
 
             if (type.equals("buyerconfirm") && !event.getUser().getId().equals(buyerId)) {
-                event.reply("❌ Only the BUYER (<@" + buyerId + ">) can click this button!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the BUYER (<@" + buyerId + ">) can click this button!").setEphemeral(true).queue();
                 return;
             }
             if (type.equals("sellerconfirm") && !event.getUser().getId().equals(creatorId)) {
-                event.reply("❌ Only the SELLER (<@" + creatorId + ">) can click this button!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the SELLER (<@" + creatorId + ">) can click this button!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2353,13 +2372,13 @@ public class CommandListener extends ListenerAdapter {
             String buyerId = parts[2];
 
             if (!event.getUser().getId().equals(creatorId) && !event.getUser().getId().equals(buyerId)) {
-                event.reply("❌ Only the buyer or creator involved in this order can cancel it!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the buyer or creator involved in this order can cancel it!").setEphemeral(true).queue();
                 return;
             }
 
            EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             declined.setColor(Color.RED);
-            declined.addField("❌ STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
+            declined.addField(" :002_bunnyplead: STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
             event.editMessageEmbeds(declined.build()).setComponents().queue();
             event.reply("⚠️ Order ticket was marked as cancelled/declined. Locking thread...").queue();
@@ -2375,7 +2394,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("bjoin_button")) {
             if (!event.getChannel().getType().isThread()) {
-                event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This button can only be used inside a quest thread.").setEphemeral(true).queue();
                 return;
             }
 
@@ -2390,7 +2409,7 @@ public class CommandListener extends ListenerAdapter {
                         int fieldIndex = getPartyFieldIndex(oldEmbed);
 
                         if (partyField == null || fieldIndex == -1) {
-                            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
+                            hook.sendMessage(" :002_bunnyplead: Party field missing.").setEphemeral(true).queue();
                             return;
                         }
 
@@ -2404,12 +2423,12 @@ public class CommandListener extends ListenerAdapter {
                         String userMention = event.getUser().getAsMention();
 
                         if (partyValue.contains(userMention)) {
-                            hook.sendMessage("❌ You are already in the party!").setEphemeral(true).queue();
+                            hook.sendMessage(" :002_bunnyplead: You are already in the party!").setEphemeral(true).queue();
                             return;
                         }
 
                         if (current >= max) {
-                            hook.sendMessage("❌ This party is full!").setEphemeral(true).queue();
+                            hook.sendMessage(" :002_bunnyplead: This party is full!").setEphemeral(true).queue();
                             return;
                         }
 
@@ -2428,16 +2447,16 @@ public class CommandListener extends ListenerAdapter {
                                 .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
                                 .queue(
                                         success -> hook.sendMessage(" You have successfully joined the party!").setEphemeral(true).queue(),
-                                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                                        error -> hook.sendMessage(" :002_bunnyplead: Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
-                    }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
+                    }, error -> hook.sendMessage(" :002_bunnyplead: Failed to fetch the quest starter message.").setEphemeral(true).queue())
             );
             return;
         }
 
         if (componentId.equals("bleave_button")) {
             if (!event.getChannel().getType().isThread()) {
-                event.reply("❌ This button can only be used inside a quest thread.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: This button can only be used inside a quest thread.").setEphemeral(true).queue();
                 return;
             }
 
@@ -2452,7 +2471,7 @@ public class CommandListener extends ListenerAdapter {
                         int fieldIndex = getPartyFieldIndex(oldEmbed);
 
                         if (partyField == null || fieldIndex == -1) {
-                            hook.sendMessage("❌ Party field missing.").setEphemeral(true).queue();
+                            hook.sendMessage(" :002_bunnyplead: Party field missing.").setEphemeral(true).queue();
                             return;
                         }
 
@@ -2463,7 +2482,7 @@ public class CommandListener extends ListenerAdapter {
                         String userMention = event.getUser().getAsMention();
 
                         if (!partyValue.contains(userMention)) {
-                            hook.sendMessage("❌ You are not in the party!").setEphemeral(true).queue();
+                            hook.sendMessage(" :002_bunnyplead: You are not in the party!").setEphemeral(true).queue();
                             return;
                         }
 
@@ -2491,9 +2510,9 @@ public class CommandListener extends ListenerAdapter {
                                 )
                                 .queue(
                                         success -> hook.sendMessage(" You have left the party.").setEphemeral(true).queue(),
-                                        error -> hook.sendMessage("❌ Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                                        error -> hook.sendMessage(" :002_bunnyplead: Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
                                 );
-                    }, error -> hook.sendMessage("❌ Failed to fetch the quest starter message.").setEphemeral(true).queue())
+                    }, error -> hook.sendMessage(" :002_bunnyplead: Failed to fetch the quest starter message.").setEphemeral(true).queue())
             );
             return;
         }
@@ -2501,7 +2520,7 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("buy_")) {
             String[] parts = componentId.split("_", 3);
             if (parts.length < 3) {
-                event.reply("❌ Invalid purchase payload.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Invalid purchase payload.").setEphemeral(true).queue();
                 return;
             }
 
@@ -2513,11 +2532,11 @@ public class CommandListener extends ListenerAdapter {
             synchronized (this) {
                 int currentPoints = db.getPoints(clickerId);
                 if (getExactItemName(db.getInventory(clickerId), itemName) != null) {
-                    event.getHook().sendMessage("❌ You already own this asset.").queue();
+                    event.getHook().sendMessage(" :002_bunnyplead: You already own this asset.").queue();
                     return;
                 }
                 if (currentPoints < price) {
-                    event.getHook().sendMessage("❌ Not enough Points!").queue();
+                    event.getHook().sendMessage(" :002_bunnyplead: Not enough Points!").queue();
                     return;
                 }
 
@@ -2572,7 +2591,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.editMessageEmbeds(new EmbedBuilder()
                     .setColor(Color.RED)
-                    .setDescription("❌ Trade setup cancelled.")
+                    .setDescription(" :002_bunnyplead: Trade setup cancelled.")
                     .build()).setComponents().queue();
             return;
         }
@@ -2582,7 +2601,7 @@ public class CommandListener extends ListenerAdapter {
             DatabaseManager.PendingTradeSetupRecord setup = db.getPendingTradeSetup(setupId);
 
             if (setup == null || setup.selectedOffer == null || setup.selectedRequest == null) {
-                event.reply("❌ Invalid or expired trade setup.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Invalid or expired trade setup.").setEphemeral(true).queue();
                 return;
             }
 
@@ -2623,7 +2642,7 @@ public class CommandListener extends ListenerAdapter {
             event.getChannel().sendMessageEmbeds(tradeEmbed.build())
                     .addActionRow(
                             Button.success("trade_accept_" + tradeId, "✅ Accept"),
-                            Button.danger("trade_decline_" + tradeId, "❌ Decline")
+                            Button.danger("trade_decline_" + tradeId, " :002_bunnyplead: Decline")
                     )
                     .queue();
 
@@ -2640,24 +2659,24 @@ public class CommandListener extends ListenerAdapter {
 
             if (trade == null) {
                 event.editComponents().queue();
-                event.getChannel().sendMessage("❌ Trade expired.").queue();
+                event.getChannel().sendMessage(" :002_bunnyplead: Trade expired.").queue();
                 return;
             }
 
             if (!event.getUser().getId().equals(trade.targetId) && !event.getUser().getId().equals(trade.senderId)) {
-                event.reply("❌ You are not involved in this trade.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You are not involved in this trade.").setEphemeral(true).queue();
                 return;
             }
 
             if (action.equals("decline")) {
                 db.deleteActiveTrade(tradeId);
                 event.editComponents().queue();
-                event.getChannel().sendMessage("❌ Trade cancelled.").queue();
+                event.getChannel().sendMessage(" :1MikuSad: Trade cancelled.").queue();
                 return;
             }
 
             if (!event.getUser().getId().equals(trade.targetId)) {
-                event.reply("❌ Only the target can accept this trade.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Only the target can accept this trade.").setEphemeral(true).queue();
                 return;
             }
 
@@ -2669,7 +2688,7 @@ public class CommandListener extends ListenerAdapter {
                         || getExactItemName(targetInv, trade.requestItem) == null) {
                     db.deleteActiveTrade(tradeId);
                     event.editComponents().queue();
-                    event.getChannel().sendMessage("❌ Trade voided. One or more items are missing.").queue();
+                    event.getChannel().sendMessage(" :002_bunnyplead: Trade voided. One or more items are missing.").queue();
                     return;
                 }
 
@@ -2715,19 +2734,36 @@ public class CommandListener extends ListenerAdapter {
             User buyer = event.getUser();
 
             if (creator.isBot() || creator.getId().equals(buyer.getId())) {
-                event.reply("❌ You can only order items from other creators!").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: You can only order items from other creators!").setEphemeral(true).queue();
                 return;
             }
 
             String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
             if (orderChannelId == null) {
-                event.reply("❌ The server's order channel is not configured.").setEphemeral(true).queue();
+                event.reply(" :1MikuSad: The server's order channel is not configured.").setEphemeral(true).queue();
                 return;
             }
 
             net.dv8tion.jda.api.entities.channel.concrete.TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
             if (orderChannel == null) {
-                event.reply("❌ Cannot find the official order channel.").setEphemeral(true).queue();
+                event.reply(" :002_bunnyplead: Cannot find the official order channel.").setEphemeral(true).queue();
+                return;
+            }
+
+            boolean hasActiveOrder = orderChannel.getThreadChannels().stream()
+                    .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔"));
+
+            if (hasActiveOrder) {
+                event.reply(" :1MikuSad: **Hold on!** You already have an active order open. Please finish or cancel your current transaction before adding another digital fit to your cart!").setEphemeral(true).queue();
+                return;
+            }
+
+            long creatorActiveOrders = orderChannel.getThreadChannels().stream()
+                    .filter(t -> t.getName().contains("➔ " + creator.getName()))
+                    .count();
+
+            if (creatorActiveOrders >= 3) {
+                event.reply(" :002_bunnyplead: **Queue Full!** " + creator.getName() + " currently has too many active orders (" + creatorActiveOrders + "/3). Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2763,7 +2799,7 @@ public class CommandListener extends ListenerAdapter {
 
             orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
-                orderChannel.createThreadChannel("⏳ Order: " + buyer.getName(), true).queue(thread -> {
+                orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName(), true).queue(thread -> {
                      
                      mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                      
@@ -2774,7 +2810,7 @@ public class CommandListener extends ListenerAdapter {
                            .addEmbeds(orderEmbed.build())
                            .addActionRow(
                                net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
-                               net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "❌ Decline")
+                               net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), " :002_bunnyplead: Decline")
                            ).queue();
                 });
             });
