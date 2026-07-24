@@ -62,6 +62,10 @@ public class CommandListener extends ListenerAdapter {
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
 
+    public static final String MIKU_SAD = "<:1MikuSad:123456789012345678>";
+    public static final String XB_CUTE = "<:1_xbcute:123456789012345678>";
+    public static final String CINNA_HIDE = "<:009BCinnamoroll_Hide:123456789012345678>";
+    public static final String BUGCAT_OK = "<:BugCatOk:123456789012345678>";
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -688,7 +692,7 @@ public class CommandListener extends ListenerAdapter {
                 if (thread.getName().startsWith("⏳")) {
                     event.getMessage().delete().queue();
                     
-                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " :1MikuSad: **Hold on!** The creator must click **Accept Order** before you can start chatting.")
+                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " " + MIKU_SAD + " **Hold on!** The creator must click **Accept Order** before you can start chatting.")
                          .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
                 }
             }
@@ -718,12 +722,13 @@ public class CommandListener extends ListenerAdapter {
 
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
-                // 1. Buyer Anti-Spam Limit (1 Active Order max)
-                boolean hasActiveOrder = orderChannel.getThreadChannels().stream()
-                        .anyMatch(t -> t.getName().contains(event.getUser().getName() + " ➔"));
+                
+                long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains(event.getUser().getName() + " ➔"))
+                        .count();
 
-                if (hasActiveOrder) {
-                    event.reply("  **Hold on!** You already have an active order open. Please finish or cancel your current transaction before requesting another!").setEphemeral(true).queue();
+                if (buyerTotalActiveOrders >= 3) {
+                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -731,8 +736,8 @@ public class CommandListener extends ListenerAdapter {
                         .filter(t -> t.getName().contains("➔ " + creator.getName()))
                         .count();
 
-                if (creatorActiveOrders >= 3) {
-                    event.reply(" :1_xbcute: **Queue Full!** " + creator.getName() + " currently has too many active orders (" + creatorActiveOrders + "/3). Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
+                if (creatorActiveOrders >= 5) {
+                    event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -740,8 +745,8 @@ public class CommandListener extends ListenerAdapter {
                         .setColor(new Color(255, 182, 193))
                         .setTitle("✦ NEW COMMISSION ORDER ✦")
                         .setDescription(
-                                " :009BCinnamoroll_Hide: **Request:** `" + request + "`\n\n" +
-                                " :BugCatOk: **Notes & References:**\n" + notes + "\n\n" +
+                                CINNA_HIDE + " **Request:** `" + request + "`\n\n" +
+                                BUGCAT_OK + " **Notes & References:**\n" + notes + "\n\n" +
                                 "*(Creator: Accept this order below to begin the transaction!)*"
                         )
                         .setThumbnail(event.getUser().getEffectiveAvatarUrl())
@@ -755,7 +760,9 @@ public class CommandListener extends ListenerAdapter {
 
                 orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating Private Thread...*").queue(mainMessage -> {
                     
-                    orderChannel.createThreadChannel("⏳ " + event.getUser().getName() + " ➔ " + creator.getName(), true).queue(thread -> {
+                    String shortId = UUID.randomUUID().toString().substring(0, 4);
+                    
+                    orderChannel.createThreadChannel("⏳ " + event.getUser().getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
                          mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                          
                          thread.addThreadMember(creator).queue();
@@ -2142,7 +2149,108 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
-        
+        if (componentId.startsWith("order_start_")) {
+            String creatorId = componentId.substring("order_start_".length());
+            User buyer = event.getUser();
+
+            if (creatorId.equals(buyer.getId())) {
+                event.reply(MIKU_SAD + " You cannot order items from yourself!").setEphemeral(true).queue();
+                return;
+            }
+
+            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
+            if (orderChannelId == null) {
+                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
+                return;
+            }
+
+            TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
+            if (orderChannel == null) {
+                event.reply("Cannot find the official order channel.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.getJDA().retrieveUserById(creatorId).queue(creator -> {
+                boolean hasActiveOrderWithThisCreator = orderChannel.getThreadChannels().stream()
+                        .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔ " + creator.getName()));
+
+                if (hasActiveOrderWithThisCreator) {
+                    event.reply(MIKU_SAD + " **Hold on!** You already have an active order open with **" + creator.getName() + "**. Please wait for them to respond or finish your current transaction before ordering again from this specific creator!").setEphemeral(true).queue();
+                    return;
+                }
+
+                long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains(buyer.getName() + " ➔"))
+                        .count();
+
+                if (buyerTotalActiveOrders >= 3) {
+                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
+                    return;
+                }
+
+                long creatorActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains("➔ " + creator.getName()))
+                        .count();
+
+                if (creatorActiveOrders >= 5) {
+                    event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
+                    return;
+                }
+
+                ThreadChannel shopThread = event.getChannel().asThreadChannel();
+                shopThread.retrieveStartMessage().queue(startMsg -> {
+                    String itemDescription = startMsg.getContentRaw();
+                    if (itemDescription.length() > 300) {
+                        itemDescription = itemDescription.substring(0, 300) + "..."; 
+                    }
+                    if (itemDescription.isBlank()) itemDescription = "_Visual asset (See image below)_";
+
+                    String messageLink = startMsg.getJumpUrl();
+
+                    EmbedBuilder orderEmbed = new EmbedBuilder()
+                            .setColor(new Color(255, 182, 193))
+                            .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
+                            .setDescription(
+                                    buyer.getAsMention() + " just placed a seamless order!\n\n" +
+                                    CINNA_HIDE + " **Item Requested:**\n" +
+                                    "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
+                                    "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
+                                    "*(Creator: Accept this order below to log your sale!)*"
+                            )
+                            .setThumbnail(buyer.getEffectiveAvatarUrl())
+                            .setFooter("AMORA Smart UI Order System", null);
+
+                    if (!startMsg.getAttachments().isEmpty()) {
+                        Attachment image = startMsg.getAttachments().get(0);
+                        if (image.isImage()) {
+                            orderEmbed.setImage(image.getUrl());
+                        }
+                    }
+
+                    event.reply(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
+
+                    orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
+                        String shortId = UUID.randomUUID().toString().substring(0, 4);
+                        orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
+                             mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
+                             
+                             thread.addThreadMember(creator).queue();
+                             thread.addThreadMember(buyer).queue();
+
+                             thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
+                                   .addEmbeds(orderEmbed.build())
+                                   .addActionRow(
+                                       Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
+                                       Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "  Decline")
+                                   ).queue();
+                        });
+                    });
+                });
+            }, error -> {
+                event.reply(MIKU_SAD + " Could not find the creator.").setEphemeral(true).queue();
+            });
+            return;
+        }
         if (componentId.equals("confirm_shop_reset")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
@@ -2746,21 +2854,30 @@ public class CommandListener extends ListenerAdapter {
 
             String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
             if (orderChannelId == null) {
-                event.reply(" :1MikuSad: The server's order channel is not configured.").setEphemeral(true).queue();
+                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
                 return;
             }
 
             net.dv8tion.jda.api.entities.channel.concrete.TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
             if (orderChannel == null) {
-                event.reply("  Cannot find the official order channel.").setEphemeral(true).queue();
+                event.reply("❌ Cannot find the official order channel.").setEphemeral(true).queue();
                 return;
             }
 
-            boolean hasActiveOrder = orderChannel.getThreadChannels().stream()
-                    .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔"));
+            boolean hasActiveOrderWithThisCreator = orderChannel.getThreadChannels().stream()
+                    .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔ " + creator.getName()));
 
-            if (hasActiveOrder) {
-                event.reply(" :1MikuSad: **Hold on!** You already have an active order open. Please finish or cancel your current transaction before adding another digital fit to your cart!").setEphemeral(true).queue();
+            if (hasActiveOrderWithThisCreator) {
+                event.reply(MIKU_SAD + " **Hold on!** You already have an active order open with **" + creator.getName() + "**. Please wait for them to respond or finish your current transaction before ordering again from this specific creator!").setEphemeral(true).queue();
+                return;
+            }
+
+            long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
+                    .filter(t -> t.getName().contains(buyer.getName() + " ➔"))
+                    .count();
+
+            if (buyerTotalActiveOrders >= 3) {
+                event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2768,8 +2885,8 @@ public class CommandListener extends ListenerAdapter {
                     .filter(t -> t.getName().contains("➔ " + creator.getName()))
                     .count();
 
-            if (creatorActiveOrders >= 3) {
-                event.reply("  **Queue Full!** " + creator.getName() + " currently has too many active orders (" + creatorActiveOrders + "/3). Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
+            if (creatorActiveOrders >= 5) {
+                event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2786,7 +2903,7 @@ public class CommandListener extends ListenerAdapter {
                     .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
                     .setDescription(
                             buyer.getAsMention() + " just placed a seamless order!\n\n" +
-                            "🛍️ **Item Requested:**\n" +
+                            CINNA_HIDE + " **Item Requested:**\n" +
                             "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                             "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
                             "*(Creator: Accept this order below to log your sale!)*"
@@ -2805,7 +2922,9 @@ public class CommandListener extends ListenerAdapter {
 
             orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
                 
-                orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName(), true).queue(thread -> {
+                String shortId = UUID.randomUUID().toString().substring(0, 4);
+
+                orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
                      
                      mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
                      
