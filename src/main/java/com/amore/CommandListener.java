@@ -2710,13 +2710,16 @@ public class CommandListener extends ListenerAdapter {
                         .setDescription("<@" + buyerId + ">, how was your transaction with <@" + creatorId + ">?");
                 
                 event.getChannel().sendMessageEmbeds(ratingEmbed.build())
+                        // Row 1: The 5 Stars
                         .addActionRow(
                             Button.secondary("rate_1_" + creatorId + "_" + buyerId, "⭐"),
                             Button.secondary("rate_2_" + creatorId + "_" + buyerId, "⭐⭐"),
                             Button.secondary("rate_3_" + creatorId + "_" + buyerId, "⭐⭐⭐"),
                             Button.secondary("rate_4_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐"),
-                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐"),
-                            Button.secondary("ratenone_" + creatorId + "_" + buyerId, "<a:angelAZheadbang:1525319983880605736>  No thanks") 
+                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐")
+                        )
+                        .addActionRow(
+                            Button.secondary("ratenone_" + creatorId + "_" + buyerId, "<a:angelAZheadbang:1525319983880605736>  No thanks")
                         ).queue(msg -> {
                             msg.editMessageComponents(java.util.Collections.emptyList())
                                .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
