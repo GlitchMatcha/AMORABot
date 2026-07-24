@@ -853,7 +853,7 @@ public class CommandListener extends ListenerAdapter {
                                           "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
                                           "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
                                           "_ _   ꒰ ⌾ ꒱  ✦ **Status:** 🔒 *Transaction Room Secured!*\n\n" +
-                                          "<a:whitearrow:1332306187886264320> _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
+                                          "<a:Saur_Heart:1525689248391368796>   _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
                                           "_ _   " + thread.getAsMention();
                          
                          mainMessage.editMessage(readyUI).queue();
@@ -2352,7 +2352,7 @@ public class CommandListener extends ListenerAdapter {
                                               "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
                                               "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
                                               "_ _   ꒰ ⌾ ꒱  ✦ **Status:** 🔒 *Transaction Room Secured!*\n\n" +
-                                              "<a:whitearrow:1332306187886264320> _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
+                                              "<a:Saur_Heart:1525689248391368796>  _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
                                               "_ _   " + thread.getAsMention();
                              
                              mainMessage.editMessage(readyUI).queue();
