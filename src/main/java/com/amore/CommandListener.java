@@ -2443,12 +2443,12 @@ public class CommandListener extends ListenerAdapter {
                 
                 if (foundButton && !newButtons.isEmpty()) {
                     menuMsg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-                    event.reply("✅ False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
+                    event.reply("False ping successfully removed, and the option was restored in the menu!").setEphemeral(true).queue();
                 } else {
-                     event.reply("✅ False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
+                     event.reply("False ping successfully removed! (The menu was already closed)").setEphemeral(true).queue();
                 }
             }, error -> {
-                event.reply("✅ False ping successfully removed!").setEphemeral(true).queue();
+                event.reply("False ping successfully removed!").setEphemeral(true).queue();
             });
             return;
         }
@@ -2463,26 +2463,35 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            EmbedBuilder accepted = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            accepted.setColor(new Color(255, 165, 0)); 
-            accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n**Both parties must click their confirm buttons below to officially log this sale!**", false);
+            EmbedBuilder originalEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            originalEmbed.setColor(new Color(255, 165, 0)); 
+            originalEmbed.addField("⏳ STATUS: ACCEPTED", "The creator accepted this request! See the active cart below to finish the transaction.", false);
             
-            accepted.addField("🛒 CURRENT CART SIZE", "# 1", false);
+            event.editMessageEmbeds(originalEmbed.build())
+                 .setComponents(java.util.Collections.emptyList()) 
+                 .queue(); 
+                 
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
+                                           "🛍️ **Want to add more items to this order?**\n" +
+                                           "Nub Matcha says: You don't need a new ticket! Just drop the other items here and click the `➕ Add Item` button on the cart to update your total! >p<").queue();
             
-            event.editMessageEmbeds(accepted.build())
-                 .setActionRow(
+            event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
+
+            EmbedBuilder miniCart = new EmbedBuilder()
+                    .setColor(new Color(255, 165, 0))
+                    .setTitle("🛒 DYNAMIC CHECKOUT CART")
+                    .addField("⏳ STATUS: IN PROGRESS", "Both parties must click their confirm buttons below to officially log this sale!", false)
+                    .addField("🛒 CURRENT CART SIZE", "# 1", false);
+
+            event.getChannel().sendMessageEmbeds(miniCart.build())
+                 .addActionRow(
                      Button.primary("buyerconfirm_" + creatorId + "_" + buyerId, "🛍️ Buyer Confirm"),
                      Button.primary("sellerconfirm_" + creatorId + "_" + buyerId, "🤝 Seller Confirm"),
                      Button.secondary("additem_" + creatorId + "_" + buyerId, "➕ Add Item"),
                      Button.secondary("remitem_" + creatorId + "_" + buyerId, "➖ Remove"),
                      Button.danger("ordercancel_" + creatorId + "_" + buyerId, " Cancel Order")
                  ).queue();
-                 
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
-                                           "🛍️ **Want to add more items to this order?**\n" +
-                                           "Nub Matcha says: You don't need a new ticket! Just drop the other items here and click the `➕ Add Item` button below to update your cart size. >p<").queue();
-            
-            event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
+
             return;
         }
 
