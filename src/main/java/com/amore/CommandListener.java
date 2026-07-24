@@ -742,16 +742,13 @@ public class CommandListener extends ListenerAdapter {
                         if (cartMsg != null && cartIndex >= 1) {
                             List<MessageEmbed> embeds = cartMsg.getEmbeds();
                             List<net.dv8tion.jda.api.interactions.components.ActionRow> components = cartMsg.getActionRows();
-
                             if (!embeds.isEmpty()) {
-                                movingCarts.add(thread.getId());
-                                
-                                cartMsg.delete().queue(success -> {
-                                    thread.sendMessageEmbeds(embeds).setComponents(components).queue(
-                                        newMsg -> movingCarts.remove(thread.getId()),
-                                        error -> movingCarts.remove(thread.getId())
-                                    );
-                                }, error -> movingCarts.remove(thread.getId()));
+                                movingCarts.add(thread.getId()); 
+                                thread.sendMessageEmbeds(embeds).setComponents(components).queue(
+                                    newMsg -> movingCarts.remove(thread.getId()),
+                                    error -> movingCarts.remove(thread.getId())
+                                );
+                                cartMsg.delete().queue();
                             }
                         }
                     });
