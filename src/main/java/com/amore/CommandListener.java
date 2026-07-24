@@ -109,7 +109,8 @@ public class CommandListener extends ListenerAdapter {
         thread.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
             StringBuilder fileContent = new StringBuilder();
             StringBuilder embedDesc = new StringBuilder();
-            String previewImage = null;
+            
+            List<String> previewImages = new ArrayList<>();
 
             fileContent.append("✦ ORDER TRANSCRIPT: ").append(thread.getName()).append(" ✦\n");
             fileContent.append("Status: ").append(status).append("\n");
@@ -132,8 +133,8 @@ public class CommandListener extends ListenerAdapter {
                     for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
                         fileContent.append("      -> ").append(attachment.getUrl()).append("\n");
                         
-                        if (attachment.isImage() && previewImage == null) {
-                            previewImage = attachment.getUrl();
+                        if (attachment.isImage() && previewImages.size() < 4) {
+                            previewImages.add(attachment.getUrl());
                         }
                     }
                 }
@@ -147,19 +148,30 @@ public class CommandListener extends ListenerAdapter {
             String safeThreadName = thread.getName().replaceAll("[^a-zA-Z0-9_-]", "");
             FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + safeThreadName + ".txt");
 
+            List<MessageEmbed> finalEmbeds = new ArrayList<>();
+
             EmbedBuilder transcriptEmbed = new EmbedBuilder()
                     .setColor(status.equals("COMPLETED") ? new Color(50, 205, 50) : Color.RED)
                     .setTitle("✦ TRANSCRIPT: " + thread.getName() + " ✦")
+                    .setUrl(thread.getJumpUrl()) 
                     .setDescription(embedDesc.length() > 0 ? embedDesc.toString() : "*No messages recorded.*")
                     .addField("Final Status", "`" + status + "`", true)
                     .setFooter("AMORA Secure Logging System", null)
                     .setTimestamp(Instant.now());
 
-            if (previewImage != null) {
-                transcriptEmbed.setImage(previewImage);
+            if (!previewImages.isEmpty()) {
+                transcriptEmbed.setImage(previewImages.get(0));
+            }
+            finalEmbeds.add(transcriptEmbed.build());
+
+            for (int i = 1; i < previewImages.size(); i++) {
+                EmbedBuilder extraImageEmbed = new EmbedBuilder()
+                        .setUrl(thread.getJumpUrl()) 
+                        .setImage(previewImages.get(i));
+                finalEmbeds.add(extraImageEmbed.build());
             }
 
-            logChannel.sendMessageEmbeds(transcriptEmbed.build())
+            logChannel.sendMessageEmbeds(finalEmbeds)
                       .addFiles(upload)
                       .queue();
                       
