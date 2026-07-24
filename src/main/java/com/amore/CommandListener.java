@@ -2463,13 +2463,17 @@ public class CommandListener extends ListenerAdapter {
                 }
                 completed.addField(" STATUS: COMPLETED & VERIFIED", "Both parties verified the transaction. Sale officially logged!", false);
 
-                event.editMessageEmbeds(completed.build()).setComponents().queue(); 
-                event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.").queue();
+                event.editMessageEmbeds(completed.build())
+                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons))
+                     .queue(); 
                 
                 ThreadChannel thread = event.getChannel().asThreadChannel();
                 generateAndLogTranscript(thread, "COMPLETED");
                 
-                thread.getManager().setLocked(true).setArchived(true).queue();
+                event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.")
+                     .queue(msg -> {
+                         thread.getManager().setLocked(true).setArchived(true).queue();
+                     });
                 
                 sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction with <@" + buyerId + ">.", new Color(50, 205, 50));
 
@@ -2494,13 +2498,15 @@ public class CommandListener extends ListenerAdapter {
             declined.setColor(Color.RED);
             declined.addField("  STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
-            event.editMessageEmbeds(declined.build()).setComponents().queue();
-            event.reply("⚠️ Order ticket was marked as cancelled/declined. Locking thread...").queue();
+            event.editMessageEmbeds(declined.build()).setComponents(java.util.Collections.emptyList()).queue();
             
             ThreadChannel thread = event.getChannel().asThreadChannel();
             generateAndLogTranscript(thread, "CANCELLED/DECLINED");
             
-            thread.getManager().setLocked(true).setArchived(true).queue();
+            event.reply("Order ticket was marked as cancelled/declined. Locking thread...")
+                 .queue(hook -> {
+                     thread.getManager().setLocked(true).setArchived(true).queue();
+                 });
             
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
             return;
