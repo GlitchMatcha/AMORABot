@@ -828,7 +828,7 @@ public class CommandListener extends ListenerAdapter {
                 String creatorName = creator.getName();
                 String ratingDisplay = db.getCreatorRatingString(creator.getId());
 
-                String generatingUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                String generatingUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
                                       ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
                                       "⋆ ˚｡⋆୨୧˚\n\n" +
                                       "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
@@ -845,7 +845,7 @@ public class CommandListener extends ListenerAdapter {
                     
                     orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
                          
-                         String readyUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                         String readyUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
                                           ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
                                           "⋆ ˚｡⋆୨୧˚\n\n" +
                                           "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
@@ -2345,7 +2345,7 @@ public class CommandListener extends ListenerAdapter {
                     String buyerName = buyer.getName();
                     String creatorName = creator.getName();
                     
-                    String generatingUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                    String generatingUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
                                           ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
                                           "⋆ ˚｡⋆୨୧˚\n\n" +
                                           "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
@@ -2360,7 +2360,7 @@ public class CommandListener extends ListenerAdapter {
                         String shortId = UUID.randomUUID().toString().substring(0, 4);
                         orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
                              
-                             String readyUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                             String readyUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
                                               ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
                                               "⋆ ˚｡⋆୨୧˚\n\n" +
                                               "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
