@@ -2583,7 +2583,8 @@ public class CommandListener extends ListenerAdapter {
                 
                 event.getChannel().sendMessage(" **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
                      .queue(msg -> {
-                         thread.getManager().setLocked(true).setArchived(true).queue();
+                         String safeName = thread.getName().replace("⏳", "✅").replace("🔒", "✅").replace("➔", "✔️");
+                         thread.getManager().setName(safeName).setLocked(true).setArchived(true).queue();
                      });
                 
                 sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction of **" + totalItems + "** items with <@" + buyerId + ">.", new Color(50, 205, 50));
@@ -2614,9 +2615,10 @@ public class CommandListener extends ListenerAdapter {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             generateAndLogTranscript(thread, "CANCELLED/DECLINED");
             
-            event.reply("⚠️ Order ticket was marked as cancelled/declined. Locking thread...")
+            event.reply("Order ticket was marked as cancelled/declined. Locking thread...")
                  .queue(hook -> {
-                     thread.getManager().setLocked(true).setArchived(true).queue();
+                     String safeName = thread.getName().replace("⏳", "❌").replace("🔒", "❌").replace("➔", "✖️");
+                     thread.getManager().setName(safeName).setLocked(true).setArchived(true).queue();
                  });
             
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
