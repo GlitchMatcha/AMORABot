@@ -62,10 +62,10 @@ public class CommandListener extends ListenerAdapter {
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
 
-    public static final String MIKU_SAD = "<:1MikuSad:123456789012345678>";
-    public static final String XB_CUTE = "<:1_xbcute:123456789012345678>";
-    public static final String CINNA_HIDE = "<:009BCinnamoroll_Hide:123456789012345678>";
-    public static final String BUGCAT_OK = "<:BugCatOk:123456789012345678>";
+    public static final String MIKU_SAD = "<:1MikuSad:1511388491429449850>";
+    public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
+    public static final String CINNA_HIDE = "<a:009BCinnamoroll_Hide:1512617579154378833> ";
+    public static final String BUGCAT_OK = "<a:BugCatOk:1526913455108657222>";
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
