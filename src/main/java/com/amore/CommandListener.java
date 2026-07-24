@@ -69,6 +69,7 @@ public class CommandListener extends ListenerAdapter {
     public static final String BUGCAT_OK = "<a:BugCatOk:1526913455108657222>";
     public static final String CinnaSurprise = "<a:8_cinnasurprise:1512108709185060897>";
 
+    private static final Set<String> processedInteractions = ConcurrentHashMap.newKeySet();
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -490,7 +491,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     private String encodeItem(String itemName) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(itemName.getBytes(StandardCharsets.UTF_8));
+        return Base64.getUrlEncoder().encodeToString(itemName.getBytes(StandardCharsets.UTF_8)); // Safe!
     }
 
     private String decodeItem(String encoded) {
@@ -1370,6 +1371,10 @@ public class CommandListener extends ListenerAdapter {
             event.deferReply(true).queue();
             ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
             int price = event.getOption("price").getAsInt();
+            if (price < 0) {
+                event.reply("The price cannot be negative!").setEphemeral(true).queue();
+            return;
+            }
             String secretDelivery = event.getOption("delivery").getAsString();
             String description = readDescription(event);
             String encodedItem = encodeItem(safeName);
@@ -1471,6 +1476,10 @@ public class CommandListener extends ListenerAdapter {
                 ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
                 String title = event.getOption("title").getAsString();
                 int reward = event.getOption("reward").getAsInt();
+                if (reward < 0) {
+                    event.reply("The reward cannot be negative!").setEphemeral(true).queue();
+                return;
+                }
                 String slotsInput = event.getOption("slots").getAsString();
                 int maxSlots = 0;
                 try {
@@ -2284,8 +2293,8 @@ public class CommandListener extends ListenerAdapter {
                 }
 
                 long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
-                        .filter(t -> t.getName().contains(buyer.getName() + " ➔"))
-                        .count();
+                .filter(t -> t.getThreadMembers().stream().anyMatch(m -> m.getId().equals(buyer.getId())))
+                .count();
 
                 if (buyerTotalActiveOrders >= 3) {
                     event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
@@ -2790,7 +2799,8 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("rate_") || componentId.startsWith("ratenone_")) {
             String[] parts = componentId.split("_");
             String buyerId = parts[parts.length - 1]; 
-
+            if (processedInteractions.contains(event.getMessageId())) return;
+                processedInteractions.add(event.getMessageId());
             if (!event.getUser().getId().equals(buyerId)) {
                 event.reply("❌ Only the buyer can interact with this prompt!").setEphemeral(true).queue();
                 return;
