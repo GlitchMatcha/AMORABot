@@ -277,7 +277,7 @@ public class CommandListener extends ListenerAdapter {
             if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
                 String videoId = getQueryParam(uri.getRawQuery(), "v");
                 if (videoId != null && !videoId.isBlank()) {
-                    return "https://www.youtube.com/watch?v=" + videoId;
+                    return "https://www.youtube.com/watch?v=" + videoId; 
                 }
             }
 
@@ -2666,68 +2666,92 @@ public class CommandListener extends ListenerAdapter {
             }
 
             if (buyerConfirmed && sellerConfirmed) {
-                MessageEmbed embed = event.getMessage().getEmbeds().get(0);
-                EmbedBuilder completed = new EmbedBuilder(embed);
-                
-                int totalItems = 1;
-                String desc = embed.getDescription() != null ? embed.getDescription() : "";
-                
-                try { 
-                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\*\\*CART SIZE: (\\d+)\\*\\*").matcher(desc);
-                    if (m.find()) {
-                        totalItems = Integer.parseInt(m.group(1));
-                    }
-                } catch(Exception e){}
-
-                db.incrementCreatorOrder(creatorId);
-
-                completed.setColor(new Color(50, 205, 50)); 
-                completed.setDescription( CinnaSurprise + "**STATUS: COMPLETED**\nSale officially logged for **" + totalItems + "** items!");
-                completed.clearFields(); 
-
-                List<Button> finalButtons = new ArrayList<>();
-                for (Button b : newButtons) {
-                    finalButtons.add(b.asDisabled());
-                }
-
-                event.editMessageEmbeds(completed.build())
-                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(finalButtons))
-                     .queue(); 
+                event.deferEdit().queue(); 
                 
                 ThreadChannel thread = event.getChannel().asThreadChannel();
-                generateAndLogTranscript(thread, "COMPLETED");
                 
-                event.getChannel().sendMessage( CinnaSurprise + " **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
-                     .queue(msg -> {
-                         String safeName = thread.getName().replace("⏳", "✅").replace("🔒", "✅").replace("➔", "✔️");
-                         thread.getManager().setName(safeName).setLocked(true).setArchived(true).queue();
-                     });
-                
-                sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction of **" + totalItems + "** items with <@" + buyerId + ">.", new Color(50, 205, 50));
-                EmbedBuilder ratingEmbed = new EmbedBuilder()
-                        .setColor(new Color(255, 215, 0))
-                        .setTitle("📝 Rate Your Experience!")
-                        .setDescription("<@" + buyerId + ">, how was your transaction with <@" + creatorId + ">?");
-                
-                event.getChannel().sendMessageEmbeds(ratingEmbed.build())
-                        // Row 1: The 5 Stars
-                        .addActionRow(
-                            Button.secondary("rate_1_" + creatorId + "_" + buyerId, "⭐"),
-                            Button.secondary("rate_2_" + creatorId + "_" + buyerId, "⭐⭐"),
-                            Button.secondary("rate_3_" + creatorId + "_" + buyerId, "⭐⭐⭐"),
-                            Button.secondary("rate_4_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐"),
-                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐")
-                        )
-                        .addActionRow(
-                            Button.secondary("ratenone_" + creatorId + "_" + buyerId, "<a:angelAZheadbang:1525319983880605736>  No thanks")
-                        ).queue(msg -> {
-                            msg.editMessageComponents(java.util.Collections.emptyList())
-                               .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
-                               
-                            thread.getManager().setLocked(true).setArchived(true)
-                                  .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
-                        });
+                thread.getHistory().retrievePast(50).queue(messages -> {
+                    
+                    long humanMessageCount = messages.stream().filter(m -> !m.getAuthor().isBot()).count();
+                    
+                    if (humanMessageCount < 4) {
+                        List<Button> resetButtons = new ArrayList<>();
+                        for (Button b : newButtons) {
+                            if (b.getId() != null && b.getId().startsWith("buyerconfirm_")) {
+                                resetButtons.add(Button.primary(b.getId(), "🛍️ Buyer Confirm"));
+                            } else if (b.getId() != null && b.getId().startsWith("sellerconfirm_")) {
+                                resetButtons.add(Button.primary(b.getId(), "🤝 Seller Confirm"));
+                            } else {
+                                resetButtons.add(b); 
+                            }
+                        }
+                        
+                        event.getHook().editOriginalComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(resetButtons)).queue();
+                        event.getHook().sendMessage("<a:0056_huh:1512108926743744663> **Security Lock:** This order cannot be completed yet! The buyer and creator must send at least **4 messages** in this thread to discuss the details before confirming.").setEphemeral(true).queue();
+                        return; 
+                    }
 
+                    MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+                    EmbedBuilder completed = new EmbedBuilder(embed);
+                    
+                    int totalItems = 1;
+                    String desc = embed.getDescription() != null ? embed.getDescription() : "";
+                    
+                    try { 
+                        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\*\\*CART SIZE: (\\d+)\\*\\*").matcher(desc);
+                        if (m.find()) {
+                            totalItems = Integer.parseInt(m.group(1));
+                        }
+                    } catch(Exception e){}
+
+                    db.incrementCreatorOrder(creatorId);
+
+                    completed.setColor(new Color(50, 205, 50)); 
+                    completed.setDescription( CinnaSurprise + "**STATUS: COMPLETED**\nSale officially logged for **" + totalItems + "** items!");
+                    completed.clearFields(); 
+
+                    List<Button> finalButtons = new ArrayList<>();
+                    for (Button b : newButtons) {
+                        finalButtons.add(b.asDisabled());
+                    }
+
+                    event.getHook().editOriginalEmbeds(completed.build())
+                         .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(finalButtons))
+                         .queue(); 
+                    
+                    generateAndLogTranscript(thread, "COMPLETED");
+                    
+                    event.getChannel().sendMessage( CinnaSurprise + " **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
+                         .queue(msg -> {
+                             String safeName = thread.getName().replace("⏳", "✅").replace("🔒", "✅").replace("➔", "✔️");
+                             thread.getManager().setName(safeName).queue();
+                         });
+                    
+                    sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction of **" + totalItems + "** items with <@" + buyerId + ">.", new Color(50, 205, 50));
+
+                    EmbedBuilder ratingEmbed = new EmbedBuilder()
+                            .setColor(new Color(255, 215, 0))
+                            .setTitle("📝 Rate Your Experience!")
+                            .setDescription("<@" + buyerId + ">, how was your transaction with <@" + creatorId + ">?");
+                    
+                    event.getChannel().sendMessageEmbeds(ratingEmbed.build())
+                            .addActionRow(
+                                Button.secondary("rate_1_" + creatorId + "_" + buyerId, "⭐"),
+                                Button.secondary("rate_2_" + creatorId + "_" + buyerId, "⭐⭐"),
+                                Button.secondary("rate_3_" + creatorId + "_" + buyerId, "⭐⭐⭐"),
+                                Button.secondary("rate_4_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐"),
+                                Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐")
+                            )
+                            .addActionRow(
+                                Button.secondary("ratenone_" + creatorId + "_" + buyerId, "❌ No thanks")
+                            ).queue(msg -> {
+                                msg.editMessageComponents(java.util.Collections.emptyList())
+                                   .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                                   
+                                thread.getManager().setLocked(true).setArchived(true)
+                                      .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                            });
+                });
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
                 event.getHook().sendMessage(" Your confirmation has been logged! Waiting for the other party.").setEphemeral(true).queue();
