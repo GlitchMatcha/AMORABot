@@ -2715,8 +2715,15 @@ public class CommandListener extends ListenerAdapter {
                             Button.secondary("rate_2_" + creatorId + "_" + buyerId, "⭐⭐"),
                             Button.secondary("rate_3_" + creatorId + "_" + buyerId, "⭐⭐⭐"),
                             Button.secondary("rate_4_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐"),
-                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐")
-                        ).queue();
+                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐"),
+                            Button.secondary("ratenone_" + creatorId + "_" + buyerId, "<a:angelAZheadbang:1525319983880605736>  No thanks") 
+                        ).queue(msg -> {
+                            msg.editMessageComponents(java.util.Collections.emptyList())
+                               .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                               
+                            thread.getManager().setLocked(true).setArchived(true)
+                                  .queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                        });
 
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
