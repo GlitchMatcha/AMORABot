@@ -67,7 +67,8 @@ public class CommandListener extends ListenerAdapter {
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
     public static final String CINNA_HIDE = "<a:009BCinnamoroll_Hide:1512617579154378833> ";
     public static final String BUGCAT_OK = "<a:BugCatOk:1526913455108657222>";
-    
+    public static final String CinnaSurprise = "<a:8_cinnasurprise:1512108709185060897>";
+
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
@@ -2491,9 +2492,7 @@ public class CommandListener extends ListenerAdapter {
 
             EmbedBuilder miniCart = new EmbedBuilder()
                     .setColor(new Color(255, 165, 0))
-                    .setTitle("🛒 DYNAMIC CHECKOUT CART")
-                    .addField("⏳ STATUS: IN PROGRESS", "Both parties must click their confirm buttons below to officially log this sale!", false)
-                    .addField("🛒 CURRENT CART SIZE", "# 1", false);
+                    .setDescription("🛒 **CART SIZE: 1**\n_Both parties must confirm to log this sale!_");
 
             event.getChannel().sendMessageEmbeds(miniCart.build())
                  .addActionRow(
@@ -2521,58 +2520,53 @@ public class CommandListener extends ListenerAdapter {
             MessageEmbed embed = event.getMessage().getEmbeds().get(0);
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
             
-            int cartFieldIndex = -1;
+            String desc = embed.getDescription() != null ? embed.getDescription() : "";
             int currentItems = 1;
             
-            for (int i = 0; i < newEmbed.getFields().size(); i++) {
-                if (newEmbed.getFields().get(i).getName() != null && newEmbed.getFields().get(i).getName().equals("🛒 Items in Cart")) {
-                    cartFieldIndex = i;
-                    try {
-                        currentItems = Integer.parseInt(newEmbed.getFields().get(i).getValue());
-                    } catch (Exception ignored) {}
-                    break;
+            try {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\*\\*CART SIZE: (\\d+)\\*\\*").matcher(desc);
+                if (m.find()) {
+                    currentItems = Integer.parseInt(m.group(1));
+                }
+            } catch (Exception ignored) {}
+
+            if (action.equals("additem")) {
+                currentItems++;
+            } else if (action.equals("remitem")) {
+                if (currentItems > 1) {
+                    currentItems--;
+                } else {
+                    event.reply("❌ The cart must have at least 1 item!").setEphemeral(true).queue();
+                    return;
                 }
             }
+            
+            newEmbed.setDescription("🛒 **CART SIZE: " + currentItems + "**\n_Both parties must confirm to log this sale!_");
+            newEmbed.clearFields(); 
 
-            if (cartFieldIndex != -1) {
-                if (action.equals("additem")) {
-                    currentItems++;
-                } else if (action.equals("remitem")) {
-                    if (currentItems > 1) {
-                        currentItems--;
-                    } else {
-                        event.reply("❌ The cart must have at least 1 item!").setEphemeral(true).queue();
-                        return;
-                    }
+            boolean wasReset = false;
+            List<Button> updatedButtons = new ArrayList<>();
+            
+            for (Button b : event.getMessage().getButtons()) {
+                if (b.getId() != null && b.getId().startsWith("buyerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
+                    updatedButtons.add(Button.primary(b.getId(), "🛍️ Buyer Confirm"));
+                    wasReset = true;
+                } 
+                else if (b.getId() != null && b.getId().startsWith("sellerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
+                    updatedButtons.add(Button.primary(b.getId(), "🤝 Seller Confirm"));
+                    wasReset = true;
+                } 
+                else {
+                    updatedButtons.add(b);
                 }
-                
-                newEmbed.getFields().remove(cartFieldIndex);
-                newEmbed.addField("🛒 CURRENT CART SIZE", "# " + currentItems, false);
-                
-                boolean wasReset = false;
-                List<Button> updatedButtons = new ArrayList<>();
-                
-                for (Button b : event.getMessage().getButtons()) {
-                    if (b.getId() != null && b.getId().startsWith("buyerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
-                        updatedButtons.add(Button.primary(b.getId(), "🛍️ Buyer Confirm"));
-                        wasReset = true;
-                    } 
-                    else if (b.getId() != null && b.getId().startsWith("sellerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
-                        updatedButtons.add(Button.primary(b.getId(), "🤝 Seller Confirm"));
-                        wasReset = true;
-                    } 
-                    else {
-                        updatedButtons.add(b);
-                    }
-                }
-                
-                event.editMessageEmbeds(newEmbed.build())
-                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(updatedButtons))
-                     .queue();
-                     
-                if (wasReset) {
-                    event.getChannel().sendMessage("⚠️ " + event.getUser().getAsMention() + " adjusted the cart to **" + currentItems + "** items! Confirmations have been reset. Both parties must re-confirm the new amount!").queue();
-                }
+            }
+            
+            event.editMessageEmbeds(newEmbed.build())
+                 .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(updatedButtons))
+                 .queue();
+                 
+            if (wasReset) {
+                event.getChannel().sendMessage("⚠️ " + event.getUser().getAsMention() + " adjusted the cart to **" + currentItems + "** items! Confirmations have been reset. Both parties must re-confirm the new amount!").queue();
             }
             return;
         }
@@ -2616,26 +2610,20 @@ public class CommandListener extends ListenerAdapter {
                 EmbedBuilder completed = new EmbedBuilder(embed);
                 
                 int totalItems = 1;
+                String desc = embed.getDescription() != null ? embed.getDescription() : "";
                 
-                for (int i = completed.getFields().size() - 1; i >= 0; i--) {
-                    String fieldName = completed.getFields().get(i).getName();
-                    if (fieldName != null) {
-                        if (fieldName.contains("STATUS: IN PROGRESS")) {
-                            completed.getFields().remove(i);
-                        } else if (fieldName.contains("CART SIZE")) {
-                            try { 
-                                String rawValue = completed.getFields().get(i).getValue();
-                                String justDigits = rawValue.replaceAll("[^0-9]", "");
-                                totalItems = Integer.parseInt(justDigits); 
-                            } catch(Exception e){}
-                        }
+                try { 
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\*\\*CART SIZE: (\\d+)\\*\\*").matcher(desc);
+                    if (m.find()) {
+                        totalItems = Integer.parseInt(m.group(1));
                     }
-                }
+                } catch(Exception e){}
 
                 db.incrementCreatorSold(creatorId, totalItems);
 
                 completed.setColor(new Color(50, 205, 50)); 
-                completed.addField("✅ STATUS: COMPLETED", "Sale officially logged for **" + totalItems + "** items!", false);
+                completed.setDescription( CinnaSurprise + "**STATUS: COMPLETED**\nSale officially logged for **" + totalItems + "** items!");
+                completed.clearFields(); 
 
                 List<Button> finalButtons = new ArrayList<>();
                 for (Button b : newButtons) {
@@ -2649,7 +2637,7 @@ public class CommandListener extends ListenerAdapter {
                 ThreadChannel thread = event.getChannel().asThreadChannel();
                 generateAndLogTranscript(thread, "COMPLETED");
                 
-                event.getChannel().sendMessage(" **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
+                event.getChannel().sendMessage( CinnaSurprise + " **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
                      .queue(msg -> {
                          String safeName = thread.getName().replace("⏳", "✅").replace("🔒", "✅").replace("➔", "✔️");
                          thread.getManager().setName(safeName).setLocked(true).setArchived(true).queue();
