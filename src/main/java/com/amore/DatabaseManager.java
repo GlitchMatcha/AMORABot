@@ -983,10 +983,11 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
     }
 
-    public void incrementCreatorSold(String userId) {
-        String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + 1 WHERE user_id = ?;";
+    public void incrementCreatorSold(String userId, int amount) {
+        String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + ? WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setString(1, userId);
+            pstmt.setInt(1, amount);
+            pstmt.setString(2, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
     }
