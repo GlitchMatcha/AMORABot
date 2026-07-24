@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.net.URLDecoder;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -67,6 +68,7 @@ public class CommandListener extends ListenerAdapter {
     public static final String CINNA_HIDE = "<a:009BCinnamoroll_Hide:1512617579154378833> ";
     public static final String BUGCAT_OK = "<a:BugCatOk:1526913455108657222>";
     
+    private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -699,6 +701,47 @@ public class CommandListener extends ListenerAdapter {
                     
                     event.getChannel().sendMessage(event.getAuthor().getAsMention() + " " + MIKU_SAD + " **Hold on!** The creator must click **Accept Order** before you can start chatting.")
                          .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                    return;
+                }
+
+                if (thread.getName().startsWith("🔒")) {
+                    
+                    if (movingCarts.contains(thread.getId())) return;
+                    
+                    thread.getHistory().retrievePast(15).queue(messages -> {
+                        net.dv8tion.jda.api.entities.Message cartMsg = null;
+                        int cartIndex = -1;
+
+                        for (int i = 0; i < messages.size(); i++) {
+                            net.dv8tion.jda.api.entities.Message msg = messages.get(i);
+                            if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId())) {
+                                if (!msg.getButtons().isEmpty()) {
+                                    Button firstButton = msg.getButtons().get(0);
+                                    if (firstButton.getId() != null && firstButton.getId().startsWith("buyerconfirm_") && !firstButton.isDisabled()) {
+                                        cartMsg = msg;
+                                        cartIndex = i;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (cartMsg != null && cartIndex >= 1) {
+                            List<MessageEmbed> embeds = cartMsg.getEmbeds();
+                            List<net.dv8tion.jda.api.interactions.components.ActionRow> components = cartMsg.getActionRows();
+
+                            if (!embeds.isEmpty()) {
+                                movingCarts.add(thread.getId());
+                                
+                                cartMsg.delete().queue(success -> {
+                                    thread.sendMessageEmbeds(embeds).setComponents(components).queue(
+                                        newMsg -> movingCarts.remove(thread.getId()),
+                                        error -> movingCarts.remove(thread.getId())
+                                    );
+                                }, error -> movingCarts.remove(thread.getId()));
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -2424,7 +2467,7 @@ public class CommandListener extends ListenerAdapter {
             accepted.setColor(new Color(255, 165, 0)); 
             accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n**Both parties must click their confirm buttons below to officially log this sale!**", false);
             
-            accepted.addField("🛒 Items in Cart", "1", true);
+            accepted.addField("🛒 CURRENT CART SIZE", "# 1", false);
             
             event.editMessageEmbeds(accepted.build())
                  .setActionRow(
@@ -2433,7 +2476,7 @@ public class CommandListener extends ListenerAdapter {
                      Button.secondary("additem_" + creatorId + "_" + buyerId, "➕ Add Item"),
                      Button.secondary("remitem_" + creatorId + "_" + buyerId, "➖ Remove"),
                      Button.danger("ordercancel_" + creatorId + "_" + buyerId, " Cancel Order")
-                 ).queue(); 
+                 ).queue();
                  
             event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
                                            "🛍️ **Want to add more items to this order?**\n" +
@@ -2483,7 +2526,7 @@ public class CommandListener extends ListenerAdapter {
                 }
                 
                 newEmbed.getFields().remove(cartFieldIndex);
-                newEmbed.addField("🛒 Items in Cart", String.valueOf(currentItems), true);
+                newEmbed.addField("🛒 CURRENT CART SIZE", "# " + currentItems, false);
                 
                 boolean wasReset = false;
                 List<Button> updatedButtons = new ArrayList<>();
@@ -2558,8 +2601,12 @@ public class CommandListener extends ListenerAdapter {
                     if (fieldName != null) {
                         if (fieldName.contains("STATUS: IN PROGRESS")) {
                             completed.getFields().remove(i);
-                        } else if (fieldName.equals("🛒 Items in Cart")) {
-                            try { totalItems = Integer.parseInt(completed.getFields().get(i).getValue()); } catch(Exception e){}
+                        } else if (fieldName.contains("CART SIZE")) {
+                            try { 
+                                String rawValue = completed.getFields().get(i).getValue();
+                                String justDigits = rawValue.replaceAll("[^0-9]", "");
+                                totalItems = Integer.parseInt(justDigits); 
+                            } catch(Exception e){}
                         }
                     }
                 }
