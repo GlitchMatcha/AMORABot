@@ -66,6 +66,7 @@ public class CommandListener extends ListenerAdapter {
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
     public static final String CINNA_HIDE = "<a:009BCinnamoroll_Hide:1512617579154378833> ";
     public static final String BUGCAT_OK = "<a:BugCatOk:1526913455108657222>";
+    
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -97,6 +98,7 @@ public class CommandListener extends ListenerAdapter {
             shopLogChannel.sendMessageEmbeds(logEmbed.build()).queue();
         }
     }
+    
     private void generateAndLogTranscript(ThreadChannel thread, String status) {
         if (SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) return;
         TextChannel logChannel = thread.getGuild().getTextChannelById(SHOP_LOG_CHANNEL_ID);
@@ -164,6 +166,7 @@ public class CommandListener extends ListenerAdapter {
             return null;
         });
     }
+    
     private boolean hasAnyAllowedRole(SlashCommandInteractionEvent event, String rawRoleIds) {
         if (event.getMember() == null || rawRoleIds == null || rawRoleIds.isBlank()) {
             return false;
@@ -281,6 +284,7 @@ public class CommandListener extends ListenerAdapter {
 
         return link;
     }
+    
     private String getCustomEmoji(Guild guild, String emojiName, String fallback) {
         if (guild == null) return fallback;
         return guild.getEmojisByName(emojiName, true).stream()
@@ -288,6 +292,7 @@ public class CommandListener extends ListenerAdapter {
                 .map(net.dv8tion.jda.api.entities.emoji.RichCustomEmoji::getAsMention)
                 .orElse(fallback);
     }
+    
     private String getQueryParam(String rawQuery, String key) {
         if (rawQuery == null || rawQuery.isBlank()) {
             return null;
@@ -723,12 +728,21 @@ public class CommandListener extends ListenerAdapter {
             TextChannel orderChannel = event.getJDA().getTextChannelById(ORDER_CHANNEL_ID);
             if (orderChannel != null) {
                 
+                java.util.Optional<ThreadChannel> activeThread = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains(event.getUser().getName() + " ➔ " + creator.getName()))
+                        .findFirst();
+
+                if (activeThread.isPresent()) {
+                    event.reply(MIKU_SAD + " **Hold on!** You already have an open transaction with **" + creator.getName() + "** in " + activeThread.get().getAsMention() + "!\n\n🛒 **Want to buy this too?**\nJust share what you want inside that thread and use the `➕ Add Item` button to buy them all at once!").setEphemeral(true).queue();
+                    return;
+                }
+
                 long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
                         .filter(t -> t.getName().contains(event.getUser().getName() + " ➔"))
                         .count();
 
-                if (buyerTotalActiveOrders >= 3) {
-                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
+                if (buyerTotalActiveOrders >= 5) {
+                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 5 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -2149,6 +2163,7 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        
         if (componentId.startsWith("order_start_")) {
             String creatorId = componentId.substring("order_start_".length());
             User buyer = event.getUser();
@@ -2171,11 +2186,12 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.getJDA().retrieveUserById(creatorId).queue(creator -> {
-                boolean hasActiveOrderWithThisCreator = orderChannel.getThreadChannels().stream()
-                        .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔ " + creator.getName()));
+                java.util.Optional<ThreadChannel> activeThread = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains(buyer.getName() + " ➔ " + creator.getName()))
+                        .findFirst();
 
-                if (hasActiveOrderWithThisCreator) {
-                    event.reply(MIKU_SAD + " **Hold on!** You already have an active order open with **" + creator.getName() + "**. Please wait for them to respond or finish your current transaction before ordering again from this specific creator!").setEphemeral(true).queue();
+                if (activeThread.isPresent()) {
+                    event.reply(MIKU_SAD + " **Hold on!** You already have an open transaction with **" + creator.getName() + "** in " + activeThread.get().getAsMention() + "!\n\n🛒 **Want to buy this too?**\nJust drop the link to this outfit in that thread and use the `➕ Add Item` button to buy them all at once!").setEphemeral(true).queue();
                     return;
                 }
 
@@ -2251,6 +2267,7 @@ public class CommandListener extends ListenerAdapter {
             });
             return;
         }
+        
         if (componentId.equals("confirm_shop_reset")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
@@ -2407,15 +2424,92 @@ public class CommandListener extends ListenerAdapter {
             accepted.setColor(new Color(255, 165, 0)); 
             accepted.addField("⏳ STATUS: IN PROGRESS", "The creator accepted! Please finish payment & delivery right here in this thread.\n\n**Both parties must click their confirm buttons below to officially log this sale!**", false);
             
+            accepted.addField("🛒 Items in Cart", "1", true);
+            
             event.editMessageEmbeds(accepted.build())
                  .setActionRow(
                      Button.primary("buyerconfirm_" + creatorId + "_" + buyerId, "🛍️ Buyer Confirm"),
                      Button.primary("sellerconfirm_" + creatorId + "_" + buyerId, "🤝 Seller Confirm"),
-                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, "  Cancel Order")
+                     Button.secondary("additem_" + creatorId + "_" + buyerId, "➕ Add Item"),
+                     Button.secondary("remitem_" + creatorId + "_" + buyerId, "➖ Remove"),
+                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, " Cancel Order")
                  ).queue(); 
                  
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "! Nub Matcha begs: Please do orders in this thread instead of DMs >p<").queue();
+            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
+                                           "🛍️ **Want to add more items to this order?**\n" +
+                                           "Nub Matcha says: You don't need a new ticket! Just drop the other items here and click the `➕ Add Item` button below to update your cart size. >p<").queue();
+            
             event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
+            return;
+        }
+
+        if (componentId.startsWith("additem_") || componentId.startsWith("remitem_")) {
+            String[] parts = componentId.split("_");
+            String action = parts[0];
+            String creatorId = parts[1];
+            String buyerId = parts[2];
+
+            if (!event.getUser().getId().equals(creatorId) && !event.getUser().getId().equals(buyerId)) {
+                event.reply("❌ Only the buyer or creator can edit the cart!").setEphemeral(true).queue();
+                return;
+            }
+
+            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+            EmbedBuilder newEmbed = new EmbedBuilder(embed);
+            
+            int cartFieldIndex = -1;
+            int currentItems = 1;
+            
+            for (int i = 0; i < newEmbed.getFields().size(); i++) {
+                if (newEmbed.getFields().get(i).getName() != null && newEmbed.getFields().get(i).getName().equals("🛒 Items in Cart")) {
+                    cartFieldIndex = i;
+                    try {
+                        currentItems = Integer.parseInt(newEmbed.getFields().get(i).getValue());
+                    } catch (Exception ignored) {}
+                    break;
+                }
+            }
+
+            if (cartFieldIndex != -1) {
+                if (action.equals("additem")) {
+                    currentItems++;
+                } else if (action.equals("remitem")) {
+                    if (currentItems > 1) {
+                        currentItems--;
+                    } else {
+                        event.reply("❌ The cart must have at least 1 item!").setEphemeral(true).queue();
+                        return;
+                    }
+                }
+                
+                newEmbed.getFields().remove(cartFieldIndex);
+                newEmbed.addField("🛒 Items in Cart", String.valueOf(currentItems), true);
+                
+                boolean wasReset = false;
+                List<Button> updatedButtons = new ArrayList<>();
+                
+                for (Button b : event.getMessage().getButtons()) {
+                    if (b.getId() != null && b.getId().startsWith("buyerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
+                        updatedButtons.add(Button.primary(b.getId(), "🛍️ Buyer Confirm"));
+                        wasReset = true;
+                    } 
+                    else if (b.getId() != null && b.getId().startsWith("sellerconfirm_") && b.getLabel() != null && b.getLabel().contains("Confirmed")) {
+                        updatedButtons.add(Button.primary(b.getId(), "🤝 Seller Confirm"));
+                        wasReset = true;
+                    } 
+                    else {
+                        updatedButtons.add(b);
+                    }
+                }
+                
+                event.editMessageEmbeds(newEmbed.build())
+                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(updatedButtons))
+                     .queue();
+                     
+                if (wasReset) {
+                    event.getChannel().sendMessage("⚠️ " + event.getUser().getAsMention() + " adjusted the cart to **" + currentItems + "** items! Confirmations have been reset. Both parties must re-confirm the new amount!").queue();
+                }
+            }
             return;
         }
 
@@ -2454,28 +2548,45 @@ public class CommandListener extends ListenerAdapter {
             }
 
             if (buyerConfirmed && sellerConfirmed) {
-                db.incrementCreatorSold(creatorId);
-
-                EmbedBuilder completed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-                completed.setColor(new Color(50, 205, 50)); 
-                if (!completed.getFields().isEmpty()) {
-                    completed.getFields().remove(completed.getFields().size() - 1); 
+                MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+                EmbedBuilder completed = new EmbedBuilder(embed);
+                
+                int totalItems = 1;
+                
+                for (int i = completed.getFields().size() - 1; i >= 0; i--) {
+                    String fieldName = completed.getFields().get(i).getName();
+                    if (fieldName != null) {
+                        if (fieldName.contains("STATUS: IN PROGRESS")) {
+                            completed.getFields().remove(i);
+                        } else if (fieldName.equals("🛒 Items in Cart")) {
+                            try { totalItems = Integer.parseInt(completed.getFields().get(i).getValue()); } catch(Exception e){}
+                        }
+                    }
                 }
-                completed.addField(" STATUS: COMPLETED & VERIFIED", "Both parties verified the transaction. Sale officially logged!", false);
+
+                db.incrementCreatorSold(creatorId, totalItems);
+
+                completed.setColor(new Color(50, 205, 50)); 
+                completed.addField("✅ STATUS: COMPLETED", "Sale officially logged for **" + totalItems + "** items!", false);
+
+                List<Button> finalButtons = new ArrayList<>();
+                for (Button b : newButtons) {
+                    finalButtons.add(b.asDisabled());
+                }
 
                 event.editMessageEmbeds(completed.build())
-                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons))
+                     .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(finalButtons))
                      .queue(); 
                 
                 ThreadChannel thread = event.getChannel().asThreadChannel();
                 generateAndLogTranscript(thread, "COMPLETED");
                 
-                event.getChannel().sendMessage(" **Transaction Complete!** The sale has been officially logged for <@" + creatorId + ">.")
+                event.getChannel().sendMessage(" **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
                      .queue(msg -> {
                          thread.getManager().setLocked(true).setArchived(true).queue();
                      });
                 
-                sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction with <@" + buyerId + ">.", new Color(50, 205, 50));
+                sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction of **" + totalItems + "** items with <@" + buyerId + ">.", new Color(50, 205, 50));
 
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
@@ -2494,7 +2605,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-           EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+            EmbedBuilder declined = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
             declined.setColor(Color.RED);
             declined.addField("  STATUS: CANCELLED", "Order was cancelled. No sales logged.", false);
             
@@ -2503,7 +2614,7 @@ public class CommandListener extends ListenerAdapter {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             generateAndLogTranscript(thread, "CANCELLED/DECLINED");
             
-            event.reply("Order ticket was marked as cancelled/declined. Locking thread...")
+            event.reply("⚠️ Order ticket was marked as cancelled/declined. Locking thread...")
                  .queue(hook -> {
                      thread.getManager().setLocked(true).setArchived(true).queue();
                  });
@@ -2843,108 +2954,6 @@ public class CommandListener extends ListenerAdapter {
                     "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@"
                             + trade.targetId + "> for **" + trade.requestItem + "**.",
                     new Color(50, 205, 50));
-        }
-    }
-
-    @Override
-    public void onMessageContextInteraction(net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent event) {
-        if (event.getName().equals("🛒 Order This")) {
-            net.dv8tion.jda.api.entities.Message targetMessage = event.getTarget();
-            User creator = targetMessage.getAuthor();
-            User buyer = event.getUser();
-
-            if (creator.isBot() || creator.getId().equals(buyer.getId())) {
-                event.reply("  You can only order items from other creators!").setEphemeral(true).queue();
-                return;
-            }
-
-            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
-            if (orderChannelId == null) {
-                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
-                return;
-            }
-
-            net.dv8tion.jda.api.entities.channel.concrete.TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
-            if (orderChannel == null) {
-                event.reply("❌ Cannot find the official order channel.").setEphemeral(true).queue();
-                return;
-            }
-
-            boolean hasActiveOrderWithThisCreator = orderChannel.getThreadChannels().stream()
-                    .anyMatch(t -> t.getName().contains(buyer.getName() + " ➔ " + creator.getName()));
-
-            if (hasActiveOrderWithThisCreator) {
-                event.reply(MIKU_SAD + " **Hold on!** You already have an active order open with **" + creator.getName() + "**. Please wait for them to respond or finish your current transaction before ordering again from this specific creator!").setEphemeral(true).queue();
-                return;
-            }
-
-            long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
-                    .filter(t -> t.getName().contains(buyer.getName() + " ➔"))
-                    .count();
-
-            if (buyerTotalActiveOrders >= 3) {
-                event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
-                return;
-            }
-
-            long creatorActiveOrders = orderChannel.getThreadChannels().stream()
-                    .filter(t -> t.getName().contains("➔ " + creator.getName()))
-                    .count();
-
-            if (creatorActiveOrders >= 5) {
-                event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
-                return;
-            }
-
-            String itemDescription = targetMessage.getContentRaw();
-            if (itemDescription.length() > 300) {
-                itemDescription = itemDescription.substring(0, 300) + "..."; 
-            }
-            if (itemDescription.isBlank()) itemDescription = "_Visual asset (See image below)_";
-
-            String messageLink = targetMessage.getJumpUrl();
-
-            net.dv8tion.jda.api.EmbedBuilder orderEmbed = new net.dv8tion.jda.api.EmbedBuilder()
-                    .setColor(new java.awt.Color(255, 182, 193))
-                    .setTitle("✦ AUTOMATED COMMISSION ORDER ✦")
-                    .setDescription(
-                            buyer.getAsMention() + " just placed a seamless order!\n\n" +
-                            CINNA_HIDE + " **Item Requested:**\n" +
-                            "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
-                            "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                            "*(Creator: Accept this order below to log your sale!)*"
-                    )
-                    .setThumbnail(buyer.getEffectiveAvatarUrl())
-                    .setFooter("AMORA Smart UI Order System", null);
-
-            if (!targetMessage.getAttachments().isEmpty()) {
-                net.dv8tion.jda.api.entities.Message.Attachment image = targetMessage.getAttachments().get(0);
-                if (image.isImage()) {
-                    orderEmbed.setImage(image.getUrl());
-                }
-            }
-
-            event.reply(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
-
-            orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
-                
-                String shortId = UUID.randomUUID().toString().substring(0, 4);
-
-                orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
-                     
-                     mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
-                     
-                     thread.addThreadMember(creator).queue();
-                     thread.addThreadMember(buyer).queue();
-
-                     thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
-                           .addEmbeds(orderEmbed.build())
-                           .addActionRow(
-                               net.dv8tion.jda.api.interactions.components.buttons.Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
-                               net.dv8tion.jda.api.interactions.components.buttons.Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "  Decline")
-                           ).queue();
-                });
-            });
         }
     }
 }
