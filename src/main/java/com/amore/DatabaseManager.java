@@ -215,6 +215,9 @@ public class DatabaseManager {
             try {
                 stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;");
             } catch (SQLException ignored) { }
+            try {
+                stmt.execute("ALTER TABLE creator_prompts ADD COLUMN original_msg_id TEXT;");
+            } catch (SQLException ignored) { }
             String createCreatorPromptsTable = "CREATE TABLE IF NOT EXISTS creator_prompts ("
                     + "creator_id TEXT, "
                     + "channel_id TEXT, "
@@ -1096,12 +1099,13 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
         return "*(No reviews yet — be the first!)*";
     }
-    public void saveCreatorPrompt(String creatorId, String channelId, String messageId) {
-        String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
+    public void saveCreatorPrompt(String creatorId, String channelId, String messageId, String originalMsgId) {
+        String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id, original_msg_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, creatorId);
             pstmt.setString(2, channelId);
             pstmt.setString(3, messageId);
+            pstmt.setString(4, originalMsgId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
     }
@@ -1127,5 +1131,19 @@ public class DatabaseManager {
             pstmt.setString(2, messageId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public List<String> getLinkedBotMessages(String originalMsgId) {
+        List<String> list = new ArrayList<>();
+        String query = "SELECT message_id FROM creator_prompts WHERE original_msg_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, originalMsgId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(rs.getString("message_id"));
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return list;
     }
 }
