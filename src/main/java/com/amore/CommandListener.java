@@ -2760,24 +2760,29 @@ public class CommandListener extends ListenerAdapter {
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
             return;
         }
-        if (componentId.startsWith("rate_")) {
+        if (componentId.startsWith("rate_") || componentId.startsWith("ratenone_")) {
             String[] parts = componentId.split("_");
-            int stars = Integer.parseInt(parts[1]);
-            String creatorId = parts[2];
-            String buyerId = parts[3];
+            String buyerId = parts[parts.length - 1]; 
 
             if (!event.getUser().getId().equals(buyerId)) {
-                event.reply("❌ Only the buyer can rate this transaction!").setEphemeral(true).queue();
+                event.reply("❌ Only the buyer can interact with this prompt!").setEphemeral(true).queue();
                 return;
             }
 
-            db.addCreatorRating(creatorId, stars);
+            EmbedBuilder thanks = new EmbedBuilder().setColor(new Color(255, 215, 0));
 
-            EmbedBuilder thanks = new EmbedBuilder()
-                .setColor(new Color(255, 215, 0))
-                .setDescription("💖 Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved to their profile.");
+            if (componentId.startsWith("ratenone_")) {
+                thanks.setDescription("<a:catnod:1527257308755660931>  Understood! Closing this transaction room.");
+            } else {
+                int stars = Integer.parseInt(parts[1]);
+                String creatorId = parts[2];
+                db.addCreatorRating(creatorId, stars);
+                thanks.setDescription("<a:HatsuneMikuHappy:1525684137237942374>  Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved.");
+            }
 
-            event.editMessageEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue();
+            event.editMessageEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
+                 event.getChannel().asThreadChannel().getManager().setLocked(true).setArchived(true).queue();
+            });
             return;
         }
 
