@@ -82,6 +82,8 @@ public class App {
                             .addChoice("Standard Directives", "bounties")
                             .addChoice("Urgent Directives", "urgent")
                             .addChoice("⏱ Active Check Wins", "acwins") 
+                            .addChoice("🛒 Monthly Shop Orders", "orders_month")   
+                            .addChoice("👑 All-Time Shop Orders", "orders_alltime") 
                         ),
 
                     Commands.slash("shop", "AMORA Creator Marketplace")

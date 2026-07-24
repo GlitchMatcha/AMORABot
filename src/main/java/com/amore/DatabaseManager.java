@@ -206,7 +206,10 @@ public class DatabaseManager {
             try {
                 stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;");
             } catch (SQLException ignored) { } 
-            
+            try {
+                stmt.execute("ALTER TABLE creator_stats ADD COLUMN all_time_orders INTEGER DEFAULT 0;");
+            } catch (SQLException ignored) { }
+
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
             e.printStackTrace();
@@ -983,11 +986,10 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
     }
 
-    public void incrementCreatorSold(String userId, int amount) {
-        String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + ? WHERE user_id = ?;";
+    public void incrementCreatorOrder(String userId) {
+        String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + 1, all_time_orders = all_time_orders + 1 WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setInt(1, amount);
-            pstmt.setString(2, userId);
+            pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
     }
@@ -1016,5 +1018,33 @@ public class DatabaseManager {
         }
         
         return needsCompensation;
+    }
+    public List<String> getTopShopsThisMonth() {
+        List<String> top = new ArrayList<>();
+        // Note: We reuse "sold_this_month" to represent the monthly orders!
+        String query = "SELECT user_id, sold_this_month FROM creator_stats WHERE sold_this_month > 0 ORDER BY sold_this_month DESC LIMIT 10;";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            int rank = 1;
+            while (rs.next() && rank <= 10) {
+                top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
+                        + rs.getInt("sold_this_month") + " Orders Completed**");
+                rank++;
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return top;
+    }
+
+    public List<String> getTopShopsAllTime() {
+        List<String> top = new ArrayList<>();
+        String query = "SELECT user_id, all_time_orders FROM creator_stats WHERE all_time_orders > 0 ORDER BY all_time_orders DESC LIMIT 10;";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            int rank = 1;
+            while (rs.next() && rank <= 10) {
+                top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
+                        + rs.getInt("all_time_orders") + " Orders Completed**");
+                rank++;
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return top;
     }
 }

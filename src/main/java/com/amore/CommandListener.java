@@ -1271,6 +1271,14 @@ public class CommandListener extends ListenerAdapter {
                 title = "⏱ AM0RA TOP ACTIVE CHECK WINNERS";
                 color = new Color(138, 43, 226);
                 topList = db.getTopAcWins();
+            }else if (category.equals("orders_month")) {
+                title = "🛒 AM0RA MOST ACTIVE SHOPS (THIS MONTH)";
+                color = new Color(255, 182, 193); 
+                topList = db.getTopShopsThisMonth();
+            } else if (category.equals("orders_alltime")) {
+                title = "👑 AM0RA LEGENDARY SHOPS (ALL TIME)";
+                color = new Color(255, 165, 0); 
+                topList = db.getTopShopsAllTime();
             }
 
             StringBuilder desc = new StringBuilder();
@@ -2670,7 +2678,7 @@ public class CommandListener extends ListenerAdapter {
                     }
                 } catch(Exception e){}
 
-                db.incrementCreatorSold(creatorId, totalItems);
+                db.incrementCreatorOrder(creatorId);
 
                 completed.setColor(new Color(50, 205, 50)); 
                 completed.setDescription( CinnaSurprise + "**STATUS: COMPLETED**\nSale officially logged for **" + totalItems + "** items!");
