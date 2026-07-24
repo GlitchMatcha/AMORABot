@@ -209,7 +209,12 @@ public class DatabaseManager {
             try {
                 stmt.execute("ALTER TABLE creator_stats ADD COLUMN all_time_orders INTEGER DEFAULT 0;");
             } catch (SQLException ignored) { }
-
+            try {
+                stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_stars INTEGER DEFAULT 0;");
+            } catch (SQLException ignored) { }
+            try {
+                stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;");
+            } catch (SQLException ignored) { }
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
             e.printStackTrace();
@@ -1021,7 +1026,6 @@ public class DatabaseManager {
     }
     public List<String> getTopShopsThisMonth() {
         List<String> top = new ArrayList<>();
-        // Note: We reuse "sold_this_month" to represent the monthly orders!
         String query = "SELECT user_id, sold_this_month FROM creator_stats WHERE sold_this_month > 0 ORDER BY sold_this_month DESC LIMIT 10;";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
@@ -1046,5 +1050,43 @@ public class DatabaseManager {
             }
         } catch (SQLException e) { e.printStackTrace(); }
         return top;
+    }
+    public void addCreatorRating(String userId, int stars) {
+        String query = "UPDATE creator_stats SET total_stars = total_stars + ?, total_ratings = total_ratings + 1 WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, stars);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public String getCreatorRatingString(String userId) {
+        String query = "SELECT total_stars, total_ratings FROM creator_stats WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    int ratings = rs.getInt("total_ratings");
+                    if (ratings == 0) return "*(No reviews yet — be the first!)*";
+                    
+                    int totalStars = rs.getInt("total_stars");
+                    double avg = (double) totalStars / ratings;
+                    
+                    int filledStars = (int) Math.round(avg);
+                    
+                    StringBuilder starVisual = new StringBuilder();
+                    for (int i = 1; i <= 5; i++) {
+                        if (i <= filledStars) {
+                            starVisual.append("★"); 
+                        } else {
+                            starVisual.append("☆"); 
+                        }
+                    }
+                    
+                    return String.format("%s **%.1f/5** `(%d reviews)`", starVisual.toString(), avg, ratings);
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return "*(No reviews yet — be the first!)*";
     }
 }
