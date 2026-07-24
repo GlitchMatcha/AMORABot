@@ -538,7 +538,9 @@ public class ChatListener extends ListenerAdapter {
 
             channel.sendMessageEmbeds(orderPromptEmbed.build())
                     .addActionRow(Button.success("order_start_" + author.getId(), "🛒 Order This"))
-                    .queue();
+                    .queue(msg -> {
+                        DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId());
+                    });
         }
     }
 
