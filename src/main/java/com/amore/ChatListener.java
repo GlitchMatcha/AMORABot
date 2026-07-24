@@ -472,7 +472,14 @@ public class ChatListener extends ListenerAdapter {
 
         String rawContent = message.getContentRaw();
         String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
-        
+        if (normalizedContent.contains("seller guide") 
+            || normalizedContent.contains("buyer guide") 
+            || normalizedContent.contains("marketplace manual") 
+            || normalizedContent.contains("amora marketplace")
+            || normalizedContent.contains("amora updates")
+            || normalizedContent.contains("[noshop]")) {
+            return; 
+        }
         boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)[^0-9]{0,30}\\d+").matcher(normalizedContent).find() 
                                  || java.util.regex.Pattern.compile("(?i)\\d+[^a-zA-Z0-9]{0,15}(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>)").matcher(normalizedContent).find()
                                  || normalizedContent.contains("🛒") 
@@ -507,7 +514,7 @@ public class ChatListener extends ListenerAdapter {
                 if (tagName.contains("lyric")) canPingLyrics = true;
                 if (tagName.contains("face")) canPingFaces = true;
             }
-
+            
             if (canPingOutfits && pingOutfits != null) {
                 pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + author.getId(), "👗 Ping Outfits"));
             }
