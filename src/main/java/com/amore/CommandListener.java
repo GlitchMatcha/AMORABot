@@ -823,14 +823,40 @@ public class CommandListener extends ListenerAdapter {
                     orderEmbed.setImage(image.getUrl());
                 }
 
-                event.reply(" **Order placed!** I am setting up a transaction thread for you now.").setEphemeral(true).queue();
+                String buyerName = event.getUser().getName();
+                String creatorName = creator.getName();
+                
+                String generatingUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                                      ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
+                                      "⋆ ˚｡⋆୨୧˚\n\n" +
+                                      "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+                                      "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
+                                      "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
+                                      "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
+                                      "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
+                                      "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                      "_ _   ꒰ ⌾ ꒱  ✦ **Status:** ⏳ *Weaving the digital threads...*";
 
-                orderChannel.sendMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n*Generating Private Thread...*").queue(mainMessage -> {
+                orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
                     
                     String shortId = UUID.randomUUID().toString().substring(0, 4);
                     
-                    orderChannel.createThreadChannel("⏳ " + event.getUser().getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
-                         mainMessage.editMessage("🛒 **New Order Received** from " + event.getUser().getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
+                    orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
+                         
+                         String readyUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                                          ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
+                                          "⋆ ˚｡⋆୨୧˚\n\n" +
+                                          "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+                                          "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
+                                          "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
+                                          "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
+                                          "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
+                                          "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                          "_ _   ꒰ ⌾ ꒱  ✦ **Status:** 🔒 *Transaction Room Secured!*\n\n" +
+                                          "<a:whitearrow:1332306187886264320> _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
+                                          "_ _   " + thread.getAsMention();
+                         
+                         mainMessage.editMessage(readyUI).queue();
                          
                          thread.addThreadMember(creator).queue();
                          thread.addThreadMember(event.getUser()).queue();
@@ -2298,10 +2324,38 @@ public class CommandListener extends ListenerAdapter {
 
                     event.reply(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
 
-                    orderChannel.sendMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n*Generating private thread...*").queue(mainMessage -> {
+                    String buyerName = buyer.getName();
+                    String creatorName = creator.getName();
+                    
+                    String generatingUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                                          ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
+                                          "⋆ ˚｡⋆୨୧˚\n\n" +
+                                          "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+                                          "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
+                                          "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
+                                          "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
+                                          "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
+                                          "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                          "_ _   ꒰ ⌾ ꒱  ✦ **Status:** ⏳ *Weaving the digital threads...*";
+
+                    orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
                         String shortId = UUID.randomUUID().toString().substring(0, 4);
-                        orderChannel.createThreadChannel("⏳ " + buyer.getName() + " ➔ " + creator.getName() + " [" + shortId + "]", true).queue(thread -> {
-                             mainMessage.editMessage("🛒 **New Order Received** from " + buyer.getName() + " for " + creator.getName() + "!\n➡️ **Private Thread:** " + thread.getAsMention()).queue();
+                        orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
+                             
+                             String readyUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
+                                              ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
+                                              "⋆ ˚｡⋆୨୧˚\n\n" +
+                                              "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+                                              "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
+                                              "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
+                                              "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
+                                              "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
+                                              "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                              "_ _   ꒰ ⌾ ꒱  ✦ **Status:** 🔒 *Transaction Room Secured!*\n\n" +
+                                              "<a:whitearrow:1332306187886264320> _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
+                                              "_ _   " + thread.getAsMention();
+                             
+                             mainMessage.editMessage(readyUI).queue();
                              
                              thread.addThreadMember(creator).queue();
                              thread.addThreadMember(buyer).queue();
