@@ -879,8 +879,7 @@ public class ChatListener extends ListenerAdapter {
         if (ultraCleanContent.contains(ultraCleanTrigger)) {
             
             if (ACTIVE_CHECK_CHANNEL_ID == null || !currentChannelId.equals(ACTIVE_CHECK_CHANNEL_ID)) {
-                event.getChannel().sendMessage("⚠️ **System Glitch:** Activity Check detected, but this channel (`" + currentChannelId + "`) is NOT the configured `ACTIVE_CHECK_CHANNEL_ID` in Render! Ignoring.").queue();
-                return;
+                return; 
             }
 
             String reactPhrase = db.getBotState("ac_react");
