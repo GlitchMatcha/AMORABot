@@ -2615,8 +2615,8 @@ public class CommandListener extends ListenerAdapter {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             generateAndLogTranscript(thread, "CANCELLED/DECLINED");
             
-            event.reply("Order ticket was marked as cancelled/declined. Locking thread...")
-                 .queue(hook -> {
+            event.getChannel().sendMessage("Order ticket was marked as cancelled/declined. Locking thread...")
+                 .queue(msg -> {
                      String safeName = thread.getName().replace("⏳", "❌").replace("🔒", "❌").replace("➔", "✖️");
                      thread.getManager().setName(safeName).setLocked(true).setArchived(true).queue();
                  });
