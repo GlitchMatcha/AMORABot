@@ -27,10 +27,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.utils.FileUpload;
 
 public class ChatListener extends ListenerAdapter {
@@ -523,14 +525,16 @@ public class ChatListener extends ListenerAdapter {
                      .addActionRow(pingButtons)
                      .queue();
             } else {
-                channel.sendMessage(
-                    "⚠️ **System Diagnostic:** I logged the listing (✅), but I couldn't spawn the ping buttons.\n" +
-                    "- Tags found on this thread: `" + appliedTags.size() + "`\n" +
-                    "- Is PING_OUTFITS in Render? `" + (pingOutfits != null) + "`\n" +
-                    "- Is PING_LYRICS in Render? `" + (pingLyrics != null) + "`\n" +
-                    "- Is PING_FACES in Render? `" + (pingFaces != null) + "`"
+                channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<"
                 ).queue();
             }
+            EmbedBuilder orderPromptEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193))
+                    .setDescription(" **Want to buy this?**\nClick the button below to instantly open a private order ticket with " + author.getAsMention() + "!");
+
+            channel.sendMessageEmbeds(orderPromptEmbed.build())
+                    .addActionRow(Button.success("order_start_" + author.getId(), "🛒 Order This"))
+                    .queue();
         }
     }
 
