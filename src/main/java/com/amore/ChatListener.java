@@ -528,6 +528,7 @@ public class ChatListener extends ListenerAdapter {
                 channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<"
                 ).queue();
             }
+            String ratingDisplay = DatabaseManager.getInstance().getCreatorRatingString(author.getId());
             EmbedBuilder orderPromptEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 182, 193))
                     .setDescription(" **Want to buy this?**\nClick the button below to instantly open a private order ticket with " + author.getAsMention() + "!");
