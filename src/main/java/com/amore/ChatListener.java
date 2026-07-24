@@ -519,11 +519,13 @@ public class ChatListener extends ListenerAdapter {
             }
 
             if (!pingButtons.isEmpty()) {
-                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
+                pingButtons.add(Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
                 
                 channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!** Select the groups you want to ping:")
                      .addActionRow(pingButtons)
-                     .queue();
+                     .queue(msg -> {
+                         DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                     });
             } else {
                 channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<"
                 ).queue();
@@ -539,12 +541,27 @@ public class ChatListener extends ListenerAdapter {
             channel.sendMessageEmbeds(orderPromptEmbed.build())
                     .addActionRow(Button.success("order_start_" + author.getId(), "🛒 Order This"))
                     .queue(msg -> {
-                        DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId());
+                        DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
                     });
         }
     }
 
-
+    @Override
+    public void onMessageDelete(net.dv8tion.jda.api.events.message.MessageDeleteEvent event) {
+        String deletedId = event.getMessageId();
+        DatabaseManager db = DatabaseManager.getInstance();
+        
+        List<String> linkedBotMessages = db.getLinkedBotMessages(deletedId);
+        
+        if (!linkedBotMessages.isEmpty()) {
+            for (String botMsgId : linkedBotMessages) {
+                event.getChannel().deleteMessageById(botMsgId).queue(
+                    success -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId),
+                    error -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId)
+                );
+            }
+        }
+    }
     @Override
     public void onMessageReactionAdd(MessageReactionAddEvent event) {
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
