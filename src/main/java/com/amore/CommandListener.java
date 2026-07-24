@@ -491,7 +491,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     private String encodeItem(String itemName) {
-        return Base64.getUrlEncoder().encodeToString(itemName.getBytes(StandardCharsets.UTF_8)); // Safe!
+        return Base64.getUrlEncoder().encodeToString(itemName.getBytes(StandardCharsets.UTF_8));
     }
 
     private String decodeItem(String encoded) {
@@ -2799,10 +2799,12 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("rate_") || componentId.startsWith("ratenone_")) {
             String[] parts = componentId.split("_");
             String buyerId = parts[parts.length - 1]; 
+            
             if (processedInteractions.contains(event.getMessageId())) return;
-                processedInteractions.add(event.getMessageId());
+            processedInteractions.add(event.getMessageId());
+            
             if (!event.getUser().getId().equals(buyerId)) {
-                event.reply("❌ Only the buyer can interact with this prompt!").setEphemeral(true).queue();
+                event.reply("<a:67:1525300363849367615>  Only the buyer can interact with this prompt!").setEphemeral(true).queue();
                 return;
             }
 
@@ -2815,6 +2817,31 @@ public class CommandListener extends ListenerAdapter {
                 String creatorId = parts[2];
                 db.addCreatorRating(creatorId, stars);
                 thanks.setDescription("<a:HatsuneMikuHappy:1525684137237942374>  Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved.");
+                
+                String newRatingDisplay = db.getCreatorRatingString(creatorId);
+                List<String[]> prompts = db.getCreatorPrompts(creatorId);
+                
+                for (String[] pair : prompts) {
+                    String threadId = pair[0];
+                    String msgId = pair[1];
+                    
+                    ThreadChannel t = event.getJDA().getThreadChannelById(threadId);
+                    if (t != null) {
+                        t.retrieveMessageById(msgId).queue(oldMsg -> {
+                            if (!oldMsg.getEmbeds().isEmpty()) {
+                                MessageEmbed oldEmbed = oldMsg.getEmbeds().get(0);
+                                String oldDesc = oldEmbed.getDescription();
+                                if (oldDesc != null && oldDesc.contains("Creator Rating:")) {
+                                    String newDesc = oldDesc.replaceAll("\\*\\*Creator Rating:\\*\\* .*", "**Creator Rating:** " + Matcher.quoteReplacement(newRatingDisplay));
+                                    EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed).setDescription(newDesc);
+                                    oldMsg.editMessageEmbeds(updatedEmbed.build()).queue();
+                                }
+                            }
+                        }, error -> db.removeCreatorPrompt(threadId, msgId));
+                    } else {
+                        db.removeCreatorPrompt(threadId, msgId); 
+                    }
+                }
             }
 
             event.editMessageEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {

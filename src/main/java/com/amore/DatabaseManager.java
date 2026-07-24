@@ -215,6 +215,13 @@ public class DatabaseManager {
             try {
                 stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;");
             } catch (SQLException ignored) { }
+            String createCreatorPromptsTable = "CREATE TABLE IF NOT EXISTS creator_prompts ("
+                    + "creator_id TEXT, "
+                    + "channel_id TEXT, "
+                    + "message_id TEXT, "
+                    + "PRIMARY KEY (channel_id, message_id)"
+                    + ");";
+            stmt.execute(createCreatorPromptsTable);
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
             e.printStackTrace();
@@ -1088,5 +1095,37 @@ public class DatabaseManager {
             }
         } catch (SQLException e) { e.printStackTrace(); }
         return "*(No reviews yet — be the first!)*";
+    }
+    public void saveCreatorPrompt(String creatorId, String channelId, String messageId) {
+        String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, creatorId);
+            pstmt.setString(2, channelId);
+            pstmt.setString(3, messageId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public List<String[]> getCreatorPrompts(String creatorId) {
+        List<String[]> list = new ArrayList<>();
+        String query = "SELECT channel_id, message_id FROM creator_prompts WHERE creator_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, creatorId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new String[]{rs.getString("channel_id"), rs.getString("message_id")});
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return list;
+    }
+
+    public void removeCreatorPrompt(String channelId, String messageId) {
+        String query = "DELETE FROM creator_prompts WHERE channel_id = ? AND message_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, channelId);
+            pstmt.setString(2, messageId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
     }
 }
