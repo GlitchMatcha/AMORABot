@@ -825,7 +825,8 @@ public class CommandListener extends ListenerAdapter {
 
                 String buyerName = event.getUser().getName();
                 String creatorName = creator.getName();
-                
+                String ratingDisplay = db.getCreatorRatingString(creator.getId());
+
                 String generatingUI = "# ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹\n" +
                                       ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
                                       "⋆ ˚｡⋆୨୧˚\n\n" +
@@ -835,8 +836,8 @@ public class CommandListener extends ListenerAdapter {
                                       "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
                                       "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
                                       "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                      "_ _   ꒰ ⌾ ꒱  ✦ **Creator Rating:** " + ratingDisplay + "\n" +
                                       "_ _   ꒰ ⌾ ꒱  ✦ **Status:** ⏳ *Weaving the digital threads...*";
-
                 orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
                     
                     String shortId = UUID.randomUUID().toString().substring(0, 4);
@@ -2703,6 +2704,19 @@ public class CommandListener extends ListenerAdapter {
                      });
                 
                 sendShopLog(event.getGuild(), "Order Completed", "<@" + creatorId + "> successfully completed a transaction of **" + totalItems + "** items with <@" + buyerId + ">.", new Color(50, 205, 50));
+                EmbedBuilder ratingEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 215, 0))
+                        .setTitle("📝 Rate Your Experience!")
+                        .setDescription("<@" + buyerId + ">, how was your transaction with <@" + creatorId + ">?");
+                
+                event.getChannel().sendMessageEmbeds(ratingEmbed.build())
+                        .addActionRow(
+                            Button.secondary("rate_1_" + creatorId + "_" + buyerId, "⭐"),
+                            Button.secondary("rate_2_" + creatorId + "_" + buyerId, "⭐⭐"),
+                            Button.secondary("rate_3_" + creatorId + "_" + buyerId, "⭐⭐⭐"),
+                            Button.secondary("rate_4_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐"),
+                            Button.primary("rate_5_" + creatorId + "_" + buyerId, "⭐⭐⭐⭐⭐")
+                        ).queue();
 
             } else {
                 event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
@@ -2715,7 +2729,7 @@ public class CommandListener extends ListenerAdapter {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
             String buyerId = parts[2];
-
+            
             if (!event.getUser().getId().equals(creatorId) && !event.getUser().getId().equals(buyerId)) {
                 event.reply("  Only the buyer or creator involved in this order can cancel it!").setEphemeral(true).queue();
                 return;
@@ -2737,6 +2751,26 @@ public class CommandListener extends ListenerAdapter {
                  });
             
             sendShopLog(event.getGuild(), "Order Cancelled", "A transaction between <@" + creatorId + "> and <@" + buyerId + "> was cancelled by " + event.getUser().getAsMention() + ".", Color.RED);
+            return;
+        }
+        if (componentId.startsWith("rate_")) {
+            String[] parts = componentId.split("_");
+            int stars = Integer.parseInt(parts[1]);
+            String creatorId = parts[2];
+            String buyerId = parts[3];
+
+            if (!event.getUser().getId().equals(buyerId)) {
+                event.reply("❌ Only the buyer can rate this transaction!").setEphemeral(true).queue();
+                return;
+            }
+
+            db.addCreatorRating(creatorId, stars);
+
+            EmbedBuilder thanks = new EmbedBuilder()
+                .setColor(new Color(255, 215, 0))
+                .setDescription("💖 Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved to their profile.");
+
+            event.editMessageEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue();
             return;
         }
 
