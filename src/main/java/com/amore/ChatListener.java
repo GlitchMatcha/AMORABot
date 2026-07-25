@@ -85,16 +85,64 @@ public class ChatListener extends ListenerAdapter {
     private static final Map<String, PetState> activePets = new ConcurrentHashMap<>();
     private static final Map<String, GridState> activeGrids = new ConcurrentHashMap<>();
     private static class TicTacToeState {
-        int[] board = new int[9]; 
+        int size;
+        int winCondition;
+        int[] board; 
         boolean isLobby = true;
         boolean isPvP = false;
         String playerXId = null; 
         String playerOId = null; 
         
+        TicTacToeState(int size) {
+            this.size = size;
+            this.board = new int[size * size];
+            this.winCondition = (size == 3) ? 3 : 4; 
+        }
+
         int checkWinner() {
-            int[][] wins = {{0,1,2}, {3,4,5}, {6,7,8}, {0,3,6}, {1,4,7}, {2,5,8}, {0,4,8}, {2,4,6}};
-            for (int[] w : wins) {
-                if (board[w[0]] != 0 && board[w[0]] == board[w[1]] && board[w[1]] == board[w[2]]) return board[w[0]];
+            for (int r = 0; r < size; r++) {
+                for (int c = 0; c <= size - winCondition; c++) {
+                    int first = board[r * size + c];
+                    if (first == 0) continue;
+                    boolean win = true;
+                    for (int i = 1; i < winCondition; i++) {
+                        if (board[r * size + c + i] != first) { win = false; break; }
+                    }
+                    if (win) return first;
+                }
+            }
+            for (int c = 0; c < size; c++) {
+                for (int r = 0; r <= size - winCondition; r++) {
+                    int first = board[r * size + c];
+                    if (first == 0) continue;
+                    boolean win = true;
+                    for (int i = 1; i < winCondition; i++) {
+                        if (board[(r + i) * size + c] != first) { win = false; break; }
+                    }
+                    if (win) return first;
+                }
+            }
+            for (int r = 0; r <= size - winCondition; r++) {
+                for (int c = 0; c <= size - winCondition; c++) {
+                    int first = board[r * size + c];
+                    if (first == 0) continue;
+                    boolean win = true;
+                    for (int i = 1; i < winCondition; i++) {
+                        if (board[(r + i) * size + c + i] != first) { win = false; break; }
+                    }
+                    if (win) return first;
+                }
+            }
+            for (int r = 0; r <= size - winCondition; r++) {
+                for (int c = winCondition - 1; c < size; c++) {
+                    int first = board[r * size + c];
+                    if (first == 0) continue;
+                    boolean win = true;
+                    for (int i = 1; i < winCondition; i++) {
+                        if (board[(r + i) * size + c - i] != first) { win = false; break; }
+                    }
+                    if (win) return first;
+                }
             }
             return 0;
         }
@@ -110,31 +158,37 @@ public class ChatListener extends ListenerAdapter {
             return (empty % 2 != 0) ? 1 : 2; 
         }
 
-        int minimax(int depth, boolean isMaximizing) {
+        int minimax(int depth, boolean isMaximizing, int alpha, int beta) {
             int winner = checkWinner();
-            if (winner == 2) return 10 - depth; 
-            if (winner == 1) return depth - 10; 
+            if (winner == 2) return 100 - depth; 
+            if (winner == 1) return depth - 100; 
             if (isFull()) return 0; 
+            
+            if (depth >= 6 && size > 3) return 0;
 
             if (isMaximizing) {
                 int bestScore = Integer.MIN_VALUE;
-                for (int i = 0; i < 9; i++) {
+                for (int i = 0; i < board.length; i++) {
                     if (board[i] == 0) {
                         board[i] = 2; 
-                        int score = minimax(depth + 1, false);
+                        int score = minimax(depth + 1, false, alpha, beta);
                         board[i] = 0; 
                         bestScore = Math.max(score, bestScore);
+                        alpha = Math.max(alpha, bestScore);
+                        if (beta <= alpha) break; 
                     }
                 }
                 return bestScore;
             } else {
                 int bestScore = Integer.MAX_VALUE;
-                for (int i = 0; i < 9; i++) {
+                for (int i = 0; i < board.length; i++) {
                     if (board[i] == 0) {
                         board[i] = 1; 
-                        int score = minimax(depth + 1, true);
+                        int score = minimax(depth + 1, true, alpha, beta);
                         board[i] = 0; 
                         bestScore = Math.min(score, bestScore); 
+                        beta = Math.min(beta, bestScore);
+                        if (beta <= alpha) break; 
                     }
                 }
                 return bestScore;
@@ -144,33 +198,38 @@ public class ChatListener extends ListenerAdapter {
         void makeAIMove() {
             int bestScore = Integer.MIN_VALUE;
             int bestMove = -1;
-            for (int i = 0; i < 9; i++) {
+            int alpha = Integer.MIN_VALUE;
+            int beta = Integer.MAX_VALUE;
+            
+            for (int i = 0; i < board.length; i++) {
                 if (board[i] == 0) {
                     board[i] = 2;
-                    int score = minimax(0, false);
+                    int score = minimax(0, false, alpha, beta);
                     board[i] = 0;
                     if (score > bestScore) {
                         bestScore = score;
                         bestMove = i;
                     }
+                    alpha = Math.max(alpha, bestScore);
                 }
             }
             if (bestMove != -1) board[bestMove] = 2;
         }
         
         List<net.dv8tion.jda.api.interactions.components.ActionRow> renderButtons() {
-            List<net.dv8tion.jda.api.interactions.components.buttons.Button> btns = new ArrayList<>();
-            for (int i = 0; i < 9; i++) {
-                String id = "ttt_" + i;
-                if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
-                else if (board[i] == 2) btns.add(Button.primary(id, "⭕").asDisabled());
-                else btns.add(Button.secondary(id, "➖"));
+            List<net.dv8tion.jda.api.interactions.components.ActionRow> rows = new ArrayList<>();
+            for (int r = 0; r < size; r++) {
+                List<net.dv8tion.jda.api.interactions.components.buttons.Button> btns = new ArrayList<>();
+                for (int c = 0; c < size; c++) {
+                    int i = r * size + c;
+                    String id = "ttt_" + i;
+                    if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
+                    else if (board[i] == 2) btns.add(Button.primary(id, "⭕").asDisabled());
+                    else btns.add(Button.secondary(id, "➖"));
+                }
+                rows.add(net.dv8tion.jda.api.interactions.components.ActionRow.of(btns));
             }
-            return Arrays.asList(
-                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(0, 3)),
-                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(3, 6)),
-                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(6, 9))
-            );
+            return rows;
         }
     }
     
@@ -1312,11 +1371,11 @@ public class ChatListener extends ListenerAdapter {
             if (state.isPvP) {
                 String nextPlayer = state.currentTurn() == 1 ? "<@" + state.playerXId + "> (❌)" : 
                     (state.playerOId == null ? "Anyone (⭕)" : "<@" + state.playerOId + "> (⭕)");
-                ongoingEmbed.setTitle("👥 PvP Tic-Tac-Toe")
+                ongoingEmbed.setTitle("👥 PvP Tic-Tac-Toe (" + state.size + "x" + state.size + ")")
                             .setColor(Color.BLUE)
                             .setDescription("<@" + state.playerXId + "> vs " + (state.playerOId == null ? "Waiting..." : "<@" + state.playerOId + ">") + "\n\n*Waiting for " + nextPlayer + " to move.*");
             } else {
-                ongoingEmbed.setTitle("🤖 Unbeatable AI Boss")
+                ongoingEmbed.setTitle("🤖 Unbeatable AI Boss (" + state.size + "x" + state.size + ")")
                             .setColor(Color.RED)
                             .setDescription("The AMORA AI challenges <@" + state.playerXId + ">.\n\n*It is your turn (❌).*");
             }
@@ -1325,20 +1384,17 @@ public class ChatListener extends ListenerAdapter {
     }
     private boolean maybeSpawnGame(net.dv8tion.jda.api.events.message.MessageReceivedEvent event, long now) {
         synchronized (ChatListener.class) {
-            // Check if the cooldown has passed
             if (now - lastGameSpawnAt < GAME_COOLDOWN_MS) {
                 return false;
             }
 
-            // Roll the dice!
             if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() >= GAME_SPAWN_CHANCE) {
                 return false;
             }
 
-            lastGameSpawnAt = now; // Reset the timer
+            lastGameSpawnAt = now; 
         }
 
-        // If the dice roll succeeds, spawn the game!
         spawnRandomLoungeGame(event.getChannel());
         return true;
     }
@@ -1397,10 +1453,11 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private void spawnTicTacToe(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
-        TicTacToeState state = new TicTacToeState();
+        int size = java.util.concurrent.ThreadLocalRandom.current().nextInt(3) + 3;
+        TicTacToeState state = new TicTacToeState(size);
         
         EmbedBuilder embed = new EmbedBuilder()
-            .setTitle("🎮 AMORA Tic-Tac-Toe")
+            .setTitle("🎮 AMORA Tic-Tac-Toe (" + size + "x" + size + ")")
             .setColor(new Color(88, 101, 242))
             .setDescription("A new Tic-Tac-Toe board has appeared!\nChoose your game mode:");
 
