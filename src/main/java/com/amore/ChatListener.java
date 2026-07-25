@@ -92,11 +92,20 @@ public class ChatListener extends ListenerAdapter {
         boolean isPvP = false;
         String playerXId = null; 
         String playerOId = null; 
+        long expiresAt;
+        private static final long TTT_TIMEOUT_MS = 2 * 60_000L; 
         
         TicTacToeState(int size) {
             this.size = size;
             this.board = new int[size * size];
-            this.winCondition = (size == 3) ? 3 : 4; 
+            this.winCondition = (size == 3) ? 3 : 4;
+            this.expiresAt = System.currentTimeMillis() + TTT_TIMEOUT_MS;
+        }
+        void refreshTimer() {
+            this.expiresAt = System.currentTimeMillis() + TTT_TIMEOUT_MS;
+        }
+        long getUnixExpiry() {
+            return expiresAt / 1000L;
         }
 
         int checkWinner() {
@@ -530,6 +539,7 @@ public class ChatListener extends ListenerAdapter {
     private void lazyCleanup() {
         long now = System.currentTimeMillis();
         activeChecks.entrySet().removeIf(entry -> (now - entry.getValue().createdAt) > TimeUnit.HOURS.toMillis(24));
+        activeTicTacToe.entrySet().removeIf(entry -> now > entry.getValue().expiresAt);
     }
 
 
