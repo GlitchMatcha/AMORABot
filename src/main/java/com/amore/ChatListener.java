@@ -1020,6 +1020,11 @@ public class ChatListener extends ListenerAdapter {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
             return;
         }
+        if (event.getMessage().getContentRaw().equalsIgnoreCase("!spawngame")) {
+            spawnRandomLoungeGame(event.getChannel());
+            event.getMessage().delete().queue(); 
+            return;
+        }
         lazyCleanup();
 
         handleInvisibleShopTracker(event.getMessage(), event.getChannel(), event.getAuthor());
@@ -1172,7 +1177,7 @@ public class ChatListener extends ListenerAdapter {
             }
             
             if (state.fullness == 5 && state.happiness == 5) {
-                activePets.remove(msgId); // Pet leaves
+                activePets.remove(msgId);
                 
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
@@ -1361,7 +1366,7 @@ public class ChatListener extends ListenerAdapter {
                 Button.primary("pet_play", "🧸 Play"),
                 Button.secondary("pet_pat", "✋ Pet")
             ).queue(msg -> {
-                activePets.put(msg.getId(), state); // Save to memory
+                activePets.put(msg.getId(), state); 
             });
     }
 
