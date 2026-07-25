@@ -1277,15 +1277,28 @@ public class ChatListener extends ListenerAdapter {
                                 "**Happiness:** " + state.renderBar(state.happiness));
                                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
-            } else if (buttonId.startsWith("ttt_")) {
+        }
+            else if (buttonId.startsWith("ttt_")) {
             String msgId = event.getMessageId();
             TicTacToeState state = activeTicTacToe.get(msgId);
             
-            if (state == null) {
-                event.reply("This game has already ended!").setEphemeral(true).queue();
+            // Check if game is missing or expired
+            if (state == null || System.currentTimeMillis() > state.expiresAt) {
+                if (state != null) activeTicTacToe.remove(msgId);
+                
+                EmbedBuilder abortEmbed = new EmbedBuilder()
+                    .setTitle("⏱️ Game Aborted!")
+                    .setColor(Color.DARK_GRAY)
+                    .setDescription("This game was cancelled due to inactivity!");
+                
+                event.editMessageEmbeds(abortEmbed.build()).setComponents().queue();
                 return;
             }
 
+            // Refresh timer on active interaction
+            state.refreshTimer();
+
+            // --- LOBBY MODE SELECTION ---
             if (buttonId.startsWith("ttt_mode_")) {
                 if (!state.isLobby) {
                     event.reply("The game has already started!").setEphemeral(true).queue();
@@ -1302,7 +1315,8 @@ public class ChatListener extends ListenerAdapter {
                         .setColor(Color.BLUE)
                         .setDescription(event.getUser().getAsMention() + " (❌) is waiting for an opponent!\n" +
                                         "Anyone else can click the board to play as ⭕.\n\n" +
-                                        "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                        "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                                        "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                                         "*It is X's turn.*");
                     event.editMessageEmbeds(pvpEmbed.build()).setComponents(state.renderButtons()).queue();
                 } else {
@@ -1311,7 +1325,8 @@ public class ChatListener extends ListenerAdapter {
                         .setTitle("🤖 Unbeatable AI Boss (" + state.size + "x" + state.size + ")")
                         .setColor(Color.RED)
                         .setDescription("The AMORA AI challenges " + event.getUser().getAsMention() + ".\n\n" +
-                                        "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                        "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                                        "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                                         "*It is your turn (❌).*");
                     event.editMessageEmbeds(aiEmbed.build()).setComponents(state.renderButtons()).queue();
                 }
@@ -1389,13 +1404,15 @@ public class ChatListener extends ListenerAdapter {
                 ongoingEmbed.setTitle("👥 PvP Tic-Tac-Toe (" + state.size + "x" + state.size + ")")
                             .setColor(Color.BLUE)
                             .setDescription("<@" + state.playerXId + "> vs " + (state.playerOId == null ? "Waiting..." : "<@" + state.playerOId + ">") + "\n\n" +
-                                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                            "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                                            "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                                             "*Waiting for " + nextPlayer + " to move.*");
             } else {
                 ongoingEmbed.setTitle("🤖 Unbeatable AI Boss (" + state.size + "x" + state.size + ")")
                             .setColor(Color.RED)
                             .setDescription("The AMORA AI challenges <@" + state.playerXId + ">.\n\n" +
-                                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                            "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                                            "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                                             "*It is your turn (❌).*");
             }
             event.editMessageEmbeds(ongoingEmbed.build()).setComponents(state.renderButtons()).queue();
@@ -1479,7 +1496,8 @@ public class ChatListener extends ListenerAdapter {
             .setTitle("🎮 AMORA Tic-Tac-Toe (" + size + "x" + size + ")")
             .setColor(new Color(88, 101, 242))
             .setDescription("A new " + size + "x" + size + " board has appeared!\n" +
-                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                            "<:4_greenboba:1527260255417794571>  **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                            "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                             "Choose your game mode:");
 
         channel.sendMessageEmbeds(embed.build())
