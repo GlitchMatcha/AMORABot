@@ -1288,16 +1288,21 @@ public class ChatListener extends ListenerAdapter {
                 if (buttonId.equals("ttt_mode_pvp")) {
                     state.isPvP = true;
                     EmbedBuilder pvpEmbed = new EmbedBuilder()
-                        .setTitle("👥 PvP Tic-Tac-Toe")
+                        .setTitle("👥 PvP Tic-Tac-Toe (" + state.size + "x" + state.size + ")")
                         .setColor(Color.BLUE)
-                        .setDescription(event.getUser().getAsMention() + " (❌) is waiting for an opponent!\nAnyone else can click the board to play as ⭕.\n\n*It is X's turn.*");
+                        .setDescription(event.getUser().getAsMention() + " (❌) is waiting for an opponent!\n" +
+                                        "Anyone else can click the board to play as ⭕.\n\n" +
+                                        "🎯 **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                        "*It is X's turn.*");
                     event.editMessageEmbeds(pvpEmbed.build()).setComponents(state.renderButtons()).queue();
                 } else {
                     state.isPvP = false;
                     EmbedBuilder aiEmbed = new EmbedBuilder()
-                        .setTitle("🤖 Unbeatable AI Boss")
+                        .setTitle("🤖 Unbeatable AI Boss (" + state.size + "x" + state.size + ")")
                         .setColor(Color.RED)
-                        .setDescription("The AMORA AI challenges " + event.getUser().getAsMention() + ".\nCan you actually win?\n\n*It is your turn (❌).*");
+                        .setDescription("The AMORA AI challenges " + event.getUser().getAsMention() + ".\n\n" +
+                                        "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                        "*It is your turn (❌).*");
                     event.editMessageEmbeds(aiEmbed.build()).setComponents(state.renderButtons()).queue();
                 }
                 return;
@@ -1373,11 +1378,15 @@ public class ChatListener extends ListenerAdapter {
                     (state.playerOId == null ? "Anyone (⭕)" : "<@" + state.playerOId + "> (⭕)");
                 ongoingEmbed.setTitle("👥 PvP Tic-Tac-Toe (" + state.size + "x" + state.size + ")")
                             .setColor(Color.BLUE)
-                            .setDescription("<@" + state.playerXId + "> vs " + (state.playerOId == null ? "Waiting..." : "<@" + state.playerOId + ">") + "\n\n*Waiting for " + nextPlayer + " to move.*");
+                            .setDescription("<@" + state.playerXId + "> vs " + (state.playerOId == null ? "Waiting..." : "<@" + state.playerOId + ">") + "\n\n" +
+                                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                            "*Waiting for " + nextPlayer + " to move.*");
             } else {
                 ongoingEmbed.setTitle("🤖 Unbeatable AI Boss (" + state.size + "x" + state.size + ")")
                             .setColor(Color.RED)
-                            .setDescription("The AMORA AI challenges <@" + state.playerXId + ">.\n\n*It is your turn (❌).*");
+                            .setDescription("The AMORA AI challenges <@" + state.playerXId + ">.\n\n" +
+                                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                                            "*It is your turn (❌).*");
             }
             event.editMessageEmbeds(ongoingEmbed.build()).setComponents(state.renderButtons()).queue();
         }
@@ -1459,7 +1468,9 @@ public class ChatListener extends ListenerAdapter {
         EmbedBuilder embed = new EmbedBuilder()
             .setTitle("🎮 AMORA Tic-Tac-Toe (" + size + "x" + size + ")")
             .setColor(new Color(88, 101, 242))
-            .setDescription("A new Tic-Tac-Toe board has appeared!\nChoose your game mode:");
+            .setDescription("A new " + size + "x" + size + " board has appeared!\n" +
+                            "<a:angelWYwick:1525464330018095255> **Goal:** Get **" + state.winCondition + " in a row** to win!\n\n" +
+                            "Choose your game mode:");
 
         channel.sendMessageEmbeds(embed.build())
             .addActionRow(
