@@ -45,7 +45,32 @@ public class ChatListener extends ListenerAdapter {
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
     
     private static final Deque<Long> processedShopMessages = new ArrayDeque<>();
-
+    private static class GridState {
+        int pX = 2, pY = 2; 
+        int sX, sY; 
+        
+        GridState() {
+            do {
+                sX = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
+                sY = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
+            } while (sX == pX && sY == pY);
+        }
+        
+        String render() {
+            StringBuilder sb = new StringBuilder();
+            for (int y = 0; y < 5; y++) {
+                for (int x = 0; x < 5; x++) {
+                    if (x == pX && y == pY) sb.append("🍵");
+                    else if (x == sX && y == sY) sb.append("✨");
+                    else sb.append("⬛");
+                }
+                sb.append("\n");
+            }
+            return sb.toString();
+        }
+    }
+    
+    private static final Map<String, GridState> activeGrids = new ConcurrentHashMap<>();
     private static class ActiveCheckTracker {
         String emojiCode;
         int goal;
@@ -980,7 +1005,121 @@ public class ChatListener extends ListenerAdapter {
 
         maybePostQuestion(event, now);
     }
+    @Override
+    public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
+        String buttonId = event.getComponentId();
+        if (buttonId.startsWith("grid_")) {
+            String msgId = event.getMessageId();
+            GridState state = activeGrids.get(msgId);
+            
+            if (state == null) {
+                event.reply("This grid has expired or is already completed!").setEphemeral(true).queue();
+                return;
+            }
+            
+            if (buttonId.equals("grid_up") && state.pY > 0) state.pY--;
+            else if (buttonId.equals("grid_down") && state.pY < 4) state.pY++;
+            else if (buttonId.equals("grid_left") && state.pX > 0) state.pX--;
+            else if (buttonId.equals("grid_right") && state.pX < 4) state.pX++;
+            else {
+                event.deferEdit().queue(); 
+                return;
+            }
+            
+            if (state.pX == state.sX && state.pY == state.sY) {
+                activeGrids.remove(msgId); // Remove from memory
+                
+                // Award the currency
+                DatabaseManager db = DatabaseManager.getInstance();
+                int currentSparks = db.getSparks(event.getUser().getId());
+                db.updateSparks(event.getUser().getId(), currentSparks + 1);
+                
+                EmbedBuilder winEmbed = new EmbedBuilder()
+                    .setTitle("🎉 Spark Captured!")
+                    .setColor(new Color(255, 182, 193))
+                    .setDescription("🏆 " + event.getUser().getAsMention() + " navigated the grid and caught the Spark!\n\n*( `+1 Spark` )*");
+                
+                event.editMessageEmbeds(winEmbed.build()).setComponents().queue();
+                return;
+            }
+            
+            EmbedBuilder updatedEmbed = new EmbedBuilder()
+                .setTitle("🕹️ Spark Grid")
+                .setColor(new Color(138, 43, 226))
+                .setDescription("Use the arrows to move your 🍵 to the ✨!\n\n" + state.render());
+                
+            event.editMessageEmbeds(updatedEmbed.build()).queue();
+        }
+    }
+    private void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        int gameChoice = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
 
+        switch (gameChoice) {
+            case 0:
+                spawnSparkGrid(channel);
+                break;
+            case 1:
+                spawnLoungePet(channel);
+                break;
+            case 2:
+                spawnTicTacToe(channel);
+                break;
+        }
+    }
+    private void spawnSparkGrid(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        GridState state = new GridState();
+        
+        EmbedBuilder embed = new EmbedBuilder()
+            .setTitle("🕹️ Spark Grid")
+            .setColor(new Color(138, 43, 226))
+            .setDescription("Use the arrows to move your 🍵 to the ✨!\n\n" + state.render());
+
+        channel.sendMessageEmbeds(embed.build())
+            .addActionRow(
+                Button.secondary("grid_up", "⬆️"),
+                Button.secondary("grid_down", "⬇️"),
+                Button.secondary("grid_left", "⬅️"),
+                Button.secondary("grid_right", "➡️")
+            ).queue(msg -> {
+                activeGrids.put(msg.getId(), state);
+            });
+    }
+
+    private void spawnLoungePet(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        EmbedBuilder embed = new EmbedBuilder()
+            .setTitle("🐾 AMORA Lounge Mascot")
+            .setColor(new Color(255, 182, 193))
+            .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
+                            "**Hunger:** 🟢🟢🟢⚪⚪ (60%)\n" +
+                            "**Happiness:** 🟢🟢⚪⚪⚪ (40%)")
+            .setImage("https://i.imgur.com/placeholder_pet.png"); // You can swap this for a cute GIF
+
+        // Tamagotchi Controls
+        channel.sendMessageEmbeds(embed.build())
+            .addActionRow(
+                Button.success("pet_feed", "🍓 Feed"),
+                Button.primary("pet_play", "🧸 Play"),
+                Button.secondary("pet_pat", "✋ Pet")
+            ).queue();
+    }
+
+    private void spawnTicTacToe(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        EmbedBuilder embed = new EmbedBuilder()
+            .setTitle("🤖 Unbeatable AI Boss")
+            .setColor(Color.RED)
+            .setDescription("The AMORA AI challenges the lounge to Tic-Tac-Toe.\nCan anyone actually win?\n\n*It is your turn (❌).*");
+
+        channel.sendMessageEmbeds(embed.build())
+            .addActionRow(
+                Button.secondary("ttt_0_0", "➖"), Button.secondary("ttt_0_1", "➖"), Button.secondary("ttt_0_2", "➖")
+            )
+            .addActionRow(
+                Button.secondary("ttt_1_0", "➖"), Button.secondary("ttt_1_1", "➖"), Button.secondary("ttt_1_2", "➖")
+            )
+            .addActionRow(
+                Button.secondary("ttt_2_0", "➖"), Button.secondary("ttt_2_1", "➖"), Button.secondary("ttt_2_2", "➖")
+            ).queue();
+    }
     private boolean handleSparkClaim(MessageReceivedEvent event) {
         String channelId = event.getChannel().getId();
         ActiveSparkDrop drop = activeSparkDrops.get(channelId);
