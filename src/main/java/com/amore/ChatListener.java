@@ -69,8 +69,113 @@ public class ChatListener extends ListenerAdapter {
             return sb.toString();
         }
     }
+    private static class PetState {
+        int fullness = 2;  
+        int happiness = 2; 
+        
+        String renderBar(int value) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 5; i++) {
+                sb.append(i < value ? "🟢" : "⚪");
+            }
+            return sb.toString();
+        }
+    }
     
+    private static final Map<String, PetState> activePets = new ConcurrentHashMap<>();
     private static final Map<String, GridState> activeGrids = new ConcurrentHashMap<>();
+    private static class TicTacToeState {
+        int[] board = new int[9]; 
+        boolean isLobby = true;
+        boolean isPvP = false;
+        String playerXId = null; 
+        String playerOId = null; 
+        
+        int checkWinner() {
+            int[][] wins = {{0,1,2}, {3,4,5}, {6,7,8}, {0,3,6}, {1,4,7}, {2,5,8}, {0,4,8}, {2,4,6}};
+            for (int[] w : wins) {
+                if (board[w[0]] != 0 && board[w[0]] == board[w[1]] && board[w[1]] == board[w[2]]) return board[w[0]];
+            }
+            return 0;
+        }
+
+        boolean isFull() {
+            for (int cell : board) if (cell == 0) return false;
+            return true;
+        }
+
+        int currentTurn() {
+            int empty = 0;
+            for(int cell : board) if(cell == 0) empty++;
+            return (empty % 2 != 0) ? 1 : 2; 
+        }
+
+        int minimax(int depth, boolean isMaximizing) {
+            int winner = checkWinner();
+            if (winner == 2) return 10 - depth; 
+            if (winner == 1) return depth - 10; 
+            if (isFull()) return 0; 
+
+            if (isMaximizing) {
+                int bestScore = Integer.MIN_VALUE;
+                for (int i = 0; i < 9; i++) {
+                    if (board[i] == 0) {
+                        board[i] = 2; 
+                        int score = minimax(depth + 1, false);
+                        board[i] = 0; 
+                        bestScore = Math.max(score, bestScore);
+                    }
+                }
+                return bestScore;
+            } else {
+                int bestScore = Integer.MAX_VALUE;
+                for (int i = 0; i < 9; i++) {
+                    if (board[i] == 0) {
+                        board[i] = 1; 
+                        int score = minimax(depth + 1, true);
+                        board[i] = 0; 
+                        bestScore = Math.min(score, bestScore); 
+                    }
+                }
+                return bestScore;
+            }
+        }
+
+        void makeAIMove() {
+            int bestScore = Integer.MIN_VALUE;
+            int bestMove = -1;
+            for (int i = 0; i < 9; i++) {
+                if (board[i] == 0) {
+                    board[i] = 2;
+                    int score = minimax(0, false);
+                    board[i] = 0;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = i;
+                    }
+                }
+            }
+            if (bestMove != -1) board[bestMove] = 2;
+        }
+        
+        List<net.dv8tion.jda.api.interactions.components.ActionRow> renderButtons() {
+            List<net.dv8tion.jda.api.interactions.components.buttons.Button> btns = new ArrayList<>();
+            for (int i = 0; i < 9; i++) {
+                String id = "ttt_" + i;
+                if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
+                else if (board[i] == 2) btns.add(Button.primary(id, "⭕").asDisabled());
+                else btns.add(Button.secondary(id, "➖"));
+            }
+            return Arrays.asList(
+                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(0, 3)),
+                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(3, 6)),
+                net.dv8tion.jda.api.interactions.components.ActionRow.of(btns.subList(6, 9))
+            );
+        }
+    }
+    
+    private static final Map<String, TicTacToeState> activeTicTacToe = new ConcurrentHashMap<>();
+
     private static class ActiveCheckTracker {
         String emojiCode;
         int goal;
@@ -1027,9 +1132,8 @@ public class ChatListener extends ListenerAdapter {
             }
             
             if (state.pX == state.sX && state.pY == state.sY) {
-                activeGrids.remove(msgId); // Remove from memory
+                activeGrids.remove(msgId); 
                 
-                // Award the currency
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
                 db.updateSparks(event.getUser().getId(), currentSparks + 1);
@@ -1049,6 +1153,162 @@ public class ChatListener extends ListenerAdapter {
                 .setDescription("Use the arrows to move your 🍵 to the ✨!\n\n" + state.render());
                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
+        } else if (buttonId.startsWith("pet_")) {
+            String msgId = event.getMessageId();
+            PetState state = activePets.get(msgId);
+            
+            if (state == null) {
+                event.reply("This pet has already trotted away!").setEphemeral(true).queue();
+                return;
+            }
+            
+            if (buttonId.equals("pet_feed") && state.fullness < 5) state.fullness++;
+            else if (buttonId.equals("pet_play") && state.happiness < 5) state.happiness++;
+            else if (buttonId.equals("pet_pat") && state.happiness < 5) {
+                if (Math.random() > 0.5) state.happiness++;
+            } else {
+                event.deferEdit().queue(); 
+                return;
+            }
+            
+            if (state.fullness == 5 && state.happiness == 5) {
+                activePets.remove(msgId); // Pet leaves
+                
+                DatabaseManager db = DatabaseManager.getInstance();
+                int currentSparks = db.getSparks(event.getUser().getId());
+                db.updateSparks(event.getUser().getId(), currentSparks + 1);
+                
+                EmbedBuilder happyEmbed = new EmbedBuilder()
+                    .setTitle("🐾 The Pet is Happy!")
+                    .setColor(new Color(255, 182, 193))
+                    .setDescription(event.getUser().getAsMention() + " gave the final headpat!\n" +
+                                    "The mascot left behind a small gift before happily trotting away.\n\n*( `+1 Spark` )*");
+                
+                event.editMessageEmbeds(happyEmbed.build()).setComponents().queue();
+                return;
+            }
+            
+            EmbedBuilder updatedEmbed = new EmbedBuilder()
+                .setTitle("🐾 AMORA Lounge Mascot")
+                .setColor(new Color(255, 182, 193))
+                .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
+                                "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
+                                "**Happiness:** " + state.renderBar(state.happiness));
+                                
+            event.editMessageEmbeds(updatedEmbed.build()).queue();
+            } else if (buttonId.startsWith("ttt_")) {
+            String msgId = event.getMessageId();
+            TicTacToeState state = activeTicTacToe.get(msgId);
+            
+            if (state == null) {
+                event.reply("This game has already ended!").setEphemeral(true).queue();
+                return;
+            }
+
+            if (buttonId.startsWith("ttt_mode_")) {
+                if (!state.isLobby) {
+                    event.reply("The game has already started!").setEphemeral(true).queue();
+                    return;
+                }
+                
+                state.isLobby = false;
+                state.playerXId = event.getUser().getId();
+                
+                if (buttonId.equals("ttt_mode_pvp")) {
+                    state.isPvP = true;
+                    EmbedBuilder pvpEmbed = new EmbedBuilder()
+                        .setTitle("👥 PvP Tic-Tac-Toe")
+                        .setColor(Color.BLUE)
+                        .setDescription(event.getUser().getAsMention() + " (❌) is waiting for an opponent!\nAnyone else can click the board to play as ⭕.\n\n*It is X's turn.*");
+                    event.editMessageEmbeds(pvpEmbed.build()).setComponents(state.renderButtons()).queue();
+                } else {
+                    state.isPvP = false;
+                    EmbedBuilder aiEmbed = new EmbedBuilder()
+                        .setTitle("🤖 Unbeatable AI Boss")
+                        .setColor(Color.RED)
+                        .setDescription("The AMORA AI challenges " + event.getUser().getAsMention() + ".\nCan you actually win?\n\n*It is your turn (❌).*");
+                    event.editMessageEmbeds(aiEmbed.build()).setComponents(state.renderButtons()).queue();
+                }
+                return;
+            }
+
+            String clickerId = event.getUser().getId();
+            int turn = state.currentTurn(); 
+            
+            if (state.isPvP) {
+                if (turn == 1 && !clickerId.equals(state.playerXId)) {
+                    event.reply("It is not your turn! Waiting for <@" + state.playerXId + ">").setEphemeral(true).queue();
+                    return;
+                } else if (turn == 2) {
+                    if (state.playerOId == null) {
+                        if (clickerId.equals(state.playerXId)) {
+                            event.reply("You cannot play against yourself! Let someone else join.").setEphemeral(true).queue();
+                            return;
+                        }
+                        state.playerOId = clickerId; 
+                    } else if (!clickerId.equals(state.playerOId)) {
+                        event.reply("It is not your turn! Waiting for <@" + state.playerOId + ">").setEphemeral(true).queue();
+                        return;
+                    }
+                }
+            } else {
+                if (!clickerId.equals(state.playerXId)) {
+                    event.reply("This is a 1v1 against the AI started by someone else!").setEphemeral(true).queue();
+                    return;
+                }
+            }
+            
+            int cellIndex = Integer.parseInt(buttonId.split("_")[1]);
+            if (state.board[cellIndex] != 0) {
+                event.deferEdit().queue(); 
+                return;
+            }
+            state.board[cellIndex] = turn;
+            
+            int winner = state.checkWinner();
+            
+            if (!state.isPvP && winner == 0 && !state.isFull()) {
+                state.makeAIMove();
+                winner = state.checkWinner();
+            }
+
+            if (winner != 0 || state.isFull()) {
+                activeTicTacToe.remove(msgId);
+                EmbedBuilder endEmbed = new EmbedBuilder();
+                DatabaseManager db = DatabaseManager.getInstance();
+                
+                if (winner == 1) {
+                    db.updateSparks(state.playerXId, db.getSparks(state.playerXId) + (state.isPvP ? 5 : 100));
+                    endEmbed.setColor(Color.GREEN).setTitle(state.isPvP ? "Player X Wins!" : " YOU BEAT THE AI!?");
+                    endEmbed.setDescription("<@" + state.playerXId + "> won the game!\n\n*( `" + (state.isPvP ? "+5" : "+100") + " Sparks` )*");
+                } else if (winner == 2) {
+                    if (state.isPvP) {
+                        db.updateSparks(state.playerOId, db.getSparks(state.playerOId) + 5);
+                        endEmbed.setColor(Color.GREEN).setTitle(" Player O Wins!");
+                        endEmbed.setDescription("<@" + state.playerOId + "> won the game!\n\n*( `+5 Sparks` )*");
+                    } else {
+                        endEmbed.setColor(Color.RED).setTitle("💀 AI Wins!").setDescription("The AMORA AI remains undefeated.");
+                    }
+                } else {
+                    endEmbed.setColor(Color.GRAY).setTitle("🤝 Draw!").setDescription("It's a tie! Nobody wins this time.");
+                }
+                event.editMessageEmbeds(endEmbed.build()).setComponents(state.renderButtons()).queue();
+                return;
+            }
+
+            EmbedBuilder ongoingEmbed = new EmbedBuilder();
+            if (state.isPvP) {
+                String nextPlayer = state.currentTurn() == 1 ? "<@" + state.playerXId + "> (❌)" : 
+                    (state.playerOId == null ? "Anyone (⭕)" : "<@" + state.playerOId + "> (⭕)");
+                ongoingEmbed.setTitle("👥 PvP Tic-Tac-Toe")
+                            .setColor(Color.BLUE)
+                            .setDescription("<@" + state.playerXId + "> vs " + (state.playerOId == null ? "Waiting..." : "<@" + state.playerOId + ">") + "\n\n*Waiting for " + nextPlayer + " to move.*");
+            } else {
+                ongoingEmbed.setTitle("🤖 Unbeatable AI Boss")
+                            .setColor(Color.RED)
+                            .setDescription("The AMORA AI challenges <@" + state.playerXId + ">.\n\n*It is your turn (❌).*");
+            }
+            event.editMessageEmbeds(ongoingEmbed.build()).setComponents(state.renderButtons()).queue();
         }
     }
     private void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
@@ -1086,39 +1346,39 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private void spawnLoungePet(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        PetState state = new PetState();
+        
         EmbedBuilder embed = new EmbedBuilder()
             .setTitle("🐾 AMORA Lounge Mascot")
             .setColor(new Color(255, 182, 193))
             .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
-                            "**Hunger:** 🟢🟢🟢⚪⚪ (60%)\n" +
-                            "**Happiness:** 🟢🟢⚪⚪⚪ (40%)")
-            .setImage("https://i.imgur.com/placeholder_pet.png"); // You can swap this for a cute GIF
+                            "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
+                            "**Happiness:** " + state.renderBar(state.happiness));
 
-        // Tamagotchi Controls
         channel.sendMessageEmbeds(embed.build())
             .addActionRow(
                 Button.success("pet_feed", "🍓 Feed"),
                 Button.primary("pet_play", "🧸 Play"),
                 Button.secondary("pet_pat", "✋ Pet")
-            ).queue();
+            ).queue(msg -> {
+                activePets.put(msg.getId(), state); // Save to memory
+            });
     }
 
     private void spawnTicTacToe(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+        TicTacToeState state = new TicTacToeState();
+        
         EmbedBuilder embed = new EmbedBuilder()
-            .setTitle("🤖 Unbeatable AI Boss")
-            .setColor(Color.RED)
-            .setDescription("The AMORA AI challenges the lounge to Tic-Tac-Toe.\nCan anyone actually win?\n\n*It is your turn (❌).*");
+            .setTitle("🎮 AMORA Tic-Tac-Toe")
+            .setColor(new Color(88, 101, 242))
+            .setDescription("A new Tic-Tac-Toe board has appeared!\nChoose your game mode:");
 
         channel.sendMessageEmbeds(embed.build())
             .addActionRow(
-                Button.secondary("ttt_0_0", "➖"), Button.secondary("ttt_0_1", "➖"), Button.secondary("ttt_0_2", "➖")
+                Button.danger("ttt_mode_ai", "🤖 Play vs AI"),
+                Button.primary("ttt_mode_pvp", "👥 Play vs Player")
             )
-            .addActionRow(
-                Button.secondary("ttt_1_0", "➖"), Button.secondary("ttt_1_1", "➖"), Button.secondary("ttt_1_2", "➖")
-            )
-            .addActionRow(
-                Button.secondary("ttt_2_0", "➖"), Button.secondary("ttt_2_1", "➖"), Button.secondary("ttt_2_2", "➖")
-            ).queue();
+            .queue(msg -> activeTicTacToe.put(msg.getId(), state));
     }
     private boolean handleSparkClaim(MessageReceivedEvent event) {
         String channelId = event.getChannel().getId();
