@@ -198,6 +198,9 @@ public class ChatListener extends ListenerAdapter {
     private static final long SPARK_COOLDOWN_MS = 30 * 60_000L;
     private static final long QUESTION_LIFETIME_MS = 2 * 60_000L;
     private static final long SPARK_LIFETIME_MS = 90_000L;
+    private static final long GAME_COOLDOWN_MS = 15 * 60_000L; 
+    private static final double GAME_SPAWN_CHANCE = 0.015;
+    private static volatile long lastGameSpawnAt = 0L;
 
     private static final double QUESTION_CHANCE = 0.016;
     private static final double SPARK_DROP_CHANCE = 0.0015;
@@ -1113,7 +1116,11 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
 
-        maybePostQuestion(event, now);
+        if (maybePostQuestion(event, now)) {
+            return;
+        }
+
+        maybeSpawnGame(event, now);
     }
     @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
@@ -1315,6 +1322,25 @@ public class ChatListener extends ListenerAdapter {
             }
             event.editMessageEmbeds(ongoingEmbed.build()).setComponents(state.renderButtons()).queue();
         }
+    }
+    private boolean maybeSpawnGame(net.dv8tion.jda.api.events.message.MessageReceivedEvent event, long now) {
+        synchronized (ChatListener.class) {
+            // Check if the cooldown has passed
+            if (now - lastGameSpawnAt < GAME_COOLDOWN_MS) {
+                return false;
+            }
+
+            // Roll the dice!
+            if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() >= GAME_SPAWN_CHANCE) {
+                return false;
+            }
+
+            lastGameSpawnAt = now; // Reset the timer
+        }
+
+        // If the dice roll succeeds, spawn the game!
+        spawnRandomLoungeGame(event.getChannel());
+        return true;
     }
     private void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
         int gameChoice = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
