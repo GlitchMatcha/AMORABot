@@ -153,9 +153,9 @@ public class ChatListener extends ListenerAdapter {
         }
 
         int currentTurn() {
-            int empty = 0;
-            for(int cell : board) if(cell == 0) empty++;
-            return (empty % 2 != 0) ? 1 : 2; 
+            int played = 0;
+            for (int cell : board) if (cell != 0) played++;
+            return (played % 2 == 0) ? 1 : 2; 
         }
 
         int minimax(int depth, boolean isMaximizing, int alpha, int beta) {
