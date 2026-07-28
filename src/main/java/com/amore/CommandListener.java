@@ -3035,68 +3035,7 @@ public class CommandListener extends ListenerAdapter {
                     );
             return;
         }
-        if (componentId.equals("bleave_button")) {
-            if (!event.getChannel().getType().isThread()) {
-                event.reply("  This button can only be used inside a quest thread.").setEphemeral(true).queue();
-                return;
-            }
-
-            ThreadChannel thread = event.getChannel().asThreadChannel();
-
-            event.deferReply(true).queue(hook ->
-                    thread.retrieveStartMessage().queue(startMsg -> {
-                        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-
-                        String[] partyField = getPartyField(oldEmbed);
-                        int fieldIndex = getPartyFieldIndex(oldEmbed);
-
-                        if (partyField == null || fieldIndex == -1) {
-                            hook.sendMessage("  Party field missing.").setEphemeral(true).queue();
-                            return;
-                        }
-
-                        String partyName = partyField[0];
-                        String partyValue = partyField[1];
-                        int current = parsePartyCurrent(partyName);
-                        String maxStr = parsePartyMax(partyName);
-                        String userMention = event.getUser().getAsMention();
-
-                        if (!partyValue.contains(userMention)) {
-                            hook.sendMessage("  You are not in the party!").setEphemeral(true).queue();
-                            return;
-                        }
-
-                        partyValue = partyValue.replace(userMention + "\n", "")
-                                .replace("\n" + userMention, "")
-                                .replace(userMention, "");
-
-                        if (partyValue.trim().isEmpty()) {
-                            partyValue = "None";
-                        }
-
-                        current--;
-
-                        newEmbed.getFields().remove(fieldIndex);
-                        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
-
-                        if (current == 0) {
-                            newEmbed.setColor(new Color(255, 69, 0));
-                        }
-
-                        startMsg.editMessageEmbeds(newEmbed.build())
-                                .setActionRow(
-                                        Button.success("bjoin_button", "✋ Join Quest"),
-                                        Button.danger("bleave_button", "🛑 Leave Quest")
-                                )
-                                .queue(
-                                        success -> hook.sendMessage(" You have left the party.").setEphemeral(true).queue(),
-                                        error -> hook.sendMessage("  Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
-                                );
-                    }, error -> hook.sendMessage("  Failed to fetch the quest starter message.").setEphemeral(true).queue())
-            );
-            return;
-        }
+        
         if (componentId.equals("alert_party")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("⚠️ Only Staff/HR+ can trigger event notifications!").setEphemeral(true).queue();
