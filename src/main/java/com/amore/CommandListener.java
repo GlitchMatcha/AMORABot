@@ -768,12 +768,22 @@ public class CommandListener extends ListenerAdapter {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
                 return;
             }
+            
+            // --- ANTI-CRASH: Catches old cached Discord commands ---
+            if (event.getOption("forum") == null || event.getOption("ping_channel") == null) {
+                event.reply("⚠️ **Command Sync Error!** Your Discord app is remembering the old version of this command.\n\nPlease press **Ctrl + R** (or completely restart your mobile app) to refresh Discord so the new `forum` and `ping_channel` options appear!").setEphemeral(true).queue();
+                return;
+            }
+
             if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
                 event.reply("  The 'forum' option MUST be a Forum Channel!").setEphemeral(true).queue();
                 return;
             }
-            if (event.getOption("ping_channel").getAsChannel().getType() != ChannelType.TEXT) {
-                event.reply("  The 'ping_channel' option MUST be a Text Channel!").setEphemeral(true).queue();
+            
+            // --- Accepts both standard Text Channels and Announcement (News) Channels ---
+            ChannelType pingType = event.getOption("ping_channel").getAsChannel().getType();
+            if (pingType != ChannelType.TEXT && pingType != ChannelType.NEWS) {
+                event.reply("  The 'ping_channel' option MUST be a Text or Announcement Channel!").setEphemeral(true).queue();
                 return;
             }
 
