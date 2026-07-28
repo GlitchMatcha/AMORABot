@@ -60,7 +60,7 @@ public class App {
             JDA jda = JDABuilder.createDefault(token)
                     .enableIntents(net.dv8tion.jda.api.requests.GatewayIntent.MESSAGE_CONTENT)
                     .setActivity(Activity.playing("AMORA ✦: Matcha Says to Type /pull"))
-                    .addEventListeners(new CommandListener(), new ChatListener())
+                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener())
                     .build();
 
             jda.awaitReady();
@@ -69,8 +69,13 @@ public class App {
             LoungeManager.start(jda);
             RoleManager.start(jda);
             
+            
+            
             jda.updateCommands()
                 .addCommands(
+                    Commands.slash("eventpanel", "Admin: Spawn the Smart UI Event Creator panel")
+                        .addOption(OptionType.CHANNEL, "channel", "The channel where announcements will be posted", true),
+                        
                     Commands.slash("pull", "Spend 50 Sparks to pull a random Gacha reward!"),
                     Commands.slash("balance", "Check your current AMORA Sparks balance."),
                     Commands.slash("inventory", "View your collected Gacha photocards and assets"),
