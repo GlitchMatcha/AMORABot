@@ -62,6 +62,7 @@ public class CommandListener extends ListenerAdapter {
     private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
+    private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
 
     public static final String MIKU_SAD = "<:1MikuSad:1511388491429449850>";
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
@@ -762,7 +763,54 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
+        if (event.getName().equals("eventpanel")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("  Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+                event.reply("  The 'forum' option MUST be a Forum Channel!").setEphemeral(true).queue();
+                return;
+            }
+            if (event.getOption("ping_channel").getAsChannel().getType() != ChannelType.TEXT) {
+                event.reply("  The 'ping_channel' option MUST be a Text Channel!").setEphemeral(true).queue();
+                return;
+            }
 
+            ForumChannel targetForum = event.getOption("forum").getAsChannel().asForumChannel();
+            TextChannel pingChannel = event.getOption("ping_channel").getAsChannel().asTextChannel();
+            
+            EmbedBuilder panelEmbed = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setTitle("✦ AMORA HYBRID EVENT CREATOR ✦")
+                .setDescription("Select an event type below.\n\nThe bot will create a dedicated interactive Quest in " + targetForum.getAsMention() + " and automatically send an `@everyone` notification to " + pingChannel.getAsMention() + "!")
+                .setFooter("AMORA Staff Operations", null);
+
+            StringSelectMenu menu = StringSelectMenu.create("menu_fused_" + targetForum.getId() + "_" + pingChannel.getId())
+                .setPlaceholder("📢 Select Event & Participant Type...")
+                .addOption("🌍 Training (Everyone)", "training_everyone", "Public training session")
+                .addOption("🌍 Movie Night (Everyone)", "movie_everyone", "Public movie night")
+                .addOption("🌍 Game Night (Everyone)", "game_everyone", "Public game night")
+                .addOption("🌍 Photoshoot (Everyone)", "photo_everyone", "Public photoshoot")
+                .addOption("🌍 Mini Comp (Everyone)", "mini_comp_everyone", "Public mini competition")
+                .addOption("🌍 Fashion Show (Everyone)", "fashion_everyone", "Public fashion show")
+                .addOption("🌍 Training Comp (Everyone)", "training_comp_everyone", "Public training competition")
+                .addOption("👑 Training (Members Only)", "training_member", "Restricted to official members")
+                .addOption("👑 Movie Night (Members Only)", "movie_member", "Restricted to official members")
+                .addOption("👑 Game Night (Members Only)", "game_member", "Restricted to official members")
+                .addOption("👑 Photoshoot (Members Only)", "photo_member", "Restricted to official members")
+                .addOption("👑 Mini Comp (Members Only)", "mini_comp_member", "Restricted to official members")
+                .addOption("👑 Fashion Show (Members Only)", "fashion_member", "Restricted to official members")
+                .addOption("👑 Training Comp (Members Only)", "training_comp_member", "Restricted to official members")
+                .build();
+
+            event.getChannel().sendMessageEmbeds(panelEmbed.build())
+                .addActionRow(menu)
+                .queue();
+                
+            event.reply("Event panel deployed!").setEphemeral(true).queue();
+            return;
+        }
         if (event.getName().equals("order")) {
             if (ORDER_CHANNEL_ID != null && !event.getChannel().getId().equals(ORDER_CHANNEL_ID)) {
                 event.reply("  **Rule 07 Violation:** Please place all orders in the <#" + ORDER_CHANNEL_ID + "> channel!").setEphemeral(true).queue();
@@ -2850,68 +2898,133 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.equals("bjoin_button")) {
-            if (!event.getChannel().getType().isThread()) {
-                event.reply("  This button can only be used inside a quest thread.").setEphemeral(true).queue();
+        if (componentId.startsWith("qjoin_") || componentId.equals("bjoin_button")) {
+            if (!event.isFromGuild()) {
+                event.reply("  This button can only be used inside a server.").setEphemeral(true).queue();
+                return;
+            }
+            
+            if (componentId.equals("qjoin_member")) {
+                if (MEMBER_ROLE_ID != null && !MEMBER_ROLE_ID.isBlank()) {
+                    boolean isMember = event.getMember().getRoles().stream()
+                            .anyMatch(role -> role.getId().equals(MEMBER_ROLE_ID));
+                            
+                    if (!isMember) {
+                        event.reply("👑 **Members Only!** You must be an official AMORA Member to join this event.").setEphemeral(true).queue();
+                        return;
+                    }
+                }
+            }
+
+            net.dv8tion.jda.api.entities.Message message = event.getMessage();
+            MessageEmbed oldEmbed = message.getEmbeds().get(0);
+            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+
+            String[] partyField = getPartyField(oldEmbed);
+            int fieldIndex = getPartyFieldIndex(oldEmbed);
+
+            if (partyField == null || fieldIndex == -1) {
+                event.reply("  Party data missing from this announcement.").setEphemeral(true).queue();
                 return;
             }
 
-            ThreadChannel thread = event.getChannel().asThreadChannel();
+            String partyName = partyField[0];
+            String partyValue = partyField[1];
+            int current = parsePartyCurrent(partyName);
+            String maxStr = parsePartyMax(partyName);
+            int max = maxStr.equalsIgnoreCase("Unlimited") ? Integer.MAX_VALUE : Integer.parseInt(maxStr);
+            String userMention = event.getUser().getAsMention();
 
-            event.deferReply(true).queue(hook ->
-                    thread.retrieveStartMessage().queue(startMsg -> {
-                        MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+            if (partyValue.contains(userMention)) {
+                event.reply("  You are already in the party!").setEphemeral(true).queue();
+                return;
+            }
 
-                        String[] partyField = getPartyField(oldEmbed);
-                        int fieldIndex = getPartyFieldIndex(oldEmbed);
+            if (current >= max) {
+                event.reply("  This event party is full!").setEphemeral(true).queue();
+                return;
+            }
 
-                        if (partyField == null || fieldIndex == -1) {
-                            hook.sendMessage("  Party field missing.").setEphemeral(true).queue();
-                            return;
-                        }
+            partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
+            current++;
 
-                        String partyName = partyField[0];
-                        String partyValue = partyField[1];
-                        int current = parsePartyCurrent(partyName);
-                        String maxStr = parsePartyMax(partyName);
-                        int max = maxStr.equalsIgnoreCase("Unlimited")
-                                ? Integer.MAX_VALUE
-                                : Integer.parseInt(maxStr);
-                        String userMention = event.getUser().getAsMention();
+            newEmbed.getFields().remove(fieldIndex);
+            newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+            newEmbed.setColor(Color.YELLOW);
 
-                        if (partyValue.contains(userMention)) {
-                            hook.sendMessage("  You are already in the party!").setEphemeral(true).queue();
-                            return;
-                        }
+            Button joinBtn = current >= max
+                    ? Button.success(componentId, "✋ Join Quest").asDisabled()
+                    : Button.success(componentId, "✋ Join Quest");
 
-                        if (current >= max) {
-                            hook.sendMessage("  This party is full!").setEphemeral(true).queue();
-                            return;
-                        }
-
-                        partyValue = partyValue.equals("None") ? userMention : partyValue + "\n" + userMention;
-                        current++;
-
-                        newEmbed.getFields().remove(fieldIndex);
-                        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
-                        newEmbed.setColor(Color.YELLOW);
-
-                        Button joinButton = current >= max
-                                ? Button.success("bjoin_button", "✋ Join Quest").asDisabled()
-                                : Button.success("bjoin_button", "✋ Join Quest");
-
-                        startMsg.editMessageEmbeds(newEmbed.build())
-                                .setActionRow(joinButton, Button.danger("bleave_button", "🛑 Leave Quest"))
-                                .queue(
-                                        success -> hook.sendMessage(" You have successfully joined the party!").setEphemeral(true).queue(),
-                                        error -> hook.sendMessage("  Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
-                                );
-                    }, error -> hook.sendMessage("  Failed to fetch the quest starter message.").setEphemeral(true).queue())
-            );
+            message.editMessageEmbeds(newEmbed.build())
+                    .setActionRow(joinBtn, Button.danger("bleave_button", "🛑 Leave Quest"))
+                    .queue(
+                        success -> event.reply(" You have successfully joined the party!").setEphemeral(true).queue(),
+                        error -> event.reply("  Failed to join party: " + error.getMessage()).setEphemeral(true).queue()
+                    );
             return;
         }
 
+        if (componentId.equals("bleave_button")) {
+            if (!event.isFromGuild()) {
+                event.reply("  This button can only be used inside a server.").setEphemeral(true).queue();
+                return;
+            }
+
+            net.dv8tion.jda.api.entities.Message message = event.getMessage();
+            MessageEmbed oldEmbed = message.getEmbeds().get(0);
+            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+
+            String[] partyField = getPartyField(oldEmbed);
+            int fieldIndex = getPartyFieldIndex(oldEmbed);
+
+            if (partyField == null || fieldIndex == -1) {
+                event.reply("  Party data missing from this announcement.").setEphemeral(true).queue();
+                return;
+            }
+
+            String partyName = partyField[0];
+            String partyValue = partyField[1];
+            int current = parsePartyCurrent(partyName);
+            String maxStr = parsePartyMax(partyName);
+            String userMention = event.getUser().getAsMention();
+
+            if (!partyValue.contains(userMention)) {
+                event.reply("  You are not in the party!").setEphemeral(true).queue();
+                return;
+            }
+
+            partyValue = partyValue.replace(userMention + "\n", "")
+                    .replace("\n" + userMention, "")
+                    .replace(userMention, "");
+
+            if (partyValue.trim().isEmpty()) {
+                partyValue = "None";
+            }
+
+            current--;
+
+            newEmbed.getFields().remove(fieldIndex);
+            newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+
+            if (current == 0) {
+                newEmbed.setColor(new Color(255, 69, 0));
+            }
+            
+            String joinButtonId = message.getButtons().get(0).getId(); 
+            if (joinButtonId == null) joinButtonId = "bjoin_button";
+
+            message.editMessageEmbeds(newEmbed.build())
+                    .setActionRow(
+                            Button.success(joinButtonId, "✋ Join Quest"),
+                            Button.danger("bleave_button", "🛑 Leave Quest")
+                    )
+                    .queue(
+                            success -> event.reply(" You have left the party.").setEphemeral(true).queue(),
+                            error -> event.reply("  Failed to update the quest party: " + error.getMessage()).setEphemeral(true).queue()
+                    );
+            return;
+        }
         if (componentId.equals("bleave_button")) {
             if (!event.getChannel().getType().isThread()) {
                 event.reply("  This button can only be used inside a quest thread.").setEphemeral(true).queue();
@@ -2972,6 +3085,45 @@ public class CommandListener extends ListenerAdapter {
                                 );
                     }, error -> hook.sendMessage("  Failed to fetch the quest starter message.").setEphemeral(true).queue())
             );
+            return;
+        }
+        if (componentId.equals("alert_party")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("⚠️ Only Staff/HR+ can trigger event notifications!").setEphemeral(true).queue();
+                return;
+            }
+
+            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+            String[] partyField = getPartyField(embed);
+            
+            if (partyField == null || partyField[1].equals("None") || partyField[1].isEmpty()) {
+                event.reply("⚠️ The party is currently empty. There is no one to notify!").setEphemeral(true).queue();
+                return;
+            }
+
+            List<String> userIds = parseMentionIds(partyField[1]);
+            String eventName = embed.getTitle() != null ? embed.getTitle() : "An AMORA Event";
+            String threadLink = event.getChannel().asThreadChannel().getAsMention();
+
+            event.reply("🔔 Attempting to send DM reminders to " + userIds.size() + " party members!").setEphemeral(true).queue();
+
+            for (String uid : userIds) {
+                event.getJDA().retrieveUserById(uid).queue(user -> {
+                    user.openPrivateChannel().flatMap(channel -> {
+                        EmbedBuilder dmEmbed = new EmbedBuilder()
+                            .setColor(new Color(255, 182, 193))
+                            .setTitle("🔔 EVENT REMINDER: " + eventName)
+                            .setDescription("Hi " + user.getName() + "!\n\nYou RSVP'd to an event that is **starting very soon**! Please head over to the server and check the event thread here: " + threadLink)
+                            .setFooter("AMORA Automated Notifications", null);
+                        return channel.sendMessageEmbeds(dmEmbed.build());
+                    }).queue(
+                        success -> {}, 
+                        error -> event.getChannel().sendMessage("⚠️ Could not DM " + user.getAsMention() + " (Their DMs are closed).").queue()
+                    );
+                }, error -> {});
+            }
+            
+            event.getChannel().sendMessage("📢 " + event.getUser().getAsMention() + " has sent out DM reminders to the party!").queue();
             return;
         }
 
