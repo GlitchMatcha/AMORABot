@@ -17,7 +17,7 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
-        if (!event.getComponentId().equals("menu_fused")) return;
+        if (!event.getComponentId().startsWith("menu_fused")) return;
 
         String selectedValue = event.getValues().get(0);
 
@@ -60,9 +60,10 @@ public class AnnouncementListener extends ListenerAdapter {
     public void onModalInteraction(ModalInteractionEvent event) {
         if (!event.getModalId().startsWith("modal_fused_")) return;
 
-        String[] parts = event.getModalId().split("_");
-        String type = parts[2];
-        String audience = parts[3]; 
+        String payload = event.getModalId().replace("modal_fused_", "");
+        int lastUnderscore = payload.lastIndexOf('_');
+        String type = payload.substring(0, lastUnderscore);
+        String audience = payload.substring(lastUnderscore + 1);
 
         String targetForumId;
         String targetPingChannelId;
