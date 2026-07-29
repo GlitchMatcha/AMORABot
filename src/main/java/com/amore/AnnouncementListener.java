@@ -68,10 +68,9 @@ public class AnnouncementListener extends ListenerAdapter {
         String urgency = parts[2];
 
         String targetForumId;
-        String targetPingChannelId;
+        String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
 
         if (audience.equals("member")) {
-            targetPingChannelId = System.getenv("MEMBER_PING_ID");
             if (urgency.equals("urgent")) {
                 targetForumId = System.getenv("URGENT_BOUNTY_FORUM_ID");
             } else {
@@ -79,7 +78,6 @@ public class AnnouncementListener extends ListenerAdapter {
             }
         } else {
             targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
-            targetPingChannelId = System.getenv("LOUNGE_CHANNEL_ID");
         }
 
         String host = event.getValue("input_host").getAsString();
@@ -127,7 +125,7 @@ public class AnnouncementListener extends ListenerAdapter {
         );
 
         if (targetForumId == null || targetPingChannelId == null) {
-            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `URGENT_BOUNTY_FORUM_ID`, `LOUNGE_CHANNEL_ID`, and `MEMBER_PING_ID` are set.").setEphemeral(true).queue();
+            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `URGENT_BOUNTY_FORUM_ID`, and `SCHEDULE_CHANNEL_ID` are set.").setEphemeral(true).queue();
             return;
         }
 
@@ -143,6 +141,7 @@ public class AnnouncementListener extends ListenerAdapter {
                         
                         String memberRoleId = System.getenv("MEMBER_ROLE_ID");
                         String pingMention;
+                        
                         if (audience.equals("member")) {
                             pingMention = (memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**";
                         } else {
@@ -156,7 +155,7 @@ public class AnnouncementListener extends ListenerAdapter {
                         pingChannel.sendMessage(notificationMessage).queue();
                     }
                     
-                    event.getHook().sendMessage("✅ Hybrid Event automatically routed to the correct Forum and Ping Channel!").queue();
+                    event.getHook().sendMessage("✅ Hybrid Event successfully routed to the Forum and Schedules Channel!").queue();
                 },
                 error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
             );
