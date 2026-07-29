@@ -17,6 +17,7 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
@@ -214,12 +215,123 @@ public class AnnouncementListener extends ListenerAdapter {
                         pingChannel.sendMessage(notificationMessage).queue();
                     }
                     
-                    event.getHook().sendMessage("✅ Hybrid Event routed! (Automated DMs will fire 30 mins before and exactly at start time).").queue();
+                    event.getHook().sendMessage("✅ Hybrid Event successfully routed to the Forum and Schedules Channel!").queue();
                 },
                 error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
             );
         } else {
             event.reply("⚠️ Routing Error: Could not find the target forum channel. Please check the ID.").setEphemeral(true).queue();
+        }
+    }
+
+    @Override
+    public void onButtonInteraction(ButtonInteractionEvent event) {
+        String buttonId = event.getComponentId();
+
+        if (buttonId.startsWith("qjoin_") || buttonId.equals("bleave_button") || buttonId.equals("alert_party")) {
+            
+            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+            String partyField = "";
+            String slotDisplay = "Unlimited";
+            int maxSlots = 0;
+            int currentSlots = 0;
+            int fieldIndex = -1;
+
+            for (int i = 0; i < embed.getFields().size(); i++) {
+                MessageEmbed.Field field = embed.getFields().get(i);
+                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                    partyField = field.getValue();
+                    fieldIndex = i;
+                    
+                    Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
+                    if (m.find()) {
+                        currentSlots = Integer.parseInt(m.group(1));
+                        slotDisplay = m.group(2);
+                        if (!slotDisplay.equals("Unlimited")) {
+                            maxSlots = Integer.parseInt(slotDisplay);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (fieldIndex == -1) {
+                event.reply("⚠️ Error: Could not read party data.").setEphemeral(true).queue();
+                return;
+            }
+
+            String userId = event.getUser().getId();
+            String userMention = "<@" + userId + ">";
+
+            if (buttonId.equals("alert_party")) {
+                if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                    event.reply("⚠️ **Access Denied:** Only Staff can manually alert the party!").setEphemeral(true).queue();
+                    return;
+                }
+                if (partyField.equals("None") || partyField.isEmpty()) {
+                    event.reply("❌ The party is currently empty!").setEphemeral(true).queue();
+                    return;
+                }
+                
+                StringBuilder pings = new StringBuilder("🔔 **MANUAL STAFF ALERT:**\n");
+                Matcher m = Pattern.compile("<@!?(\\d+)>").matcher(partyField);
+                while (m.find()) pings.append("<@").append(m.group(1)).append("> ");
+                
+                event.getMessage().getChannel().sendMessage(pings.toString()).queue();
+                event.reply("✅ The party has been successfully alerted!").setEphemeral(true).queue();
+                return;
+            }
+
+            if (buttonId.startsWith("qjoin_")) {
+                if (buttonId.equals("qjoin_member")) {
+                    String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                    if (memberRoleId != null && !memberRoleId.isBlank()) {
+                        if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
+                            event.reply("⚠️ **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
+                            return;
+                        }
+                    }
+                }
+
+                if (partyField.contains(userId)) {
+                    event.reply("❌ You are already in the party!").setEphemeral(true).queue();
+                    return;
+                }
+
+                if (maxSlots > 0 && currentSlots >= maxSlots) {
+                    event.reply("⚠️ **Party Full:** There are no slots remaining for this event.").setEphemeral(true).queue();
+                    return;
+                }
+
+                if (partyField.equals("None")) {
+                    partyField = userMention;
+                } else {
+                    partyField += "\n" + userMention;
+                }
+                currentSlots++;
+                
+            } else if (buttonId.equals("bleave_button")) {
+                if (!partyField.contains(userId)) {
+                    event.reply("❌ You aren't in the party!").setEphemeral(true).queue();
+                    return;
+                }
+
+                String[] users = partyField.split("\n");
+                StringBuilder newParty = new StringBuilder();
+                for (String u : users) {
+                    if (!u.contains(userId) && !u.isBlank()) {
+                        if (newParty.length() > 0) newParty.append("\n");
+                        newParty.append(u);
+                    }
+                }
+                partyField = newParty.toString();
+                if (partyField.isEmpty()) partyField = "None";
+                currentSlots--;
+            }
+
+            EmbedBuilder newEmbed = new EmbedBuilder(embed);
+            newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field("👥 Party [" + currentSlots + "/" + slotDisplay + "]", partyField, false));
+            event.editMessageEmbeds(newEmbed.build()).queue();
         }
     }
 
