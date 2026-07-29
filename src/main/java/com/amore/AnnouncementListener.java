@@ -17,11 +17,7 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
-        if (!event.getComponentId().startsWith("menu_fused_")) return;
-
-        String[] menuParts = event.getComponentId().split("_");
-        String targetForumId = menuParts[2];
-        String targetPingChannelId = menuParts[3];
+        if (!event.getComponentId().equals("menu_fused")) return;
 
         String selectedValue = event.getValues().get(0);
 
@@ -42,7 +38,7 @@ public class AnnouncementListener extends ListenerAdapter {
         TextInput rewardInput = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
                 .setPlaceholder("e.g. 50").setRequired(true).build();
 
-        Modal.Builder modal = Modal.create("modal_fused_" + targetForumId + "_" + targetPingChannelId + "_" + type + "_" + audience, "Create Hybrid Event");
+        Modal.Builder modal = Modal.create("modal_fused_" + type + "_" + audience, "Create Hybrid Event");
         modal.addActionRow(hostBuilder.build());
         modal.addActionRow(timeInput);
 
@@ -65,10 +61,21 @@ public class AnnouncementListener extends ListenerAdapter {
         if (!event.getModalId().startsWith("modal_fused_")) return;
 
         String[] parts = event.getModalId().split("_");
-        String targetForumId = parts[2];
-        String targetPingChannelId = parts[3];
-        String type = parts[4];
-        String audience = parts[5]; 
+        String type = parts[2];
+        String audience = parts[3]; 
+
+        String targetForumId;
+        String targetPingChannelId;
+
+        if (audience.equals("member")) {
+            targetForumId = System.getenv("MEMBER_FORUM_ID");
+            targetPingChannelId = System.getenv("MEMBER_PING_ID");
+            
+            if (targetForumId == null) targetForumId = System.getenv("URGENT_BOUNTY_FORUM_ID"); // Fallback
+        } else {
+            targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
+            targetPingChannelId = System.getenv("LOUNGE_CHANNEL_ID");
+        }
 
         String host = event.getValue("input_host").getAsString();
         String time = event.getValue("input_time").getAsString();
@@ -76,10 +83,9 @@ public class AnnouncementListener extends ListenerAdapter {
         
         int tempReward = 0;
         try { tempReward = Integer.parseInt(event.getValue("input_reward").getAsString().trim()); } catch (Exception ignored) {}
-        final int reward = tempReward; 
+        final int reward = tempReward;
 
         String extra = event.getValue("input_extra") != null ? event.getValue("input_extra").getAsString() : "";
-
         String aestheticHeader = buildTemplateHeader(type, host, time, extra, slots);
 
         int maxSlots = 0;
@@ -106,6 +112,11 @@ public class AnnouncementListener extends ListenerAdapter {
                 Button.secondary("alert_party", "🔔 Alert Party (Staff)")
         );
 
+        if (targetForumId == null || targetPingChannelId == null) {
+            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `LOUNGE_CHANNEL_ID`, `MEMBER_FORUM_ID`, and `MEMBER_PING_ID` are set.").setEphemeral(true).queue();
+            return;
+        }
+
         ForumChannel targetForum = event.getJDA().getForumChannelById(targetForumId);
         
         if (targetForum != null) {
@@ -115,26 +126,28 @@ public class AnnouncementListener extends ListenerAdapter {
                 forumPost -> {
                     TextChannel pingChannel = event.getJDA().getTextChannelById(targetPingChannelId);
                     if (pingChannel != null) {
-                        String pingAudience = audience.equals("member") ? "Official Members" : "Everyone";
                         
-                        EmbedBuilder pingEmbed = new EmbedBuilder()
-                            .setColor(new Color(138, 43, 226))
-                            .setTitle("📢 NEW EVENT POSTED: " + displayTitle)
-                            .setDescription("A new AMORA Event has just been deployed to the quest board!\n\n" +
-                                            "🎭 **Event Type:** " + type.replace("_", " ").toUpperCase() + "\n" +
-                                            "👥 **Open To:** " + pingAudience + "\n" +
-                                            "💰 **Reward:** `" + reward + " Points`\n\n" +
-                                            "🔗 **[Click here to RSVP and secure your slot!](" + forumPost.getThreadChannel().getJumpUrl() + ")**");
+                        String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                        String pingMention;
+                        if (audience.equals("member")) {
+                            pingMention = (memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**";
+                        } else {
+                            pingMention = "@everyone";
+                        }
+                        
+                        String notificationMessage = aestheticHeader + 
+                            "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n\n" +
+                            "-# " + pingMention;
 
-                        pingChannel.sendMessage("@everyone").addEmbeds(pingEmbed.build()).queue();
+                        pingChannel.sendMessage(notificationMessage).queue();
                     }
                     
-                    event.getHook().sendMessage("✅ Hybrid Event created in the forum and successfully cross-posted to the ping channel!").queue();
+                    event.getHook().sendMessage("✅ Hybrid Event automatically routed to the correct Forum and Ping Channel!").queue();
                 },
                 error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
             );
         } else {
-            event.reply("⚠️ Error: Target forum channel not found.").setEphemeral(true).queue();
+            event.reply("⚠️ Routing Error: Could not find the target forum channel. Please check the ID.").setEphemeral(true).queue();
         }
     }
 
@@ -147,7 +160,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "` ~ ୨୧ · 𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + " Members`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "movie":
                 return "#  ׄ ੭୧  ׄ ৻ 𝙼𝙾𝚅𝙸𝙴 𝙽𝙸𝙶𝙷𝚃 . .ᐟ\n" +
@@ -155,7 +168,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "game":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙶𝙰𝙼𝙴 𝙽𝙸𝙶𝙷𝚃. .ᐟ\n" +
@@ -164,7 +177,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ ·  𝙶𝚊𝚖𝚎𝚜 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "photo":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙿𝙷𝙾𝚃𝙾𝚂𝙷𝙾𝙾𝚃. .ᐟ\n" +
@@ -173,7 +186,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "mini_comp":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙼𝙸𝙽𝙸 𝙲𝙾𝙼𝙿𝙴𝚃𝙸𝚃𝙸𝙾𝙽. .ᐟ\n" +
@@ -182,7 +195,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "fashion":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙵𝙰𝚂𝙷𝙸𝙾𝙽 𝚂𝙷𝙾𝚆. .ᐟ\n" +
@@ -191,7 +204,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "training_comp":
                 return "#   ׄ ੭୧  ׄ ৻ 𝚃𝚁𝙰𝙸𝙽𝙸𝙽𝙶 𝙲𝙾𝙼𝙿. .ᐟ\n" +
@@ -200,7 +213,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
                        "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` `" + extra + "`\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
-                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n";
+                       "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             default: return "Error building template.";
         }
