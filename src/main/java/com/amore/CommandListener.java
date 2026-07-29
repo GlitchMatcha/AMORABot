@@ -763,13 +763,12 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
-        if (event.getName().equals("eventpanel")) {
+        if (event.getName().equals("eventsetup")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
                 return;
             }
             
-            // --- ANTI-CRASH: Catches old cached Discord commands ---
             if (event.getOption("forum") == null || event.getOption("ping_channel") == null) {
                 event.reply("⚠️ **Command Sync Error!** Your Discord app is remembering the old version of this command.\n\nPlease press **Ctrl + R** (or completely restart your mobile app) to refresh Discord so the new `forum` and `ping_channel` options appear!").setEphemeral(true).queue();
                 return;
@@ -780,7 +779,6 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
             
-            // --- Accepts both standard Text Channels and Announcement (News) Channels ---
             ChannelType pingType = event.getOption("ping_channel").getAsChannel().getType();
             if (pingType != ChannelType.TEXT && pingType != ChannelType.NEWS) {
                 event.reply("  The 'ping_channel' option MUST be a Text or Announcement Channel!").setEphemeral(true).queue();
