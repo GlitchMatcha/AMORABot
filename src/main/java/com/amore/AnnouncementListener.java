@@ -60,9 +60,10 @@ public class AnnouncementListener extends ListenerAdapter {
     public void onModalInteraction(ModalInteractionEvent event) {
         if (!event.getModalId().startsWith("modal_fused_")) return;
 
-        String[] parts = event.getModalId().split("_");
-        String type = parts[2];
-        String audience = parts[3]; 
+        String payload = event.getModalId().replace("modal_fused_", "");
+        int lastUnderscore = payload.lastIndexOf('_');
+        String type = payload.substring(0, lastUnderscore);
+        String audience = payload.substring(lastUnderscore + 1);
 
         String targetForumId;
         String targetPingChannelId;
@@ -156,63 +157,90 @@ public class AnnouncementListener extends ListenerAdapter {
             case "training":
                 return "#  ׄ ੭୧  ׄ ৻ 𝙰𝙼𝙾𝚁𝙰 𝚃𝚁𝙰𝙸𝙽𝙸𝙽𝙶  . .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐓𝐫𝐚𝐢𝐧𝐞𝐫 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "` ~ ୨୧ · 𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + " Members`\n" +
+                       "`~ ୨୧ ·  𝐓𝐫𝐚𝐢𝐧𝐞𝐫 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "` ~ ୨୧ · 𝐒𝐞𝐫𝐯𝐞𝐫 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + " Members`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "movie":
                 return "#  ׄ ੭୧  ׄ ৻ 𝙼𝙾𝚅𝙸𝙴 𝙽𝙸𝙶𝙷𝚃 . .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n"+
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n"+
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "game":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙶𝙰𝙼𝙴 𝙽𝙸𝙶𝙷𝚃. .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ ·  𝙶𝚊𝚖𝚎𝚜 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "`~ ୨୧ ·  𝙶𝚊𝚖𝚎𝚜 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "photo":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙿𝙷𝙾𝚃𝙾𝚂𝙷𝙾𝙾𝚃. .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "mini_comp":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙼𝙸𝙽𝙸 𝙲𝙾𝙼𝙿𝙴𝚃𝙸𝚃𝙸𝙾𝙽. .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "fashion":
                 return "#   ׄ ੭୧  ׄ ৻ 𝙵𝙰𝚂𝙷𝙸𝙾𝙽 𝚂𝙷𝙾𝚆. .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             case "training_comp":
                 return "#   ׄ ੭୧  ׄ ৻ 𝚃𝚁𝙰𝙸𝙽𝙸𝙽𝙶 𝙲𝙾𝙼𝙿. .ᐟ\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃\n" +
-                       "`~ ୨୧ ·  𝐓𝐫𝐚𝐢𝐧𝐞𝐫 :` `" + host + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` `" + time + "`\n" +
-                       "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` `" + extra + "`\n" +
-                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` `" + members + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐫𝐚𝐢𝐧𝐞𝐫 :` \n" +
+                       "`" + host + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n" +
+                       "`" + time + "`\n" +
+                       "`~ ୨୧ ·  𝐓𝐡𝐞𝐦𝐞 :` \n" +
+                       "`" + extra + "`\n" +
+                       "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 :` \n" +
+                       "`" + members + "`\n" +
                        "   𓂃  ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━   𓂃";
 
             default: return "Error building template.";
