@@ -43,7 +43,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
 
-        TextInput timeInput = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm z)", TextInputStyle.SHORT)
+        TextInput timeInput = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm timezone)", TextInputStyle.SHORT)
                 .setPlaceholder("e.g. 2026-07-31 20:00 EST").setRequired(true).build();
 
         TextInput slotsInput = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
@@ -100,7 +100,7 @@ public class AnnouncementListener extends ListenerAdapter {
         String displayTime = rawTime;
         long unixEpoch = 0;
         try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm timezone");
             ZonedDateTime zdt = ZonedDateTime.parse(rawTime, formatter);
             unixEpoch = zdt.toEpochSecond();
             displayTime = "<t:" + unixEpoch + ":F>\n` ~ ୨୧ · ` <t:" + unixEpoch + ":R>";
