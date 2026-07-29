@@ -17,13 +17,14 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
-        if (!event.getComponentId().startsWith("menu_fused")) return;
+        if (!event.getComponentId().equals("menu_fused")) return;
 
         String selectedValue = event.getValues().get(0);
 
-        int lastUnderscore = selectedValue.lastIndexOf('_');
-        String type = selectedValue.substring(0, lastUnderscore);
-        String audience = selectedValue.substring(lastUnderscore + 1);
+        String[] parts = selectedValue.split(":");
+        String type = parts[0];
+        String audience = parts[1];
+        String urgency = parts[2];
 
         TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
                 .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
@@ -38,7 +39,7 @@ public class AnnouncementListener extends ListenerAdapter {
         TextInput rewardInput = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
                 .setPlaceholder("e.g. 50").setRequired(true).build();
 
-        Modal.Builder modal = Modal.create("modal_fused_" + type + "_" + audience, "Create Hybrid Event");
+        Modal.Builder modal = Modal.create("modal_fused:" + type + ":" + audience + ":" + urgency, "Create Hybrid Event");
         modal.addActionRow(hostBuilder.build());
         modal.addActionRow(timeInput);
 
@@ -58,21 +59,24 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onModalInteraction(ModalInteractionEvent event) {
-        if (!event.getModalId().startsWith("modal_fused_")) return;
+        if (!event.getModalId().startsWith("modal_fused:")) return;
 
-        String payload = event.getModalId().replace("modal_fused_", "");
-        int lastUnderscore = payload.lastIndexOf('_');
-        String type = payload.substring(0, lastUnderscore);
-        String audience = payload.substring(lastUnderscore + 1);
+        String payload = event.getModalId().replace("modal_fused:", "");
+        String[] parts = payload.split(":");
+        String type = parts[0];
+        String audience = parts[1];
+        String urgency = parts[2];
 
         String targetForumId;
         String targetPingChannelId;
 
         if (audience.equals("member")) {
-            targetForumId = System.getenv("MEMBER_FORUM_ID");
             targetPingChannelId = System.getenv("MEMBER_PING_ID");
-            
-            if (targetForumId == null) targetForumId = System.getenv("URGENT_BOUNTY_FORUM_ID"); 
+            if (urgency.equals("urgent")) {
+                targetForumId = System.getenv("URGENT_BOUNTY_FORUM_ID");
+            } else {
+                targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
+            }
         } else {
             targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
             targetPingChannelId = System.getenv("LOUNGE_CHANNEL_ID");
@@ -93,10 +97,19 @@ public class AnnouncementListener extends ListenerAdapter {
         try { maxSlots = Integer.parseInt(slots.trim()); } catch (Exception ignored) {}
         String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
 
-        String displayTitle = (audience.equals("member") ? "👑 " : "🌍 ") + type.replace("_", " ").toUpperCase();
+        String displayTitle = (audience.equals("member") ? (urgency.equals("urgent") ? "🚨 " : "👑 ") : "🌍 ") + type.replace("_", " ").toUpperCase();
+
+        Color embedColor;
+        if (urgency.equals("urgent")) {
+            embedColor = new Color(220, 20, 60); // Crimson for urgent
+        } else if (audience.equals("member")) {
+            embedColor = new Color(255, 215, 0); // Gold for standard members
+        } else {
+            embedColor = new Color(255, 69, 0);  // Orange for everyone
+        }
 
         EmbedBuilder questEmbed = new EmbedBuilder()
-                .setColor(audience.equals("member") ? new Color(255, 215, 0) : new Color(255, 69, 0))
+                .setColor(embedColor)
                 .setTitle(displayTitle)
                 .setDescription("💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n" +
                                 (audience.equals("member") ? "\n⚠️ **Role Requirement:** Official Members Only!\n" : "") +
@@ -114,7 +127,7 @@ public class AnnouncementListener extends ListenerAdapter {
         );
 
         if (targetForumId == null || targetPingChannelId == null) {
-            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `LOUNGE_CHANNEL_ID`, `MEMBER_FORUM_ID`, and `MEMBER_PING_ID` are set.").setEphemeral(true).queue();
+            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `URGENT_BOUNTY_FORUM_ID`, `LOUNGE_CHANNEL_ID`, and `MEMBER_PING_ID` are set.").setEphemeral(true).queue();
             return;
         }
 
