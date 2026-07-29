@@ -772,39 +772,39 @@ public class CommandListener extends ListenerAdapter {
             EmbedBuilder panelEmbed = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
                 .setTitle("✦ AMORA HYBRID EVENT CREATOR ✦")
-                .setDescription("Select an event type below.\n\nThe bot will automatically route your event to the correct Forum and ping the correct Chat based on your selection!")
+                .setDescription("Select an event type below.\n\nThe bot will automatically route your event to the correct Forum and drop the ping in the Schedules channel!")
                 .setFooter("AMORA Auto-Routing System", null);
 
             StringSelectMenu menu = StringSelectMenu.create("menu_fused")
                 .setPlaceholder("📢 Select Event, Audience & Urgency...")
-                .addOption("🌍 Training (Everyone)", "training:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Movie Night (Everyone)", "movie:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Game Night (Everyone)", "game:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Photoshoot (Everyone)", "photo:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Lounge")
-                .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Photoshoot (Members)", "photo:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Members Chat")
-                .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Photoshoot (Members)", "photo:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent Calling, Pings Members")
-                .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🌍 Training (Everyone)", "training:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Movie Night (Everyone)", "movie:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Game Night (Everyone)", "game:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Photoshoot (Everyone)", "photo:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Photoshoot (Members)", "photo:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Photoshoot (Members)", "photo:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent, Pings Schedules")
                 .build();
 
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(menu)
                 .queue();
                 
-            event.reply("Event panel Has been Created!").setEphemeral(true).queue();
+            event.reply("✅ Auto-Routing Hybrid Event panel deployed!").setEphemeral(true).queue();
             return;
         }
         if (event.getName().equals("order")) {
