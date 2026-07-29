@@ -73,9 +73,7 @@ public class App {
             
             jda.updateCommands()
                 .addCommands(
-                    Commands.slash("eventsetup", "Admin: Spawn the Smart UI Fused Event Panel")
-                        .addOption(OptionType.CHANNEL, "forum", "The Forum to post the actual event in", true)
-                        .addOption(OptionType.CHANNEL, "ping_channel", "The text channel to send the @everyone link to", true),
+                    Commands.slash("eventsetup", "Admin: Spawn the Smart UI Fused Event Panel"),
                     Commands.slash("pull", "Spend 50 Sparks to pull a random Gacha reward!"),
                     Commands.slash("balance", "Check your current AMORA Sparks balance."),
                     Commands.slash("inventory", "View your collected Gacha photocards and assets"),

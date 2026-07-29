@@ -768,55 +768,43 @@ public class CommandListener extends ListenerAdapter {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
                 return;
             }
-            
-            if (event.getOption("forum") == null || event.getOption("ping_channel") == null) {
-                event.reply("⚠️ **Command Sync Error!** Your Discord app is remembering the old version of this command.\n\nPlease press **Ctrl + R** (or completely restart your mobile app) to refresh Discord so the new `forum` and `ping_channel` options appear!").setEphemeral(true).queue();
-                return;
-            }
 
-            if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                event.reply("  The 'forum' option MUST be a Forum Channel!").setEphemeral(true).queue();
-                return;
-            }
-            
-            ChannelType pingType = event.getOption("ping_channel").getAsChannel().getType();
-            if (pingType != ChannelType.TEXT && pingType != ChannelType.NEWS) {
-                event.reply("  The 'ping_channel' option MUST be a Text or Announcement Channel!").setEphemeral(true).queue();
-                return;
-            }
-
-            ForumChannel targetForum = event.getOption("forum").getAsChannel().asForumChannel();
-            TextChannel pingChannel = event.getOption("ping_channel").getAsChannel().asTextChannel();
-            
             EmbedBuilder panelEmbed = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
                 .setTitle("✦ AMORA HYBRID EVENT CREATOR ✦")
-                .setDescription("Select an event type below.\n\nThe bot will create a dedicated interactive Quest in " + targetForum.getAsMention() + " and automatically send an `@everyone` notification to " + pingChannel.getAsMention() + "!")
-                .setFooter("AMORA Staff Operations", null);
+                .setDescription("Select an event type below.\n\nThe bot will automatically route your event to the correct Forum and ping the correct Chat based on your selection!")
+                .setFooter("AMORA Auto-Routing System", null);
 
-            StringSelectMenu menu = StringSelectMenu.create("menu_fused_" + targetForum.getId() + "_" + pingChannel.getId())
-                .setPlaceholder("📢 Select Event & Participant Type...")
-                .addOption("🌍 Training (Everyone)", "training_everyone", "Public training session")
-                .addOption("🌍 Movie Night (Everyone)", "movie_everyone", "Public movie night")
-                .addOption("🌍 Game Night (Everyone)", "game_everyone", "Public game night")
-                .addOption("🌍 Photoshoot (Everyone)", "photo_everyone", "Public photoshoot")
-                .addOption("🌍 Mini Comp (Everyone)", "mini_comp_everyone", "Public mini competition")
-                .addOption("🌍 Fashion Show (Everyone)", "fashion_everyone", "Public fashion show")
-                .addOption("🌍 Training Comp (Everyone)", "training_comp_everyone", "Public training competition")
-                .addOption("👑 Training (Members Only)", "training_member", "Restricted to official members")
-                .addOption("👑 Movie Night (Members Only)", "movie_member", "Restricted to official members")
-                .addOption("👑 Game Night (Members Only)", "game_member", "Restricted to official members")
-                .addOption("👑 Photoshoot (Members Only)", "photo_member", "Restricted to official members")
-                .addOption("👑 Mini Comp (Members Only)", "mini_comp_member", "Restricted to official members")
-                .addOption("👑 Fashion Show (Members Only)", "fashion_member", "Restricted to official members")
-                .addOption("👑 Training Comp (Members Only)", "training_comp_member", "Restricted to official members")
+            StringSelectMenu menu = StringSelectMenu.create("menu_fused")
+                .setPlaceholder("📢 Select Event, Audience & Urgency...")
+                .addOption("🌍 Training (Everyone)", "training:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Movie Night (Everyone)", "movie:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Game Night (Everyone)", "game:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Photoshoot (Everyone)", "photo:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Lounge")
+                .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Photoshoot (Members)", "photo:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Members Chat")
+                .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Photoshoot (Members)", "photo:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent Calling, Pings Members")
+                .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent Calling, Pings Members")
                 .build();
 
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(menu)
                 .queue();
                 
-            event.reply("Event panel deployed!").setEphemeral(true).queue();
+            event.reply("Event panel Has been Created!").setEphemeral(true).queue();
             return;
         }
         if (event.getName().equals("order")) {
