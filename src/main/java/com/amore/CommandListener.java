@@ -2894,22 +2894,10 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.startsWith("qjoin_") || componentId.equals("bjoin_button")) {
+        if (componentId.equals("bjoin_button")) {
             if (!event.isFromGuild()) {
                 event.reply("  This button can only be used inside a server.").setEphemeral(true).queue();
                 return;
-            }
-            
-            if (componentId.equals("qjoin_member")) {
-                if (MEMBER_ROLE_ID != null && !MEMBER_ROLE_ID.isBlank()) {
-                    boolean isMember = event.getMember().getRoles().stream()
-                            .anyMatch(role -> role.getId().equals(MEMBER_ROLE_ID));
-                            
-                    if (!isMember) {
-                        event.reply("👑 **Members Only!** You must be an official AMORA Member to join this event.").setEphemeral(true).queue();
-                        return;
-                    }
-                }
             }
 
             net.dv8tion.jda.api.entities.Message message = event.getMessage();
