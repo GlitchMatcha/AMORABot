@@ -69,12 +69,19 @@ public class AnnouncementListener extends ListenerAdapter {
         String displayTime = rawTime;
         long unixEpoch = 0;
         try {
+            String smartTime = rawTime.toUpperCase();
+            
+            smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00");
+            smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00");
+            smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00");
+            smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
+
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
-            ZonedDateTime zdt = ZonedDateTime.parse(rawTime, formatter);
+            ZonedDateTime zdt = ZonedDateTime.parse(smartTime, formatter);
             unixEpoch = zdt.toEpochSecond();
             displayTime = "<t:" + unixEpoch + ":F>\n` ~ ୨୧ · ` <t:" + unixEpoch + ":R>";
         } catch (Exception e) {
-            displayTime = "` " + rawTime + " `";
+            displayTime = "` " + rawTime + " `"; 
         }
         
         int tempReward = 0;
@@ -123,7 +130,7 @@ public class AnnouncementListener extends ListenerAdapter {
         
         builder.addActionRow(
                 Button.success("qjoin_" + audience, "✋ Join Quest"),
-                Button.danger("qleave_button", "🛑 Leave"), 
+                Button.danger("bleave_button", "🛑 Leave"),
                 Button.secondary("alert_party", "🔔 Alert Party"),
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit (Staff)")
         );
@@ -204,7 +211,7 @@ public class AnnouncementListener extends ListenerAdapter {
             return;
         }
 
-        if (buttonId.startsWith("qjoin_") || buttonId.equals("qleave_button") || buttonId.equals("alert_party")) {
+        if (buttonId.startsWith("qjoin_") || buttonId.equals("bleave_button") || buttonId.equals("alert_party")) {
             
             MessageEmbed embed = event.getMessage().getEmbeds().get(0);
             String partyField = "";
@@ -280,7 +287,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
                 
-            } else if (buttonId.equals("qleave_button")) {
+            } else if (buttonId.equals("bleave_button")) {
                 if (!partyField.contains(userId)) {
                     event.reply("❌ You aren't in the party!").setEphemeral(true).queue();
                     return;
