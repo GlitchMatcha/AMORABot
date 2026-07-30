@@ -155,7 +155,6 @@ public class AnnouncementListener extends ListenerAdapter {
                     forumPost -> {
                         scheduleTimers(forumPost.getThreadChannel().getId(), finalUnixEpoch, event.getJDA());
 
-                        // This is the injected NewsChannel logic so it correctly finds your Megaphone #schedules channel!
                         TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
                         NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
 
