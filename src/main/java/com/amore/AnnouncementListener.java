@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.NewsChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
@@ -101,7 +102,6 @@ public class AnnouncementListener extends ListenerAdapter {
                 }
             }
         }
-        // ------------------------------------
 
         String displayTitle = (audience.equals("member") ? (urgency.equals("urgent") ? "🚨 " : "👑 ") : "🌍 ") + type.replace("_", " ").toUpperCase();
 
@@ -155,8 +155,11 @@ public class AnnouncementListener extends ListenerAdapter {
                     forumPost -> {
                         scheduleTimers(forumPost.getThreadChannel().getId(), finalUnixEpoch, event.getJDA());
 
-                        TextChannel pingChannel = event.getJDA().getTextChannelById(targetPingChannelId);
-                        if (pingChannel != null) {
+                        // This is the injected NewsChannel logic so it correctly finds your Megaphone #schedules channel!
+                        TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+                        NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
+
+                        if (textChannel != null || newsChannel != null) {
                             String memberRoleId = System.getenv("MEMBER_ROLE_ID");
                             String pingMention = audience.equals("member") ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") : "@everyone";
                             
@@ -164,9 +167,16 @@ public class AnnouncementListener extends ListenerAdapter {
                                 "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n\n" +
                                 pingMention + " . 00 . > Amora < . <3.";
 
-                            pingChannel.sendMessage(notificationMessage).queue();
+                            if (textChannel != null) {
+                                textChannel.sendMessage(notificationMessage).queue();
+                            } else {
+                                newsChannel.sendMessage(notificationMessage).queue();
+                            }
+                            
+                            event.getHook().sendMessage("✅ Hybrid Event successfully routed!").queue();
+                        } else {
+                            event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the Schedules channel!** Check permissions and ID.").queue();
                         }
-                        event.getHook().sendMessage("✅ Hybrid Event successfully routed!").queue();
                     },
                     error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
                 );
