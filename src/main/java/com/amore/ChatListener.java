@@ -705,16 +705,19 @@ public class ChatListener extends ListenerAdapter {
             String pingOutfits = System.getenv("PING_OUTFITS");
             String pingLyrics = System.getenv("PING_LYRICS");
             String pingFaces = System.getenv("PING_FACES");
+            String pingBuilds = System.getenv("PING_BUILDS"); 
 
             boolean canPingOutfits = false;
             boolean canPingLyrics = false;
             boolean canPingFaces = false;
+            boolean canPingBuilds = false; 
 
             for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
                 String tagName = tag.getName().toLowerCase();
                 if (tagName.contains("outfit")) canPingOutfits = true;
                 if (tagName.contains("lyric")) canPingLyrics = true;
                 if (tagName.contains("face")) canPingFaces = true;
+                if (tagName.contains("build")) canPingBuilds = true; 
             }
             
             if (canPingOutfits && pingOutfits != null) {
@@ -725,6 +728,9 @@ public class ChatListener extends ListenerAdapter {
             }
             if (canPingFaces && pingFaces != null) {
                 pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + author.getId(), "🎭 Ping Faces"));
+            }
+            if (canPingBuilds && pingBuilds != null) { // ADDED: Generates the new button
+                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingBuilds + "_" + author.getId(), "🛠️ Ping Builds"));
             }
 
             if (!pingButtons.isEmpty()) {
@@ -1282,7 +1288,6 @@ public class ChatListener extends ListenerAdapter {
             String msgId = event.getMessageId();
             TicTacToeState state = activeTicTacToe.get(msgId);
             
-            // Check if game is missing or expired
             if (state == null || System.currentTimeMillis() > state.expiresAt) {
                 if (state != null) activeTicTacToe.remove(msgId);
                 
@@ -1295,10 +1300,8 @@ public class ChatListener extends ListenerAdapter {
                 return;
             }
 
-            // Refresh timer on active interaction
             state.refreshTimer();
 
-            // --- LOBBY MODE SELECTION ---
             if (buttonId.startsWith("ttt_mode_")) {
                 if (!state.isLobby) {
                     event.reply("The game has already started!").setEphemeral(true).queue();
