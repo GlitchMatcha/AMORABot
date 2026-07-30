@@ -1,6 +1,8 @@
 package com.amore;
 
 import java.awt.Color;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -15,6 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.NewsChannel;
@@ -34,7 +37,6 @@ import net.dv8tion.jda.api.utils.messages.MessageEditData;
 public class AnnouncementListener extends ListenerAdapter {
 
     private static final ScheduledExecutorService EVENT_SCHEDULER = Executors.newScheduledThreadPool(5);
-    
     private static final Map<String, List<ScheduledFuture<?>>> activeTimers = new ConcurrentHashMap<>();
 
     @Override
@@ -47,7 +49,7 @@ public class AnnouncementListener extends ListenerAdapter {
         String audience = parts[1];
         String urgency = parts[2];
 
-        event.replyModal(buildEventModal("modal_fused:", "Create Hybrid Event", type, audience, urgency)).queue();
+        event.replyModal(buildEventModal("modal_fused:", "Create Hybrid Event", type, audience, urgency, "", "", "", "", "")).queue();
     }
 
     @Override
@@ -70,7 +72,6 @@ public class AnnouncementListener extends ListenerAdapter {
         long unixEpoch = 0;
         try {
             String smartTime = rawTime.toUpperCase();
-            
             smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00");
             smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00");
             smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00");
@@ -130,7 +131,7 @@ public class AnnouncementListener extends ListenerAdapter {
         
         builder.addActionRow(
                 Button.success("qjoin_" + audience, "✋ Join Quest"),
-                Button.danger("qleave_button", "⭕ Leave Quest"), 
+                Button.danger("qleave_button", "⭕ Leave Quest"),
                 Button.secondary("alert_party", "🔔 Alert Party"),
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit (Staff)")
         );
@@ -142,8 +143,38 @@ public class AnnouncementListener extends ListenerAdapter {
             
             String threadId = event.getChannel().getId();
             scheduleTimers(threadId, finalUnixEpoch, event.getJDA());
+
+            String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
+            if (targetPingChannelId != null && event.getChannel().getType().isThread()) {
+                TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+                NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
+
+                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = 
+                        (textChannel != null) ? textChannel : newsChannel;
+
+                if (pingChannel != null) {
+                    String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                    String pingMention = audience.equals("member") 
+                            ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
+                            : "@everyone";
+
+                    String jumpUrl = event.getChannel().asThreadChannel().getJumpUrl();
+                    String updatedNotification = aestheticHeader + 
+                        "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + jumpUrl + ") <<**\n\n" +
+                        pingMention + " . 00 . > Amora < . <3.";
+
+                    pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
+                        for (Message msg : messages) {
+                            if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
+                                msg.editMessage(updatedNotification).queue();
+                                break;
+                            }
+                        }
+                    });
+                }
+            }
             
-            event.getHook().sendMessage("✅ **Event Details Updated:** The Quest Board and Automated Timers have been successfully modified by Staff.").setEphemeral(true).queue();
+            event.getHook().sendMessage("✅ **Event Details Updated:** The Quest Board, Schedules Announcement, and Automated Timers have all been updated.").setEphemeral(true).queue();
             
         } else {
             String targetForumId = audience.equals("member") && urgency.equals("urgent") ? System.getenv("URGENT_BOUNTY_FORUM_ID") : System.getenv("STANDARD_BOUNTY_FORUM_ID");
@@ -207,7 +238,40 @@ public class AnnouncementListener extends ListenerAdapter {
             String audience = parts[2];
             String urgency = parts[3];
 
-            event.replyModal(buildEventModal("modal_edit:", "Edit Hybrid Event", type, audience, urgency)).queue();
+            Message message = event.getMessage();
+            String content = message.getContentRaw();
+            MessageEmbed embed = message.getEmbeds().isEmpty() ? null : message.getEmbeds().get(0);
+
+            String host = "";
+            Matcher mHost = Pattern.compile("(?i)(?:𝐓𝐫𝐚𝐢𝐧𝐞𝐫|𝐇𝐨𝐬𝐭)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
+            if (mHost.find()) host = mHost.group(1).trim();
+
+            String extra = "";
+            Matcher mExtra = Pattern.compile("(?i)(?:𝐒𝐞𝐫𝐯𝐞𝐫|𝐓𝐡𝐞𝐦𝐞|𝐆𝐚𝐦𝐞𝐬)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
+            if (mExtra.find()) extra = mExtra.group(1).trim();
+
+            String slots = "";
+            Matcher mSlots = Pattern.compile("(?i)𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 𝐨𝐟 𝐌𝐞𝐦𝐛𝐞𝐫𝐬 𝐍𝐞𝐞𝐝𝐞𝐝\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
+            if (mSlots.find()) slots = mSlots.group(1).trim();
+
+            String timeStr = "";
+            Matcher mEpoch = Pattern.compile("<t:(\\d+):F>").matcher(content);
+            if (mEpoch.find()) {
+                long epoch = Long.parseLong(mEpoch.group(1));
+                ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochSecond(epoch), ZoneId.of("UTC"));
+                timeStr = zdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + " UTC";
+            } else {
+                Matcher mTimeRaw = Pattern.compile("(?i)𝐓𝐢𝐦𝐞\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*`?\\s*(.*?)\\s*`").matcher(content);
+                if (mTimeRaw.find()) timeStr = mTimeRaw.group(1).trim();
+            }
+
+            String rewardStr = "0";
+            if (embed != null && embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mReward = Pattern.compile("Reward embedded:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mReward.find()) rewardStr = mReward.group(1);
+            }
+
+            event.replyModal(buildEventModal("modal_edit:", "Edit Hybrid Event", type, audience, urgency, host, timeStr, extra, slots, rewardStr)).queue();
             return;
         }
 
@@ -315,34 +379,46 @@ public class AnnouncementListener extends ListenerAdapter {
         }
     }
 
-    private Modal buildEventModal(String idPrefix, String title, String type, String audience, String urgency) {
+    private Modal buildEventModal(String idPrefix, String title, String type, String audience, String urgency, 
+                                  String defaultHost, String defaultTime, String defaultExtra, String defaultSlots, String defaultReward) {
+        
         TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
                 .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
+        if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
-        TextInput timeInput = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm Timezone)", TextInputStyle.SHORT)
-        .setPlaceholder("e.g. 2026-07-31 20:00 GMT+7").setRequired(true).build();
+        TextInput.Builder timeBuilder = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm Timezone)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 2026-07-31 20:00 GMT+7").setRequired(true);
+        if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
 
-        TextInput slotsInput = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 5 or 0 for Unlimited").setRequired(true).build();
+        TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 5 or 0 for Unlimited").setRequired(true);
+        if (!defaultSlots.isBlank()) slotsBuilder.setValue(defaultSlots);
 
-        TextInput rewardInput = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 50").setRequired(true).build();
+        TextInput.Builder rewardBuilder = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 50").setRequired(true);
+        if (!defaultReward.isBlank()) rewardBuilder.setValue(defaultReward);
 
         Modal.Builder modal = Modal.create(idPrefix + type + ":" + audience + ":" + urgency, title);
         modal.addActionRow(hostBuilder.build());
-        modal.addActionRow(timeInput);
+        modal.addActionRow(timeBuilder.build());
 
         if (type.equals("game")) {
-            modal.addActionRow(TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true).build());
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true);
+            if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
+            modal.addActionRow(extraBuilder.build());
         } else if (type.equals("fashion") || type.equals("training_comp")) {
-            modal.addActionRow(TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true).build());
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true);
+            if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
+            modal.addActionRow(extraBuilder.build());
         } else if (!type.equals("movie")) {
-            modal.addActionRow(TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true).build());
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true);
+            if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
+            modal.addActionRow(extraBuilder.build());
         }
 
-        modal.addActionRow(slotsInput);
-        modal.addActionRow(rewardInput);
+        modal.addActionRow(slotsBuilder.build());
+        modal.addActionRow(rewardBuilder.build());
         return modal.build();
     }
 
@@ -495,7 +571,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _";
 
             case "mini_comp":
-                return "# ୧ ╰ 𝐌𝐈𝐍𝐈 𝐂𝐎𝐌𝐏𝐄𝐓𝐈𝐓ION . .ᐟ\n" +
+                return "# ୧ ╰ 𝐌𝐈𝐍𝐈 𝐂𝐎𝐌𝐏𝐄𝐓𝐈𝐓𝐈𝐎𝐍 . .ᐟ\n" +
                        " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n\n" +
                        "`~ ୨୧ ·  𝐇𝐨𝐬𝐭 :` \n\n" +
                        "` ~ ୨୧ ·  " + host + " `\n\n\n" +
