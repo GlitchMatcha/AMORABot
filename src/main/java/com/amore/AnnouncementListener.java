@@ -5,8 +5,11 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,6 +18,7 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
+import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
@@ -24,75 +28,38 @@ import net.dv8tion.jda.api.interactions.components.text.TextInputStyle;
 import net.dv8tion.jda.api.interactions.modals.Modal;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
+import net.dv8tion.jda.api.utils.messages.MessageEditData;
 
 public class AnnouncementListener extends ListenerAdapter {
 
     private static final ScheduledExecutorService EVENT_SCHEDULER = Executors.newScheduledThreadPool(5);
+    
+    private static final Map<String, List<ScheduledFuture<?>>> activeTimers = new ConcurrentHashMap<>();
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
         if (!event.getComponentId().startsWith("menu_fused")) return;
 
         String selectedValue = event.getValues().get(0);
-
         String[] parts = selectedValue.split(":");
         String type = parts[0];
         String audience = parts[1];
         String urgency = parts[2];
 
-        TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
-        if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
-
-        TextInput timeInput = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm timezone)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 2026-07-31 20:00 EST").setRequired(true).build();
-
-        TextInput slotsInput = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 5 or 0 for Unlimited").setRequired(true).build();
-
-        TextInput rewardInput = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 50").setRequired(true).build();
-
-        Modal.Builder modal = Modal.create("modal_fused:" + type + ":" + audience + ":" + urgency, "Create Hybrid Event");
-        modal.addActionRow(hostBuilder.build());
-        modal.addActionRow(timeInput);
-
-        if (type.equals("game")) {
-            modal.addActionRow(TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true).build());
-        } else if (type.equals("fashion") || type.equals("training_comp")) {
-            modal.addActionRow(TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true).build());
-        } else if (!type.equals("movie")) {
-            modal.addActionRow(TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true).build());
-        }
-
-        modal.addActionRow(slotsInput);
-        modal.addActionRow(rewardInput);
-
-        event.replyModal(modal.build()).queue();
+        event.replyModal(buildEventModal("modal_fused:", "Create Hybrid Event", type, audience, urgency)).queue();
     }
 
     @Override
     public void onModalInteraction(ModalInteractionEvent event) {
-        if (!event.getModalId().startsWith("modal_fused:")) return;
+        boolean isEdit = event.getModalId().startsWith("modal_edit:");
+        if (!event.getModalId().startsWith("modal_fused:") && !isEdit) return;
 
-        String payload = event.getModalId().replace("modal_fused:", "");
+        String prefix = isEdit ? "modal_edit:" : "modal_fused:";
+        String payload = event.getModalId().replace(prefix, "");
         String[] parts = payload.split(":");
         String type = parts[0];
         String audience = parts[1];
         String urgency = parts[2];
-
-        String targetForumId;
-        String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
-
-        if (audience.equals("member")) {
-            if (urgency.equals("urgent")) {
-                targetForumId = System.getenv("URGENT_BOUNTY_FORUM_ID");
-            } else {
-                targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
-            }
-        } else {
-            targetForumId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
-        }
 
         String host = event.getValue("input_host").getAsString();
         String slots = event.getValue("input_slots").getAsString();
@@ -101,7 +68,7 @@ public class AnnouncementListener extends ListenerAdapter {
         String displayTime = rawTime;
         long unixEpoch = 0;
         try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm timezone");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
             ZonedDateTime zdt = ZonedDateTime.parse(rawTime, formatter);
             unixEpoch = zdt.toEpochSecond();
             displayTime = "<t:" + unixEpoch + ":F>\n` ~ ୨୧ · ` <t:" + unixEpoch + ":R>";
@@ -120,16 +87,26 @@ public class AnnouncementListener extends ListenerAdapter {
         try { maxSlots = Integer.parseInt(slots.trim()); } catch (Exception ignored) {}
         String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
 
+        String partyField = "None";
+        int currentSlots = 0;
+        
+        if (isEdit && event.getMessage() != null && !event.getMessage().getEmbeds().isEmpty()) {
+            MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
+            for (MessageEmbed.Field field : oldEmbed.getFields()) {
+                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                    partyField = field.getValue();
+                    Matcher m = Pattern.compile("\\[(\\d+)/").matcher(field.getName());
+                    if (m.find()) currentSlots = Integer.parseInt(m.group(1));
+                    break;
+                }
+            }
+        }
+        // ------------------------------------
+
         String displayTitle = (audience.equals("member") ? (urgency.equals("urgent") ? "🚨 " : "👑 ") : "🌍 ") + type.replace("_", " ").toUpperCase();
 
-        Color embedColor;
-        if (urgency.equals("urgent")) {
-            embedColor = new Color(220, 20, 60); 
-        } else if (audience.equals("member")) {
-            embedColor = new Color(255, 215, 0); 
-        } else {
-            embedColor = new Color(255, 69, 0);  
-        }
+        Color embedColor = urgency.equals("urgent") ? new Color(220, 20, 60) : 
+                           audience.equals("member") ? new Color(255, 215, 0) : new Color(255, 69, 0);
 
         EmbedBuilder questEmbed = new EmbedBuilder()
                 .setColor(embedColor)
@@ -137,96 +114,86 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setDescription("💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n" +
                                 (audience.equals("member") ? "\n⚠️ **Role Requirement:** Official Members Only!\n" : "") +
                                 "\n_Click **Join Quest** below to claim your spot in the party!_")
-                .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
+                .addField("👥 Party [" + currentSlots + "/" + slotDisplay + "]", partyField, false)
                 .setFooter("AMORA Event Directive • Reward embedded: " + reward, null);
 
         MessageCreateBuilder builder = new MessageCreateBuilder();
         builder.setContent(aestheticHeader);
         builder.addEmbeds(questEmbed.build());
+        
         builder.addActionRow(
                 Button.success("qjoin_" + audience, "✋ Join Quest"),
                 Button.danger("bleave_button", "🛑 Leave"),
-                Button.secondary("alert_party", "🔔 Alert Party (Staff)")
+                Button.secondary("alert_party", "🔔 Alert Party"),
+                Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit (Staff)")
         );
 
-        if (targetForumId == null || targetPingChannelId == null) {
-            event.reply("⚠️ **Routing Error:** Missing Environment Variables! Make sure `STANDARD_BOUNTY_FORUM_ID`, `URGENT_BOUNTY_FORUM_ID`, and `SCHEDULE_CHANNEL_ID` are set.").setEphemeral(true).queue();
-            return;
-        }
+        final long finalUnixEpoch = unixEpoch;
 
-        ForumChannel targetForum = event.getJDA().getForumChannelById(targetForumId);
-        
-        if (targetForum != null) {
-            event.deferReply(true).queue();
+        if (isEdit) {
+            event.editMessage(MessageEditData.fromCreateData(builder.build())).queue();
             
-            final long finalUnixEpoch = unixEpoch;
+            String threadId = event.getChannel().getId();
+            scheduleTimers(threadId, finalUnixEpoch, event.getJDA());
             
-            targetForum.createForumPost(displayTitle, builder.build()).queue(
-                forumPost -> {
-                    
-                    if (finalUnixEpoch > 0) {
-                        long currentTime = System.currentTimeMillis() / 1000;
-                        long secondsUntil30Mins = finalUnixEpoch - currentTime - (30 * 60); 
-                        long secondsUntilStart = finalUnixEpoch - currentTime; 
-                        
-                        if (secondsUntil30Mins > 0) {
-                            EVENT_SCHEDULER.schedule(() -> {
-                                String dmMsg = "# ୧ ╰ 𝐀𝐌𝐎𝐑𝐀 𝐄𝐕𝐄𝐍𝐓 𝐑𝐄𝐌𝐈𝐍𝐃𝐄𝐑 . .ᐟ\n" +
-                                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
-                                               "`~ ୨୧ · ` 𝐇𝐢 **%s**!\n" +
-                                               "`~ ୨୧ · ` 𝐓𝐡𝐞 𝐞𝐯𝐞𝐧𝐭 𝐲𝐨𝐮 𝐑𝐒𝐕𝐏'𝐝 𝐭𝐨 𝐢𝐬 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐢𝐧 **𝟑𝟎 𝐌𝐢𝐧𝐮𝐭𝐞𝐬**!\n" +
-                                               "`~ ୨୧ · ` 𝐏𝐥𝐞𝐚𝐬𝐞 𝐬𝐭𝐚𝐫𝐭 𝐠𝐞𝐭𝐭𝐢𝐧𝐠 𝐫𝐞𝐚𝐝𝐲.. ⑅<:SCfeltcutemightdeletelateridk:1526912666835357736>\n\n" +
-                                               "🔗 **>> [CLICK HERE TO JUMP TO THE EVENT](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**";
-                                String threadMsg = "🔔 **AUTOMATED REMINDER:** The event is starting in 30 minutes! Warning DMs have been dispatched to the party.";
-                                sendPartyReminders(forumPost.getThreadChannel(), event.getJDA(), dmMsg, threadMsg);
-                            }, secondsUntil30Mins, TimeUnit.SECONDS);
-                        }
-
-                        if (secondsUntilStart > 0) {
-                            EVENT_SCHEDULER.schedule(() -> {
-                                String dmMsg = "# ୧ ╰ 𝐀𝐌𝐎𝐑𝐀 𝐄𝐕𝐄𝐍𝐓 𝐒𝐓𝐀𝐑𝐓𝐈𝐍𝐆 . .ᐟ\n" +
-                                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
-                                               "`~ ୨୧ · ` 𝐇𝐢 **%s**!\n" +
-                                               "`~ ୨୧ · ` 𝐓𝐡𝐞 𝐞𝐯𝐞𝐧𝐭 𝐲𝐨𝐮 𝐑𝐒𝐕𝐏'𝐝 𝐭𝐨 𝐢𝐬 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 **𝐑𝐈𝐆𝐇𝐓 𝐍𝐎𝐖**!\n" +
-                                               "`~ ୨୧ · ` 𝐏𝐥𝐞𝐚𝐬𝐞 𝐡𝐞𝐚𝐝 𝐭𝐨 𝐭𝐡𝐞 𝐬𝐞𝐫𝐯𝐞𝐫 𝐢𝐦𝐦𝐞𝐝𝐢𝐚𝐭𝐞𝐥𝐲.. ⑅<a:animehype:1514915354894405702>\n\n" +
-                                               "🔗 **>> [CLICK HERE TO JUMP TO THE EVENT](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**";
-                                String threadMsg = "🚨 **EVENT STARTING NOW:** The event has officially begun! Final DMs have been dispatched to the party.";
-                                sendPartyReminders(forumPost.getThreadChannel(), event.getJDA(), dmMsg, threadMsg);
-                            }, secondsUntilStart, TimeUnit.SECONDS);
-                        }
-                    }
-
-                    TextChannel pingChannel = event.getJDA().getTextChannelById(targetPingChannelId);
-                    if (pingChannel != null) {
-                        
-                        String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                        String pingMention;
-                        
-                        if (audience.equals("member")) {
-                            pingMention = (memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**";
-                        } else {
-                            pingMention = "@everyone";
-                        }
-                        
-                        String notificationMessage = aestheticHeader + 
-                            "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n\n" +
-                            pingMention + " . 00 . > Amora < . <3.";
-
-                        pingChannel.sendMessage(notificationMessage).queue();
-                    }
-                    
-                    event.getHook().sendMessage("✅ Hybrid Event successfully routed to the Forum and Schedules Channel!").queue();
-                },
-                error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
-            );
+            event.getHook().sendMessage("✅ **Event Details Updated:** The Quest Board and Automated Timers have been successfully modified by Staff.").setEphemeral(true).queue();
+            
         } else {
-            event.reply("⚠️ Routing Error: Could not find the target forum channel. Please check the ID.").setEphemeral(true).queue();
+            String targetForumId = audience.equals("member") && urgency.equals("urgent") ? System.getenv("URGENT_BOUNTY_FORUM_ID") : System.getenv("STANDARD_BOUNTY_FORUM_ID");
+            String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
+
+            if (targetForumId == null || targetPingChannelId == null) {
+                event.reply("⚠️ **Routing Error:** Missing Environment Variables!").setEphemeral(true).queue();
+                return;
+            }
+
+            ForumChannel targetForum = event.getJDA().getForumChannelById(targetForumId);
+            if (targetForum != null) {
+                event.deferReply(true).queue();
+                
+                targetForum.createForumPost(displayTitle, builder.build()).queue(
+                    forumPost -> {
+                        scheduleTimers(forumPost.getThreadChannel().getId(), finalUnixEpoch, event.getJDA());
+
+                        TextChannel pingChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+                        if (pingChannel != null) {
+                            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                            String pingMention = audience.equals("member") ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") : "@everyone";
+                            
+                            String notificationMessage = aestheticHeader + 
+                                "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n\n" +
+                                pingMention + " . 00 . > Amora < . <3.";
+
+                            pingChannel.sendMessage(notificationMessage).queue();
+                        }
+                        event.getHook().sendMessage("✅ Hybrid Event successfully routed!").queue();
+                    },
+                    error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
+                );
+            } else {
+                event.reply("⚠️ Routing Error: Could not find the target forum channel.").setEphemeral(true).queue();
+            }
         }
     }
 
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+
+        if (buttonId.startsWith("edit_event:")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                event.reply("⚠️ **Access Denied:** Only Staff can edit events!").setEphemeral(true).queue();
+                return;
+            }
+            
+            String[] parts = buttonId.split(":");
+            String type = parts[1];
+            String audience = parts[2];
+            String urgency = parts[3];
+
+            event.replyModal(buildEventModal("modal_edit:", "Edit Hybrid Event", type, audience, urgency)).queue();
+            return;
+        }
 
         if (buttonId.startsWith("qjoin_") || buttonId.equals("bleave_button") || buttonId.equals("alert_party")) {
             
@@ -247,9 +214,7 @@ public class AnnouncementListener extends ListenerAdapter {
                     if (m.find()) {
                         currentSlots = Integer.parseInt(m.group(1));
                         slotDisplay = m.group(2);
-                        if (!slotDisplay.equals("Unlimited")) {
-                            maxSlots = Integer.parseInt(slotDisplay);
-                        }
+                        if (!slotDisplay.equals("Unlimited")) maxSlots = Integer.parseInt(slotDisplay);
                     }
                     break;
                 }
@@ -303,11 +268,7 @@ public class AnnouncementListener extends ListenerAdapter {
                     return;
                 }
 
-                if (partyField.equals("None")) {
-                    partyField = userMention;
-                } else {
-                    partyField += "\n" + userMention;
-                }
+                partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
                 
             } else if (buttonId.equals("bleave_button")) {
@@ -335,7 +296,87 @@ public class AnnouncementListener extends ListenerAdapter {
         }
     }
 
-    private void sendPartyReminders(net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel threadChannel, net.dv8tion.jda.api.JDA jda, String dmTemplate, String threadAnnouncement) {
+    private Modal buildEventModal(String idPrefix, String title, String type, String audience, String urgency) {
+        TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
+        if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
+
+        TextInput timeInput = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm z)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 2026-07-31 20:00 EST").setRequired(true).build();
+
+        TextInput slotsInput = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 5 or 0 for Unlimited").setRequired(true).build();
+
+        TextInput rewardInput = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 50").setRequired(true).build();
+
+        Modal.Builder modal = Modal.create(idPrefix + type + ":" + audience + ":" + urgency, title);
+        modal.addActionRow(hostBuilder.build());
+        modal.addActionRow(timeInput);
+
+        if (type.equals("game")) {
+            modal.addActionRow(TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true).build());
+        } else if (type.equals("fashion") || type.equals("training_comp")) {
+            modal.addActionRow(TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true).build());
+        } else if (!type.equals("movie")) {
+            modal.addActionRow(TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true).build());
+        }
+
+        modal.addActionRow(slotsInput);
+        modal.addActionRow(rewardInput);
+        return modal.build();
+    }
+
+    private void scheduleTimers(String threadId, long finalUnixEpoch, net.dv8tion.jda.api.JDA jda) {
+        List<ScheduledFuture<?>> oldTimers = activeTimers.remove(threadId);
+        if (oldTimers != null) oldTimers.forEach(t -> t.cancel(false));
+
+        if (finalUnixEpoch <= 0) return;
+
+        long currentTime = System.currentTimeMillis() / 1000;
+        long secondsUntil30Mins = finalUnixEpoch - currentTime - (30 * 60); 
+        long secondsUntilStart = finalUnixEpoch - currentTime; 
+        
+        List<ScheduledFuture<?>> newTimers = new ArrayList<>();
+
+        if (secondsUntil30Mins > 0) {
+            newTimers.add(EVENT_SCHEDULER.schedule(() -> {
+                ThreadChannel threadChannel = jda.getThreadChannelById(threadId);
+                if (threadChannel == null) return;
+                
+                String dmMsg = "# ୧ ╰ 𝐀𝐌𝐎𝐑𝐀 𝐄𝐕𝐄𝐍𝐓 𝐑𝐄𝐌𝐈𝐍𝐃𝐄𝐑 . .ᐟ\n" +
+                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                               "`~ ୨୧ · ` 𝐇𝐢 **%s**!\n" +
+                               "`~ ୨୧ · ` 𝐓𝐡𝐞 𝐞𝐯𝐞𝐧𝐭 𝐲𝐨𝐮 𝐑𝐒𝐕𝐏'𝐝 𝐭𝐨 𝐢𝐬 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 𝐢𝐧 **𝟑𝟎 𝐌𝐢𝐧𝐮𝐭𝐞𝐬**!\n" +
+                               "`~ ୨୧ · ` 𝐏𝐥𝐞𝐚𝐬𝐞 𝐬𝐭𝐚𝐫𝐭 𝐠𝐞𝐭𝐭𝐢𝐧𝐠 𝐫𝐞𝐚𝐝𝐲.. ⑅<:SCfeltcutemightdeletelateridk:1526912666835357736>\n\n" +
+                               "🔗 **>> [CLICK HERE TO JUMP TO THE EVENT](" + threadChannel.getJumpUrl() + ") <<**";
+                String threadMsg = "🔔 **AUTOMATED REMINDER:** The event is starting in 30 minutes! Warning DMs have been dispatched to the party.";
+                sendPartyReminders(threadChannel, jda, dmMsg, threadMsg);
+            }, secondsUntil30Mins, TimeUnit.SECONDS));
+        }
+
+        if (secondsUntilStart > 0) {
+            newTimers.add(EVENT_SCHEDULER.schedule(() -> {
+                ThreadChannel threadChannel = jda.getThreadChannelById(threadId);
+                if (threadChannel == null) return;
+                
+                String dmMsg = "# ୧ ╰ 𝐀𝐌𝐎𝐑𝐀 𝐄𝐕𝐄𝐍𝐓 𝐒𝐓𝐀𝐑𝐓𝐈𝐍𝐆 . .ᐟ\n" +
+                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                               "`~ ୨୧ · ` 𝐇𝐢 **%s**!\n" +
+                               "`~ ୨୧ · ` 𝐓𝐡𝐞 𝐞𝐯𝐞𝐧𝐭 𝐲𝐨𝐮 𝐑𝐒𝐕𝐏'𝐝 𝐭𝐨 𝐢𝐬 𝐬𝐭𝐚𝐫𝐭𝐢𝐧𝐠 **𝐑𝐈𝐆𝐇𝐓 𝐍𝐎𝐖**!\n" +
+                               "`~ ୨୧ · ` 𝐏𝐥𝐞𝐚𝐬𝐞 𝐡𝐞𝐚𝐝 𝐭𝐨 𝐭𝐡𝐞 𝐬𝐞𝐫𝐯𝐞𝐫 𝐢𝐦𝐦𝐞𝐝𝐢𝐚𝐭𝐞𝐥𝐲.. ⑅<a:animehype:1514915354894405702>\n\n" +
+                               "🔗 **>> [CLICK HERE TO JUMP TO THE EVENT](" + threadChannel.getJumpUrl() + ") <<**";
+                String threadMsg = "🚨 **EVENT STARTING NOW:** The event has officially begun! Final DMs have been dispatched to the party.";
+                sendPartyReminders(threadChannel, jda, dmMsg, threadMsg);
+            }, secondsUntilStart, TimeUnit.SECONDS));
+        }
+
+        if (!newTimers.isEmpty()) {
+            activeTimers.put(threadId, newTimers);
+        }
+    }
+
+    private void sendPartyReminders(ThreadChannel threadChannel, net.dv8tion.jda.api.JDA jda, String dmTemplate, String threadAnnouncement) {
         threadChannel.retrieveStartMessage().queue(startMsg -> {
             if (startMsg.getEmbeds().isEmpty()) return;
             MessageEmbed embed = startMsg.getEmbeds().get(0);
@@ -357,8 +398,7 @@ public class AnnouncementListener extends ListenerAdapter {
             for (String uid : userIds) {
                 jda.retrieveUserById(uid).queue(user -> {
                     user.openPrivateChannel().queue(pc -> {
-                        String personalizedMsg = dmTemplate.replace("%s", user.getName());
-                        pc.sendMessage(personalizedMsg).queue(s->{}, e->{});
+                        pc.sendMessage(dmTemplate.replace("%s", user.getName())).queue(s->{}, e->{});
                     });
                 });
             }
