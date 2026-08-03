@@ -481,7 +481,7 @@ public class AnnouncementListener extends ListenerAdapter {
             if (mHost.find()) host = mHost.group(1).trim();
 
             String extra = "";
-            Matcher mExtra = Pattern.compile("(?i)(?:𝐒𝐞𝐫𝐯𝐞𝐫|𝐓𝐡𝐞𝐦𝐞|𝐆𝐚𝐦𝐞𝐬)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
+            Matcher mExtra = Pattern.compile("(?i)(?:𝐒𝐞𝐫𝐯𝐞𝐫(?: / 𝐓𝐲𝐩𝐞)?|𝐓𝐡𝐞𝐦𝐞|𝐆𝐚𝐦𝐞𝐬)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
             if (mExtra.find()) extra = mExtra.group(1).trim();
 
             String slots = "";
@@ -651,6 +651,10 @@ public class AnnouncementListener extends ListenerAdapter {
             TextInput.Builder extraBuilder = TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true);
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
             modal.addActionRow(extraBuilder.build());
+        } else if (type.equals("training")) {
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server & Type (e.g. VIP - Lyrics)", TextInputStyle.SHORT).setRequired(true);
+            if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
+            modal.addActionRow(extraBuilder.build());
         } else if (!type.equals("movie")) {
             TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true);
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
@@ -751,7 +755,7 @@ public class AnnouncementListener extends ListenerAdapter {
                        "` ~ ୨୧ ·  " + host + " `\n\n\n" +
                        "`~ ୨୧ ·  𝐓𝐢𝐦𝐞 :` \n\n" +
                        "` ~ ୨୧ · ` " + time + "\n\n\n" +
-                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 :` \n\n" +
+                       "`~ ୨୧ ·  𝐒𝐞𝐫𝐯𝐞𝐫 / 𝐓𝐲𝐩𝐞 :` \n\n" +
                        "` ~ ୨୧ ·  " + extra + " `\n\n\n" +
                        "`~ ୨୧ : 𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 𝐨𝐟 𝐌𝐞𝐦𝐛𝐞𝐫𝐬 𝐍𝐞𝐞𝐝𝐞𝐝 :` \n\n" +
                        "` ~ ୨୧ ·  " + members + " `\n\n\n" +
