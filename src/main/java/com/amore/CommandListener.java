@@ -792,8 +792,77 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                if (thread.getName().startsWith("🔒")) {
+                if (thread.getName().startsWith("🔒") || thread.getName().startsWith("✅")) {
                     
+                    String content = event.getMessage().getContentRaw();
+                    
+                    // This Regex matches "CODE : aofks7", "link: https://...", "ID=123", etc.
+                    Pattern sensitivePattern = Pattern.compile("(?i)(code|link|id|key|pass|password)\\s*[:=]\\s*(https?://\\S+|[a-zA-Z0-9_.-]+)");
+                    Matcher matcher = sensitivePattern.matcher(content);
+
+                    if (matcher.find()) {
+                        thread.getHistoryFromBeginning(20).queue(history -> {
+                            String foundCreatorId = null;
+                            String foundBuyerId = null;
+
+                            for (net.dv8tion.jda.api.entities.Message m : history.getRetrievedHistory()) {
+                                if (!m.getButtons().isEmpty()) {
+                                    Button btn = m.getButtons().get(0);
+                                    if (btn.getId() != null && btn.getId().startsWith("buyerconfirm_")) {
+                                        String[] parts = btn.getId().split("_");
+                                        if (parts.length >= 3) {
+                                            foundCreatorId = parts[1];
+                                            foundBuyerId = parts[2];
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (foundCreatorId != null && foundBuyerId != null && event.getAuthor().getId().equals(foundCreatorId)) {
+                                
+                                final String buyerId = foundBuyerId;
+                                
+                                String censoredContent = matcher.replaceAll("$1 : `[ 🔒 securely hidden by AM0RA ]`");
+                                boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
+                                
+                                event.getMessage().delete().queue();
+
+                                event.getJDA().retrieveUserById(buyerId).queue(buyer -> {
+                                    buyer.openPrivateChannel().flatMap(pc -> {
+                                        EmbedBuilder dmEmbed = new EmbedBuilder()
+                                                .setColor(new Color(138, 43, 226))
+                                                .setTitle("💌 SECURE COMMISSION DELIVERY")
+                                                .setDescription("Hihi! I safely intercepted a delivery from " + event.getAuthor().getAsMention() + " just for you!\n\n" +
+                                                                " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                                                content + "\n\n" +
+                                                                " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                                                "*Please keep this strictly confidential! >p<*")
+                                                .setFooter("AMORA Auto-Intercept System", null);
+                                        return pc.sendMessageEmbeds(dmEmbed.build());
+                                    }).queue(success -> {
+                                        
+                                        String attachmentWarning = hasAttachments ? "\n*(Note for creator: Your image attachments were safely removed to protect the code! Please resend any previews separately without the secret info!)*" : "";
+                                        
+                                        String threadNotification = "🐾 *Sneaks in and snatches the delivery...*\n" +
+                                                                    "<@" + buyerId + ">, I just safely handed over the secret codes to your DMs! 💌\n" +
+                                                                    "*(For the seller: Don't panic, your message was perfectly intercepted! Here is the safe public version for the records:)*";
+
+                                        EmbedBuilder censoredEmbed = new EmbedBuilder()
+                                                .setColor(new Color(255, 182, 193))
+                                                .setAuthor(event.getAuthor().getName() + "'s Delivery (Secured)", null, event.getAuthor().getEffectiveAvatarUrl())
+                                                .setDescription(censoredContent + attachmentWarning);
+                                        
+                                        thread.sendMessage(threadNotification).setEmbeds(censoredEmbed.build()).queue();
+
+                                    }, error -> {
+                                        event.getChannel().sendMessage("❌ " + event.getAuthor().getAsMention() + " I tried to safely intercept your delivery, but the buyer's DMs are closed! Please ask them to temporarily open DMs and paste your template again.").queue();
+                                    });
+                                });
+                                return; 
+                            }
+                        });
+                    }
                     if (movingCarts.contains(thread.getId())) return;
                     
                     thread.getHistory().retrievePast(15).queue(messages -> {
@@ -1495,7 +1564,6 @@ public class CommandListener extends ListenerAdapter {
             String secretDelivery = event.getOption("delivery").getAsString();
             String description = readDescription(event);
             
-            // SMART UPGRADE: Replace the ugly default text with an aesthetic one
             if (description.equals("No description provided.")) {
                 description = "An official AM0RA digital asset. _No additional details were provided by the Director._";
             }
