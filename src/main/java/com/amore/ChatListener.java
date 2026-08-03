@@ -729,7 +729,7 @@ public class ChatListener extends ListenerAdapter {
             if (canPingFaces && pingFaces != null) {
                 pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + author.getId(), "🎭 Ping Faces"));
             }
-            if (canPingBuilds && pingBuilds != null) { // ADDED: Generates the new button
+            if (canPingBuilds && pingBuilds != null) { 
                 pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingBuilds + "_" + author.getId(), "🛠️ Ping Builds"));
             }
 
@@ -754,7 +754,10 @@ public class ChatListener extends ListenerAdapter {
                                     "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
 
             channel.sendMessageEmbeds(orderPromptEmbed.build())
-                    .addActionRow(Button.success("order_start_" + author.getId(), "🛒 Order This"))
+                    .addActionRow(
+                        Button.success("order_start_" + author.getId(), "🛒 Buy Asset"),
+                        Button.primary("comm_start_" + author.getId(), "📝 Request Commission")
+                    )
                     .queue(msg -> {
                         DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
                     });
@@ -1197,6 +1200,7 @@ public class ChatListener extends ListenerAdapter {
 
         maybeSpawnGame(event, now);
     }
+
     @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
