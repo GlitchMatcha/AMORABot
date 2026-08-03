@@ -54,6 +54,103 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onModalInteraction(ModalInteractionEvent event) {
+        
+        if (event.getModalId().startsWith("modal_complete:")) {
+            String[] parts = event.getModalId().split(":");
+            String audience = parts[1];
+            boolean isUrgent = parts[2].equals("urgent");
+            
+            String excludeStr = event.getValue("input_exclude") != null ? event.getValue("input_exclude").getAsString() : "";
+            List<String> excludedIds = new ArrayList<>();
+            Matcher mEx = Pattern.compile("<@!?(\\d+)>").matcher(excludeStr);
+            while (mEx.find()) excludedIds.add(mEx.group(1));
+            
+            Message message = event.getMessage();
+            MessageEmbed embed = message.getEmbeds().get(0);
+            
+            int rewardAmount = 0;
+            if (embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mReward = Pattern.compile("Reward embedded:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mReward.find()) rewardAmount = Integer.parseInt(mReward.group(1));
+            }
+            
+            String partyData = "None";
+            int fieldIndex = -1;
+            for (int i = 0; i < embed.getFields().size(); i++) {
+                MessageEmbed.Field field = embed.getFields().get(i);
+                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                    partyData = field.getValue();
+                    fieldIndex = i;
+                    break;
+                }
+            }
+            
+            if (partyData == null || partyData.equals("None") || partyData.isEmpty()) {
+                event.reply("❌ Cannot complete. The party is empty!").setEphemeral(true).queue();
+                return;
+            }
+            
+            List<String> userIds = new ArrayList<>();
+            Matcher mUser = Pattern.compile("<@!?(\\d+)>").matcher(partyData);
+            while (mUser.find()) userIds.add(mUser.group(1));
+            
+            StringBuilder payoutLog = new StringBuilder();
+            DatabaseManager db = DatabaseManager.getInstance();
+            
+            for (String uid : userIds) {
+                if (excludedIds.contains(uid)) {
+                    payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
+                    continue;
+                }
+                int currentPoints = db.getPoints(uid);
+                db.updatePoints(uid, currentPoints + rewardAmount);
+                db.incrementBountyStats(uid, isUrgent);
+                payoutLog.append("• <@").append(uid).append("> received `").append(rewardAmount).append(" PTS`\n");
+            }
+            
+            EmbedBuilder completedEmbed = new EmbedBuilder(embed);
+            completedEmbed.setColor(new Color(50, 205, 50));
+            String title = embed.getTitle();
+            if (title != null && !title.startsWith("✅")) {
+                completedEmbed.setTitle("✅ [COMPLETED] " + title);
+            }
+            
+            if (fieldIndex != -1) {
+                completedEmbed.getFields().remove(fieldIndex);
+            }
+            completedEmbed.addField("🏆 EVENT CLEARED", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
+            
+            event.editMessageEmbeds(completedEmbed.build()).setComponents().queue();
+            
+            if (event.getChannel().getType().isThread()) {
+                ThreadChannel thread = event.getChannel().asThreadChannel();
+                
+                String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
+                if (targetPingChannelId != null) {
+                    TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+                    NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
+                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
+
+                    if (pingChannel != null) {
+                        String jumpUrl = thread.getJumpUrl();
+                        pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
+                            for (Message msg : messages) {
+                                if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
+                                    msg.editMessage("✅ **[THIS EVENT IS COMPLETED]**\n~~" + msg.getContentRaw().replace("~~", "") + "~~").queue();
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                }
+
+                thread.sendMessage("🏆 **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
+                    success -> thread.getManager().setLocked(true).setArchived(true).queue()
+                );
+            }
+            return;
+        }
+
         boolean isEdit = event.getModalId().startsWith("modal_edit:");
         if (!event.getModalId().startsWith("modal_fused:") && !isEdit) return;
 
@@ -121,7 +218,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setTitle(displayTitle)
                 .setDescription("💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n" +
                                 (audience.equals("member") ? "\n⚠️ **Role Requirement:** Official Members Only!\n" : "") +
-                                "\n_Click **Join Quest** below to claim your spot in the party!_")
+                                "\n_Click **Join** below to claim your spot in the party!_")
                 .addField("👥 Party [" + currentSlots + "/" + slotDisplay + "]", partyField, false)
                 .setFooter("AMORA Event Directive • Reward embedded: " + reward + " • Time: " + rawTime, null);
 
@@ -130,10 +227,14 @@ public class AnnouncementListener extends ListenerAdapter {
         builder.addEmbeds(questEmbed.build());
         
         builder.addActionRow(
-                Button.success("qjoin_" + audience, "✋ Join Quest"),
-                Button.danger("qleave_button", "⭕ Leave Quest"),
-                Button.secondary("alert_party", "🔔 Alert Party"),
-                Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit (Staff)")
+                Button.success("qjoin_" + audience, "✋ Join"),
+                Button.danger("qleave_button", "⭕ Leave"),
+                Button.secondary("alert_party", "🔔 Alert Party")
+        );
+        builder.addActionRow(
+                Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit Details"),
+                Button.success("complete_prompt:" + audience + ":" + urgency, "🏆 Complete & Payout"),
+                Button.secondary("close_event:" + audience, "🔒 Cancel / Close") 
         );
 
         final long finalUnixEpoch = unixEpoch;
@@ -228,6 +329,80 @@ public class AnnouncementListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+
+        if (buttonId.startsWith("complete_prompt:")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                event.reply("⚠️ **Access Denied:** Only Staff can complete events!").setEphemeral(true).queue();
+                return;
+            }
+            String[] parts = buttonId.split(":");
+            String audience = parts[1];
+            String urgency = parts[2];
+
+            TextInput excludeInput = TextInput.create("input_exclude", "Exclude Users (Tags allowed)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. @freeloader (Leave blank to pay everyone)")
+                .setRequired(false)
+                .build();
+                
+            Modal modal = Modal.create("modal_complete:" + audience + ":" + urgency, "Complete Event & Payout")
+                .addActionRow(excludeInput)
+                .build();
+                
+            event.replyModal(modal).queue();
+            return;
+        }
+
+        if (buttonId.startsWith("close_event:")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                event.reply("⚠️ **Access Denied:** Only Staff can close events!").setEphemeral(true).queue();
+                return;
+            }
+
+            String audience = buttonId.split(":")[1];
+            Message message = event.getMessage();
+            MessageEmbed embed = message.getEmbeds().isEmpty() ? null : message.getEmbeds().get(0);
+            
+            if (embed == null) return;
+
+            EmbedBuilder closedEmbed = new EmbedBuilder(embed);
+            closedEmbed.setColor(Color.DARK_GRAY);
+            String title = embed.getTitle();
+            if (title != null && !title.startsWith("🔒")) {
+                closedEmbed.setTitle("🔒 [CLOSED/CANCELLED] " + title);
+            }
+            
+            event.editMessageEmbeds(closedEmbed.build())
+                 .setComponents() 
+                 .queue();
+
+            if (event.getChannel().getType().isThread()) {
+                ThreadChannel thread = event.getChannel().asThreadChannel();
+                
+                String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
+                if (targetPingChannelId != null) {
+                    TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+                    NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
+                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
+
+                    if (pingChannel != null) {
+                        String jumpUrl = thread.getJumpUrl();
+                        pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
+                            for (Message msg : messages) {
+                                if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
+                                    msg.editMessage("🔒 **[THIS EVENT WAS CANCELLED/CLOSED]**\n~~" + msg.getContentRaw().replace("~~", "") + "~~").queue();
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                }
+
+                thread.sendMessage("🔒 **Event Concluded/Cancelled:** This quest thread has been officially closed by Staff without payouts.").queue(
+                    success -> thread.getManager().setLocked(true).setArchived(true).queue()
+                );
+            }
+            return;
+        }
 
         if (buttonId.startsWith("edit_event:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {

@@ -126,25 +126,25 @@ public class App {
                         .addOption(OptionType.STRING, "url1", "Or paste a web link to an image/GIF", false)
                         .addOption(OptionType.STRING, "url2", "Or paste a 2nd web link", false),
 
-                    Commands.slash("bounty", "Manage the Forum Quest Boards")
-                        .addSubcommands(
-                            new SubcommandData("post", "Director Only: Post a new quest to a Bounty Forum")
-                                .addOption(OptionType.CHANNEL, "forum", "The Quest Forum (Standard or Urgent)", true)
-                                .addOption(OptionType.STRING, "title", "The name of the quest", true)
-                                .addOption(OptionType.INTEGER, "reward", "Points reward PER PERSON", true)
-                                .addOption(OptionType.STRING, "slots", "Max players (e.g. 4, 'Unlimited', 'Not Necessary')", true)
-                                .addOption(OptionType.STRING, "description", "Type \\n for a new line, or leave empty to use a .txt file!", false)
-                                .addOption(OptionType.ATTACHMENT, "desc_file", "Upload a .txt notepad file for a detailed description", false)
-                                .addOption(OptionType.ATTACHMENT, "image", "Optional banner image for the quest card", false),
+                    // Commands.slash("bounty", "Manage the Forum Quest Boards")
+                    //     .addSubcommands(
+                    //         new SubcommandData("post", "Director Only: Post a new quest to a Bounty Forum")
+                    //             .addOption(OptionType.CHANNEL, "forum", "The Quest Forum (Standard or Urgent)", true)
+                    //             .addOption(OptionType.STRING, "title", "The name of the quest", true)
+                    //             .addOption(OptionType.INTEGER, "reward", "Points reward PER PERSON", true)
+                    //             .addOption(OptionType.STRING, "slots", "Max players (e.g. 4, 'Unlimited', 'Not Necessary')", true)
+                    //             .addOption(OptionType.STRING, "description", "Type \\n for a new line, or leave empty to use a .txt file!", false)
+                    //             .addOption(OptionType.ATTACHMENT, "desc_file", "Upload a .txt notepad file for a detailed description", false)
+                    //             .addOption(OptionType.ATTACHMENT, "image", "Optional banner image for the quest card", false),
 
-                            new SubcommandData("kick", "Director Only: Remove a freeloader from the party list")
-                                .addOption(OptionType.USER, "target", "The member to kick", true),
+                    //         new SubcommandData("kick", "Director Only: Remove a freeloader from the party list")
+                    //             .addOption(OptionType.USER, "target", "The member to kick", true),
 
-                            new SubcommandData("cancel", "Director Only: Abort and lock a quest without paying anyone"),
+                    //         new SubcommandData("cancel", "Director Only: Abort and lock a quest without paying anyone"),
 
-                            new SubcommandData("complete", "Director Only: Run INSIDE a quest thread to mass-pay the party & lock!")
-                                .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
-                        ),
+                    //         new SubcommandData("complete", "Director Only: Run INSIDE a quest thread to mass-pay the party & lock!")
+                    //             .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
+                    //     ),
                         
                     Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords")
                         .addOption(OptionType.STRING, "trigger", "Required word/symbol in the message (e.g. ᯓ★)", true)
