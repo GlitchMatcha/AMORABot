@@ -1421,16 +1421,31 @@ public class CommandListener extends ListenerAdapter {
             }
             String secretDelivery = event.getOption("delivery").getAsString();
             String description = readDescription(event);
+            
+            // SMART UPGRADE: Replace the ugly default text with an aesthetic one
+            if (description.equals("No description provided.")) {
+                description = "An official AM0RA digital asset. _No additional details were provided by the Director._";
+            }
+            
             String encodedItem = encodeItem(safeName);
             String buttonId = "buy_" + price + "_" + encodedItem;
 
             MessageCreateBuilder builder = new MessageCreateBuilder();
             List<MessageEmbed> embeds = new ArrayList<>();
 
+            String aestheticDesc = "# ୧ ╰ 𝐀𝐌𝟎𝐑𝐀 POINT 𝐌𝐀𝐑𝐊𝐄𝐓𝐏𝐋𝐀𝐂𝐄 . .ᐟ\n" +
+                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                   "**" + description + "**\n\n" +
+                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n" +
+                                   "` ~ ୨୧ · ` ✦ 𝐏𝐫𝐢𝐜𝐞 : `" + price + " PTS`\n" +
+                                   "` ~ ୨୧ · ` ✦ 𝐒𝐭𝐚𝐭𝐮𝐬 : `In Stock`\n\n" +
+                                   "*(Click the button below to instantly deduct Points and receive your asset in DMs!)*";
+
             EmbedBuilder mainEmbed = new EmbedBuilder()
-                    .setColor(new Color(0, 250, 154))
-                    .setTitle(itemName.toUpperCase())
-                    .setDescription(description + "\n\n💰 **Cost:** `" + price + " Points`");
+                    .setColor(new Color(255, 182, 193)) 
+                    .setTitle("🛍️ " + itemName.toUpperCase())
+                    .setDescription(aestheticDesc)
+                    .setFooter("AM0RA Automated Distribution", null);
 
             try {
                 String image1 = null;
@@ -1472,7 +1487,7 @@ public class CommandListener extends ListenerAdapter {
             }
 
             builder.addEmbeds(embeds);
-            builder.addActionRow(Button.success(buttonId, "Purchase • " + price + " PTS"));
+            builder.addActionRow(Button.success(buttonId, "🛒 Purchase • " + price + " PTS"));
 
             forum.createForumPost(itemName, builder.build()).queue(
                     success -> {
@@ -3078,15 +3093,16 @@ public class CommandListener extends ListenerAdapter {
             }
 
             EmbedBuilder checkoutEmbed = new EmbedBuilder()
-                    .setColor(new Color(46, 204, 113))
+                    .setColor(new Color(255, 182, 193)) 
                     .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
                     .setDescription(
-                            "Your purchase has been processed successfully.\n\n" +
-                            "📦 **Asset Added:** `" + itemName + "`\n" +
+                            "Your purchase has been processed successfully!\n\n" +
+                            "📦 **Asset Acquired:** `" + itemName + "`\n" +
+                            "💳 **Points Deducted:** `" + price + " PTS`\n" +
                             "💌 **Delivery Status:** Check your DMs for the secure package.\n\n" +
-                            "*Thank you for supporting the AMORA Asset Market.*"
+                            "*Thank you for supporting the AM0RA Marketplace!*"
                     )
-                    .setFooter("AMORA Secure Commerce System", null);
+                    .setFooter("AM0RA Secure Commerce System", null);
 
             event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
 
