@@ -1493,279 +1493,279 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (event.getName().equals("bounty")) {
-            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("  You do not have clearance to manage Bounties.").setEphemeral(true).queue();
-                return;
-            }
+        // if (event.getName().equals("bounty")) {
+        //     if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+        //         event.reply("  You do not have clearance to manage Bounties.").setEphemeral(true).queue();
+        //         return;
+        //     }
 
-            String subCommand = event.getSubcommandName();
+        //     String subCommand = event.getSubcommandName();
 
-            if ("post".equals(subCommand)) {
-                if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
-                    event.reply("  MUST be a Forum Channel!").setEphemeral(true).queue();
-                    return;
-                }
-                if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
-                    event.reply("  Bounty forum IDs are not configured.").setEphemeral(true).queue();
-                    return;
-                }
+        //     if ("post".equals(subCommand)) {
+        //         if (event.getOption("forum").getAsChannel().getType() != ChannelType.FORUM) {
+        //             event.reply("  MUST be a Forum Channel!").setEphemeral(true).queue();
+        //             return;
+        //         }
+        //         if (STANDARD_BOUNTY_FORUM_ID == null || URGENT_BOUNTY_FORUM_ID == null) {
+        //             event.reply("  Bounty forum IDs are not configured.").setEphemeral(true).queue();
+        //             return;
+        //         }
 
-                String selectedForumId = event.getOption("forum").getAsChannel().getId();
-                if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
-                    event.reply("  **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
-                    return;
-                }
+        //         String selectedForumId = event.getOption("forum").getAsChannel().getId();
+        //         if (!selectedForumId.equals(STANDARD_BOUNTY_FORUM_ID) && !selectedForumId.equals(URGENT_BOUNTY_FORUM_ID)) {
+        //             event.reply("  **Access Denied:** Must be an official Quest Forum!").setEphemeral(true).queue();
+        //             return;
+        //         }
 
-                ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
-                String title = event.getOption("title").getAsString();
-                int reward = event.getOption("reward").getAsInt();
-                if (reward < 0) {
-                    event.reply("The reward cannot be negative!").setEphemeral(true).queue();
-                return;
-                }
-                String slotsInput = event.getOption("slots").getAsString();
-                int maxSlots = 0;
-                try {
-                    maxSlots = Integer.parseInt(slotsInput.trim());
-                } catch (NumberFormatException ignored) {
-                    maxSlots = 0;
-                }
+        //         ForumChannel forum = event.getOption("forum").getAsChannel().asForumChannel();
+        //         String title = event.getOption("title").getAsString();
+        //         int reward = event.getOption("reward").getAsInt();
+        //         if (reward < 0) {
+        //             event.reply("The reward cannot be negative!").setEphemeral(true).queue();
+        //         return;
+        //         }
+        //         String slotsInput = event.getOption("slots").getAsString();
+        //         int maxSlots = 0;
+        //         try {
+        //             maxSlots = Integer.parseInt(slotsInput.trim());
+        //         } catch (NumberFormatException ignored) {
+        //             maxSlots = 0;
+        //         }
 
-                String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
-                String description = readDescription(event);
+        //         String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
+        //         String description = readDescription(event);
 
-                event.deferReply(true).queue();
+        //         event.deferReply(true).queue();
 
-                MessageCreateBuilder builder = new MessageCreateBuilder();
-                EmbedBuilder questEmbed = new EmbedBuilder()
-                        .setColor(new Color(255, 69, 0))
-                        .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
-                        .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
-                        .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
-                        .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
+        //         MessageCreateBuilder builder = new MessageCreateBuilder();
+        //         EmbedBuilder questEmbed = new EmbedBuilder()
+        //                 .setColor(new Color(255, 69, 0))
+        //                 .setTitle("🎯 DIRECTIVE: " + title.toUpperCase())
+        //                 .setDescription(description + "\n\n💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n\n_Press Join below to enter the party!_")
+        //                 .addField("👥 Party [0/" + slotDisplay + "]", "None", false)
+        //                 .setFooter("AMORA Directive Network • Reward embedded: " + reward, null);
 
-                try {
-                    if (event.getOption("image") != null) {
-                        String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
-                        questEmbed.setImage(imageRef);
-                    }
-                } catch (Exception e) {
-                    event.getHook().sendMessage("  Failed to process uploaded image: " + e.getMessage()).queue();
-                    return;
-                }
+        //         try {
+        //             if (event.getOption("image") != null) {
+        //                 String imageRef = attachImage(builder, event.getOption("image").getAsAttachment());
+        //                 questEmbed.setImage(imageRef);
+        //             }
+        //         } catch (Exception e) {
+        //             event.getHook().sendMessage("  Failed to process uploaded image: " + e.getMessage()).queue();
+        //             return;
+        //         }
 
-                builder.addEmbeds(questEmbed.build());
-                builder.addActionRow(
-                        Button.success("bjoin_button", "✋ Join Quest"),
-                        Button.danger("bleave_button", "🛑 Leave Quest")
-                );
+        //         builder.addEmbeds(questEmbed.build());
+        //         builder.addActionRow(
+        //                 Button.success("bjoin_button", "✋ Join Quest"),
+        //                 Button.danger("bleave_button", "🛑 Leave Quest")
+        //         );
 
-                forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
-                        success -> {
-                            event.getHook().sendMessage(" Dynamic Party Bounty posted!").queue();
-                            sendAuditLog(event.getGuild(), "Bounty Posted",
-                                    event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
-                                            + reward + " Points`.", new Color(255, 69, 0));
-                        },
-                        error -> {
-                            error.printStackTrace();
-                            event.getHook().sendMessage(
-                                            "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
-                                    .queue();
-                        }
-                );
-                return;
-            }
+        //         forum.createForumPost("🎯 " + title + " [" + reward + " PTS]", builder.build()).queue(
+        //                 success -> {
+        //                     event.getHook().sendMessage(" Dynamic Party Bounty posted!").queue();
+        //                     sendAuditLog(event.getGuild(), "Bounty Posted",
+        //                             event.getUser().getAsMention() + " posted Directive: **" + title + "** for `"
+        //                                     + reward + " Points`.", new Color(255, 69, 0));
+        //                 },
+        //                 error -> {
+        //                     error.printStackTrace();
+        //                     event.getHook().sendMessage(
+        //                                     "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
+        //                             .queue();
+        //                 }
+        //         );
+        //         return;
+        //     }
 
-            if ("kick".equals(subCommand)) {
-                if (!event.getChannel().getType().isThread()) {
-                    event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
-                    return;
-                }
+        //     if ("kick".equals(subCommand)) {
+        //         if (!event.getChannel().getType().isThread()) {
+        //             event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
+        //             return;
+        //         }
 
-                User target = event.getOption("target").getAsUser();
-                ThreadChannel thread = event.getChannel().asThreadChannel();
+        //         User target = event.getOption("target").getAsUser();
+        //         ThreadChannel thread = event.getChannel().asThreadChannel();
 
-                event.reply("🔄 Removing " + target.getName() + " from the party...").setEphemeral(true).queue(replyHook ->
-                        thread.retrieveStartMessage().queue(startMsg -> {
-                            MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-                            String[] partyField = getPartyField(oldEmbed);
-                            int fieldIndex = getPartyFieldIndex(oldEmbed);
+        //         event.reply("🔄 Removing " + target.getName() + " from the party...").setEphemeral(true).queue(replyHook ->
+        //                 thread.retrieveStartMessage().queue(startMsg -> {
+        //                     MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+        //                     EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+        //                     String[] partyField = getPartyField(oldEmbed);
+        //                     int fieldIndex = getPartyFieldIndex(oldEmbed);
 
-                            if (partyField == null || fieldIndex == -1) {
-                                replyHook.editOriginal("  Party data not found.").queue();
-                                return;
-                            }
+        //                     if (partyField == null || fieldIndex == -1) {
+        //                         replyHook.editOriginal("  Party data not found.").queue();
+        //                         return;
+        //                     }
 
-                            String partyName = partyField[0];
-                            String partyValue = partyField[1];
-                            String userMention = target.getAsMention();
+        //                     String partyName = partyField[0];
+        //                     String partyValue = partyField[1];
+        //                     String userMention = target.getAsMention();
 
-                            if (!partyValue.contains(userMention)) {
-                                replyHook.editOriginal("  " + userMention + " is not currently in the party!").queue();
-                                return;
-                            }
+        //                     if (!partyValue.contains(userMention)) {
+        //                         replyHook.editOriginal("  " + userMention + " is not currently in the party!").queue();
+        //                         return;
+        //                     }
 
-                            int current = parsePartyCurrent(partyName);
-                            String maxStr = parsePartyMax(partyName);
+        //                     int current = parsePartyCurrent(partyName);
+        //                     String maxStr = parsePartyMax(partyName);
 
-                            partyValue = partyValue.replace(userMention + "\n", "")
-                                    .replace("\n" + userMention, "")
-                                    .replace(userMention, "");
+        //                     partyValue = partyValue.replace(userMention + "\n", "")
+        //                             .replace("\n" + userMention, "")
+        //                             .replace(userMention, "");
 
-                            if (partyValue.trim().isEmpty()) {
-                                partyValue = "None";
-                            }
+        //                     if (partyValue.trim().isEmpty()) {
+        //                         partyValue = "None";
+        //                     }
 
-                            current--;
+        //                     current--;
 
-                            newEmbed.getFields().remove(fieldIndex);
-                            newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
+        //                     newEmbed.getFields().remove(fieldIndex);
+        //                     newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyValue, false);
 
-                            if (current == 0) {
-                                newEmbed.setColor(new Color(255, 69, 0));
-                            }
+        //                     if (current == 0) {
+        //                         newEmbed.setColor(new Color(255, 69, 0));
+        //                     }
 
-                            startMsg.editMessageEmbeds(newEmbed.build())
-                                    .setActionRow(
-                                            Button.success("bjoin_button", "✋ Join Quest"),
-                                            Button.danger("bleave_button", "🛑 Leave Quest")
-                                    )
-                                    .queue();
+        //                     startMsg.editMessageEmbeds(newEmbed.build())
+        //                             .setActionRow(
+        //                                     Button.success("bjoin_button", "✋ Join Quest"),
+        //                                     Button.danger("bleave_button", "🛑 Leave Quest")
+        //                             )
+        //                             .queue();
 
-                            replyHook.editOriginal(" Successfully kicked " + userMention + " from the party.").queue();
-                            thread.sendMessage("⚠️ Admin Action: " + userMention + " has been removed from the party by a Director.").queue();
-                            sendAuditLog(event.getGuild(), "Bounty Kick",
-                                    event.getUser().getAsMention() + " removed " + userMention + " from a party in thread `"
-                                            + thread.getId() + "`.", Color.ORANGE);
-                        }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
-                return;
-            }
+        //                     replyHook.editOriginal(" Successfully kicked " + userMention + " from the party.").queue();
+        //                     thread.sendMessage("⚠️ Admin Action: " + userMention + " has been removed from the party by a Director.").queue();
+        //                     sendAuditLog(event.getGuild(), "Bounty Kick",
+        //                             event.getUser().getAsMention() + " removed " + userMention + " from a party in thread `"
+        //                                     + thread.getId() + "`.", Color.ORANGE);
+        //                 }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
+        //         return;
+        //     }
 
-            if ("cancel".equals(subCommand)) {
-                if (!event.getChannel().getType().isThread()) {
-                    event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
-                    return;
-                }
+        //     if ("cancel".equals(subCommand)) {
+        //         if (!event.getChannel().getType().isThread()) {
+        //             event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
+        //             return;
+        //         }
 
-                ThreadChannel thread = event.getChannel().asThreadChannel();
-                event.reply("🔄 Aborting directive...").queue(replyHook ->
-                        thread.retrieveStartMessage().queue(startMsg -> {
-                            MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-                            newEmbed.setColor(Color.RED);
+        //         ThreadChannel thread = event.getChannel().asThreadChannel();
+        //         event.reply("🔄 Aborting directive...").queue(replyHook ->
+        //                 thread.retrieveStartMessage().queue(startMsg -> {
+        //                     MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+        //                     EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+        //                     newEmbed.setColor(Color.RED);
 
-                            int partyFieldIndex = getPartyFieldIndex(oldEmbed);
-                            if (partyFieldIndex != -1) {
-                                newEmbed.getFields().remove(partyFieldIndex);
-                            }
+        //                     int partyFieldIndex = getPartyFieldIndex(oldEmbed);
+        //                     if (partyFieldIndex != -1) {
+        //                         newEmbed.getFields().remove(partyFieldIndex);
+        //                     }
 
-                            newEmbed.addField("  DIRECTIVE CANCELLED",
-                                    "This quest was aborted by " + event.getUser().getAsMention() + ". No points were awarded.", false);
+        //                     newEmbed.addField("  DIRECTIVE CANCELLED",
+        //                             "This quest was aborted by " + event.getUser().getAsMention() + ". No points were awarded.", false);
 
-                            startMsg.editMessageEmbeds(newEmbed.build()).setComponents().queue(done -> {
-                                replyHook.editOriginalEmbeds(new EmbedBuilder()
-                                        .setColor(Color.RED)
-                                        .setTitle("DIRECTIVE ABORTED")
-                                        .setDescription("Quest cancelled and locked.")
-                                        .build()).setContent("").queue(done2 ->
-                                        thread.getManager().setLocked(true).setArchived(true).queue());
+        //                     startMsg.editMessageEmbeds(newEmbed.build()).setComponents().queue(done -> {
+        //                         replyHook.editOriginalEmbeds(new EmbedBuilder()
+        //                                 .setColor(Color.RED)
+        //                                 .setTitle("DIRECTIVE ABORTED")
+        //                                 .setDescription("Quest cancelled and locked.")
+        //                                 .build()).setContent("").queue(done2 ->
+        //                                 thread.getManager().setLocked(true).setArchived(true).queue());
 
-                                sendAuditLog(event.getGuild(), "Bounty Cancelled",
-                                        event.getUser().getAsMention() + " aborted the quest in thread `"
-                                                + thread.getId() + "`.", Color.RED);
-                            });
-                        }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
-                return;
-            }
+        //                         sendAuditLog(event.getGuild(), "Bounty Cancelled",
+        //                                 event.getUser().getAsMention() + " aborted the quest in thread `"
+        //                                         + thread.getId() + "`.", Color.RED);
+        //                     });
+        //                 }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
+        //         return;
+        //     }
 
-            if ("complete".equals(subCommand)) {
-                if (!event.getChannel().getType().isThread()) {
-                    event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
-                    return;
-                }
+        //     if ("complete".equals(subCommand)) {
+        //         if (!event.getChannel().getType().isThread()) {
+        //             event.reply("  Run this inside the Quest Thread!").setEphemeral(true).queue();
+        //             return;
+        //         }
 
-                ThreadChannel thread = event.getChannel().asThreadChannel();
-                boolean isUrgent = URGENT_BOUNTY_FORUM_ID != null
-                        && thread.getParentChannel().getId().equals(URGENT_BOUNTY_FORUM_ID);
-                String commandExecutorId = event.getUser().getId();
+        //         ThreadChannel thread = event.getChannel().asThreadChannel();
+        //         boolean isUrgent = URGENT_BOUNTY_FORUM_ID != null
+        //                 && thread.getParentChannel().getId().equals(URGENT_BOUNTY_FORUM_ID);
+        //         String commandExecutorId = event.getUser().getId();
 
-                event.reply("🔄 Processing party mass-payout and logging stats...").queue(replyHook ->
-                        thread.retrieveStartMessage().queue(startMsg -> {
-                            MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
-                            String footerText = oldEmbed.getFooter() != null ? oldEmbed.getFooter().getText() : "0";
-                            int rewardAmount = Integer.parseInt(footerText.replaceAll("[^0-9]", ""));
-                            String[] partyField = getPartyField(oldEmbed);
-                            int partyFieldIndex = getPartyFieldIndex(oldEmbed);
-                            String partyData = partyField == null ? "None" : partyField[1];
+        //         event.reply("🔄 Processing party mass-payout and logging stats...").queue(replyHook ->
+        //                 thread.retrieveStartMessage().queue(startMsg -> {
+        //                     MessageEmbed oldEmbed = startMsg.getEmbeds().get(0);
+        //                     String footerText = oldEmbed.getFooter() != null ? oldEmbed.getFooter().getText() : "0";
+        //                     int rewardAmount = Integer.parseInt(footerText.replaceAll("[^0-9]", ""));
+        //                     String[] partyField = getPartyField(oldEmbed);
+        //                     int partyFieldIndex = getPartyFieldIndex(oldEmbed);
+        //                     String partyData = partyField == null ? "None" : partyField[1];
 
-                            if (partyData.equals("None") || partyData.isEmpty()) {
-                                replyHook.editOriginal("  Cannot complete. The party is empty!").queue();
-                                return;
-                            }
+        //                     if (partyData.equals("None") || partyData.isEmpty()) {
+        //                         replyHook.editOriginal("  Cannot complete. The party is empty!").queue();
+        //                         return;
+        //                     }
 
-                            List<String> excludedIds = parseMentionIds(event.getOption("exclude") != null
-                                    ? event.getOption("exclude").getAsString() : "");
-                            List<String> userIds = parseMentionIds(partyData);
-                            boolean selfApprove = userIds.contains(commandExecutorId) && !excludedIds.contains(commandExecutorId);
-                            StringBuilder payoutLog = new StringBuilder();
+        //                     List<String> excludedIds = parseMentionIds(event.getOption("exclude") != null
+        //                             ? event.getOption("exclude").getAsString() : "");
+        //                     List<String> userIds = parseMentionIds(partyData);
+        //                     boolean selfApprove = userIds.contains(commandExecutorId) && !excludedIds.contains(commandExecutorId);
+        //                     StringBuilder payoutLog = new StringBuilder();
 
-                            for (String uid : userIds) {
-                                if (excludedIds.contains(uid)) {
-                                    payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
-                                    continue;
-                                }
+        //                     for (String uid : userIds) {
+        //                         if (excludedIds.contains(uid)) {
+        //                             payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
+        //                             continue;
+        //                         }
 
-                                int currentPoints = db.getPoints(uid);
-                                db.updatePoints(uid, currentPoints + rewardAmount);
-                                db.incrementBountyStats(uid, isUrgent);
-                                payoutLog.append("• <@").append(uid).append("> received `")
-                                        .append(rewardAmount).append(" PTS`\n");
-                            }
+        //                         int currentPoints = db.getPoints(uid);
+        //                         db.updatePoints(uid, currentPoints + rewardAmount);
+        //                         db.incrementBountyStats(uid, isUrgent);
+        //                         payoutLog.append("• <@").append(uid).append("> received `")
+        //                                 .append(rewardAmount).append(" PTS`\n");
+        //                     }
 
-                            EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-                            newEmbed.setColor(selfApprove ? Color.ORANGE : Color.GREEN);
+        //                     EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+        //                     newEmbed.setColor(selfApprove ? Color.ORANGE : Color.GREEN);
 
-                            if (partyFieldIndex != -1) {
-                                newEmbed.getFields().remove(partyFieldIndex);
-                            }
+        //                     if (partyFieldIndex != -1) {
+        //                         newEmbed.getFields().remove(partyFieldIndex);
+        //                     }
 
-                            newEmbed.addField(" QUEST CLEARED",
-                                    "Successfully completed by the party!\n\n" + payoutLog, false);
+        //                     newEmbed.addField(" QUEST CLEARED",
+        //                             "Successfully completed by the party!\n\n" + payoutLog, false);
 
-                            if (selfApprove) {
-                                newEmbed.addField("⚠️ OVERRIDE LOGGED",
-                                        event.getUser().getAsMention() + " authorized a payout that included themselves.", false);
-                            }
+        //                     if (selfApprove) {
+        //                         newEmbed.addField("⚠️ OVERRIDE LOGGED",
+        //                                 event.getUser().getAsMention() + " authorized a payout that included themselves.", false);
+        //                     }
 
-                            startMsg.editMessageEmbeds(newEmbed.build()).setComponents().queue(done -> {
-                                EmbedBuilder receiptEmbed = new EmbedBuilder()
-                                        .setColor(selfApprove ? Color.ORANGE : Color.GREEN)
-                                        .setTitle(selfApprove ? "DIRECTIVE CLEARED WITH WARNING" : "DIRECTIVE CLEARED")
-                                        .setDescription("All party members have been paid and stats updated. Thread locking and archiving...");
+        //                     startMsg.editMessageEmbeds(newEmbed.build()).setComponents().queue(done -> {
+        //                         EmbedBuilder receiptEmbed = new EmbedBuilder()
+        //                                 .setColor(selfApprove ? Color.ORANGE : Color.GREEN)
+        //                                 .setTitle(selfApprove ? "DIRECTIVE CLEARED WITH WARNING" : "DIRECTIVE CLEARED")
+        //                                 .setDescription("All party members have been paid and stats updated. Thread locking and archiving...");
 
-                                replyHook.editOriginalEmbeds(receiptEmbed.build()).setContent("").queue(done2 ->
-                                        thread.getManager().setLocked(true).setArchived(true).queue());
+        //                         replyHook.editOriginalEmbeds(receiptEmbed.build()).setContent("").queue(done2 ->
+        //                                 thread.getManager().setLocked(true).setArchived(true).queue());
 
-                                if (selfApprove) {
-                                    sendAuditLog(event.getGuild(), "SUSPICIOUS PAYOUT",
-                                            event.getUser().getAsMention() + " self-approved a bounty payout in thread `"
-                                                    + thread.getId() + "` for `" + rewardAmount + " Points`.", Color.RED);
-                                } else {
-                                    sendAuditLog(event.getGuild(), "Bounty Cleared",
-                                            event.getUser().getAsMention() + " cleared the quest in thread `"
-                                                    + thread.getId() + "`. Paid out `" + rewardAmount + " Points`.",
-                                            Color.GREEN);
-                                }
-                            });
-                        }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
-                return;
-            }
+        //                         if (selfApprove) {
+        //                             sendAuditLog(event.getGuild(), "SUSPICIOUS PAYOUT",
+        //                                     event.getUser().getAsMention() + " self-approved a bounty payout in thread `"
+        //                                             + thread.getId() + "` for `" + rewardAmount + " Points`.", Color.RED);
+        //                         } else {
+        //                             sendAuditLog(event.getGuild(), "Bounty Cleared",
+        //                                     event.getUser().getAsMention() + " cleared the quest in thread `"
+        //                                             + thread.getId() + "`. Paid out `" + rewardAmount + " Points`.",
+        //                                     Color.GREEN);
+        //                         }
+        //                     });
+        //                 }, error -> replyHook.editOriginal("  Error fetching the starting message.").queue()));
+        //         return;
+        //     }
 
-            return;
-        }
+        //     return;
+        // }
 
         if (event.getName().equals("addsparks")) {
             if (!requireAnyConfiguredRole(event, ADDSPARKS_ROLE_IDS, "ADDSPARKS_ROLE_IDS")) {
