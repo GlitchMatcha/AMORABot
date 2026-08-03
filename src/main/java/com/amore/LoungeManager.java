@@ -15,7 +15,6 @@ import java.util.concurrent.TimeUnit;
 public class LoungeManager {
 
     private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
-    private static final String ROLES_CHANNEL_ID = System.getenv("ROLES_CHANNEL_ID");
 
     private static final List<String> QUOTES = Arrays.asList(
             "No act of kindness, no matter how small, is ever wasted.",
@@ -132,7 +131,7 @@ public class LoungeManager {
             return;
         }
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
         scheduler.scheduleAtFixedRate(() -> {
             try {
@@ -163,41 +162,5 @@ public class LoungeManager {
                 e.printStackTrace();
             }
         }, 0, 2, TimeUnit.HOURS); 
-
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
-                if (lounge != null) {
-                    DatabaseManager db = DatabaseManager.getInstance();
-
-                    String savedRoleIdStr = db.getBotState("last_role_msg_id");
-                    if (savedRoleIdStr != null && !savedRoleIdStr.isEmpty()) {
-                        try {
-                            long idToDelete = Long.parseLong(savedRoleIdStr);
-                            lounge.deleteMessageById(idToDelete).queue(success -> {}, error -> {});
-                        } catch (NumberFormatException ignored) {}
-                    }
-
-                    String roleChannelMention = (ROLES_CHANNEL_ID != null && !ROLES_CHANNEL_ID.isBlank()) 
-                            ? "<#" + ROLES_CHANNEL_ID + ">" 
-                            : "the roles channel";
-
-                    EmbedBuilder embed = new EmbedBuilder()
-                            .setColor(new Color(138, 43, 226)) 
-                            .setTitle("✦ AMORA ROLE REGISTRATION ✦")
-                            .setDescription("Are you ready to step up? Don't forget to drop by " + roleChannelMention + " to officially claim your title!\n\n" +
-                                    "🌸 **Guest** — For our lovely supporters here to hang out and cheer AMORA on.\n" +
-                                    "💫 **Trainee** — For those actively looking to join the AMORA member force in the future.\n\n" +
-                                    "*Choose your path and let's keep building something amazing together!*")
-                            .setFooter("AMORA Automated Lounge Services", null);
-                            
-                    lounge.sendMessageEmbeds(embed.build()).queue(message -> {
-                        db.setBotState("last_role_msg_id", String.valueOf(message.getIdLong()));
-                    });
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }, 1, 3, TimeUnit.HOURS); 
     }
 }
