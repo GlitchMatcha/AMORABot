@@ -144,7 +144,8 @@ public class AnnouncementListener extends ListenerAdapter {
             String threadId = event.getChannel().getId();
             scheduleTimers(threadId, finalUnixEpoch, event.getJDA());
 
-            String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
+            String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
+            
             if (targetPingChannelId != null && event.getChannel().getType().isThread()) {
                 TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
                 NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
@@ -178,10 +179,11 @@ public class AnnouncementListener extends ListenerAdapter {
             
         } else {
             String targetForumId = audience.equals("member") && urgency.equals("urgent") ? System.getenv("URGENT_BOUNTY_FORUM_ID") : System.getenv("STANDARD_BOUNTY_FORUM_ID");
-            String targetPingChannelId = System.getenv("SCHEDULE_CHANNEL_ID");
+            
+            String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
 
             if (targetForumId == null || targetPingChannelId == null) {
-                event.reply("⚠️ **Routing Error:** Missing Environment Variables!").setEphemeral(true).queue();
+                event.reply("⚠️ **Routing Error:** Missing Environment Variables! Ensure `MEMBER_SCHEDULE_CHANNEL_ID` and `SCHEDULE_CHANNEL_ID` are set in the .env file.").setEphemeral(true).queue();
                 return;
             }
 
@@ -212,7 +214,7 @@ public class AnnouncementListener extends ListenerAdapter {
                             
                             event.getHook().sendMessage("✅ Hybrid Event successfully routed!").queue();
                         } else {
-                            event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the Schedules channel!** Check permissions and ID.").queue();
+                            event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the target schedules channel!** Check permissions and ID.").queue();
                         }
                     },
                     error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
