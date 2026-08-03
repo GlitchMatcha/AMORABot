@@ -49,6 +49,25 @@ public class AnnouncementListener extends ListenerAdapter {
         String audience = parts[1];
         String urgency = parts[2];
 
+        if (audience.equals("everyone")) {
+            boolean isHighStaff = event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR);
+            String highStaffIds = System.getenv("HIGH_STAFF_ROLE_IDS");
+            
+            if (!isHighStaff && highStaffIds != null && !highStaffIds.isBlank()) {
+                for (String roleId : highStaffIds.split(",")) {
+                    if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(roleId.trim()))) {
+                        isHighStaff = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!isHighStaff) {
+                event.reply("⚠️ **Access Denied:** Only High Staff (Owner, Co-Owner, Head Staff) can host public `Everyone` events! Please select a `Members` event instead.").setEphemeral(true).queue();
+                return;
+            }
+        }
+
         event.replyModal(buildEventModal("modal_fused:", "Create Hybrid Event", type, audience, urgency, "", "", "", "", "")).queue();
     }
 
@@ -234,6 +253,7 @@ public class AnnouncementListener extends ListenerAdapter {
         builder.addActionRow(
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit Details"),
                 Button.success("complete_prompt:" + audience + ":" + urgency, "🏆 Complete & Payout"),
+                Button.secondary("backup_request:" + audience, "📢 Call Backup"), 
                 Button.secondary("close_event:" + audience, "🔒 Cancel / Close") 
         );
 
@@ -329,6 +349,43 @@ public class AnnouncementListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+
+        if (buttonId.startsWith("backup_request:")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
+                return;
+            }
+
+            String audience = buttonId.split(":")[1];
+            String loungeId = System.getenv("LOUNGE_CHANNEL_ID");
+            
+            if (loungeId == null) {
+                event.reply("⚠️ **Error:** `LOUNGE_CHANNEL_ID` is not configured in the .env file!").setEphemeral(true).queue();
+                return;
+            }
+
+            TextChannel lounge = event.getJDA().getTextChannelById(loungeId);
+            if (lounge == null) {
+                event.reply("⚠️ **Error:** Could not find the Lounge channel!").setEphemeral(true).queue();
+                return;
+            }
+
+            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+            String pingMention = audience.equals("member") 
+                    ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
+                    : "@everyone";
+
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            String threadLink = thread.getJumpUrl();
+            String eventName = event.getMessage().getEmbeds().isEmpty() ? "an Event" : event.getMessage().getEmbeds().get(0).getTitle();
+
+            lounge.sendMessage(pingMention + " 🚨 **HOST NEEDS BACKUP!** 🚨\n" +
+                               event.getUser().getAsMention() + " is looking for more players to join **" + eventName + "** right now!\n\n" +
+                               "🔗 **>> [CLICK HERE TO JUMP IN](" + threadLink + ") <<**").queue();
+
+            event.reply("✅ **Backup Requested!** A call-to-arms has been successfully broadcasted to the Lounge chat.").setEphemeral(true).queue();
+            return;
+        }
 
         if (buttonId.startsWith("complete_prompt:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
