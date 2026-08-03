@@ -700,6 +700,79 @@ public class CommandListener extends ListenerAdapter {
             return null;
         }
     }
+    @Override
+    public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
+        if (event.getModalId().startsWith("comm_modal_")) {
+            String creatorId = event.getModalId().substring("comm_modal_".length());
+            User buyer = event.getUser();
+            
+            String what = event.getValue("comm_what").getAsString();
+            String how = event.getValue("comm_how").getAsString();
+            String much = event.getValue("comm_much").getAsString();
+            String song = event.getValue("comm_song").getAsString();
+
+            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
+            if (orderChannelId == null) return;
+            
+            TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
+            if (orderChannel == null) return;
+
+            event.getJDA().retrieveUserById(creatorId).queue(creator -> {
+                String buyerName = buyer.getName();
+                String creatorName = creator.getName();
+                DatabaseManager db = DatabaseManager.getInstance();
+                String ratingDisplay = db.getCreatorRatingString(creator.getId());
+
+                String template = "A NEW ORDER HAS CAME IN .'\n\n" +
+                                  "🎼 🍋 **𝗪𝐡𝐚𝐭 𝐚𝐫𝐞 𝐲𝐨𝐮 𝐨𝐫𝐝𝐞𝐫𝐢𝐧𝐠?** ⁝ " + what + "\n\n" +
+                                  "╰ ☀️ // 🍋 **𝗛𝐨𝐰 𝐚𝐫𝐞 𝐲𝐨𝐮 𝐩𝐚𝐲𝐢𝐧𝐠?** ⁝ " + how + "\n\n" +
+                                  "* _  ₓₓ 🌈 **𝗛𝐨𝐰 𝐦𝐮𝐜𝐡 𝐚𝐫𝐞 𝐲𝐨𝐮 𝐩𝐚𝐲𝐢𝐧𝐠?** 💛 ⁝ " + much + "\n\n" +
+                                  "🌴 🫧 *｡° **𝗦𝐨𝐧𝐠?** 🐬 ⁝ " + song;
+
+                EmbedBuilder orderEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setTitle("✦ NEW COMMISSION ORDER ✦")
+                        .setDescription(template + "\n\n*(Creator: Accept this order below to begin the transaction!)*")
+                        .setThumbnail(buyer.getEffectiveAvatarUrl())
+                        .setFooter("AMORA Designated Order System", null);
+
+                event.reply(" **Commission placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ".").setEphemeral(true).queue();
+
+                String generatingUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
+                                      ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
+                                      "⋆ ˚｡⋆୨୧˚\n\n" +
+                                      "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+                                      "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
+                                      "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
+                                      "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
+                                      "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
+                                      "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
+                                      "_ _   ꒰ ⌾ ꒱  ✦ **Creator Rating:** " + ratingDisplay + "\n" +
+                                      "_ _   ꒰ ⌾ ꒱  ✦ **Status:** ⏳ *Weaving the digital threads...*";
+
+                orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
+                    String shortId = UUID.randomUUID().toString().substring(0, 4);
+                    orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
+                         
+                         String readyUI = generatingUI.replace("⏳ *Weaving the digital threads...*", "🔒 *Transaction Room Secured!*\n\n<a:Saur_Heart:1525689248391368796>   _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n_ _   " + thread.getAsMention());
+                         
+                         mainMessage.editMessage(readyUI).queue();
+                         
+                         thread.addThreadMember(creator).queue();
+                         thread.addThreadMember(buyer).queue();
+
+                         thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
+                               .addEmbeds(orderEmbed.build())
+                               .addActionRow(
+                                   Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
+                                   Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "  Decline")
+                               ).queue();
+                    });
+                });
+            });
+            return;
+        }
+    }
     
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
@@ -2319,7 +2392,65 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
-        
+        if (componentId.startsWith("comm_start_")) {
+            String creatorId = componentId.substring("comm_start_".length());
+            User buyer = event.getUser();
+
+            if (creatorId.equals(buyer.getId())) {
+                event.reply(MIKU_SAD + " You cannot commission yourself!").setEphemeral(true).queue();
+                return;
+            }
+
+            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
+            if (orderChannelId == null) {
+                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
+                return;
+            }
+
+            TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
+            if (orderChannel == null) {
+                event.reply("Cannot find the official order channel.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.getJDA().retrieveUserById(creatorId).queue(creator -> {
+                long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
+                .filter(t -> t.getThreadMembers().stream().anyMatch(m -> m.getId().equals(buyer.getId())))
+                .count();
+
+                if (buyerTotalActiveOrders >= 3) {
+                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish an existing transaction!").setEphemeral(true).queue();
+                    return;
+                }
+
+                long creatorActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains("➔ " + creator.getName()))
+                        .count();
+
+                if (creatorActiveOrders >= 5) {
+                    event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait!").setEphemeral(true).queue();
+                    return;
+                }
+
+                net.dv8tion.jda.api.interactions.components.text.TextInput whatOrder = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_what", "What are you ordering?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput howPaying = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_how", "How are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput howMuch = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_much", "How much are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput song = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_song", "Song / Theme / Extra Details?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+                
+                net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("comm_modal_" + creatorId, "Commission Form")
+                    .addActionRow(whatOrder)
+                    .addActionRow(howPaying)
+                    .addActionRow(howMuch)
+                    .addActionRow(song)
+                    .build();
+                    
+                event.replyModal(modal).queue();
+
+            }, error -> {
+                event.reply(MIKU_SAD + " Could not find the creator.").setEphemeral(true).queue();
+            });
+            return;
+        }
         if (componentId.startsWith("order_start_")) {
             String creatorId = componentId.substring("order_start_".length());
             User buyer = event.getUser();
