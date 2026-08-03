@@ -750,7 +750,7 @@ public class ChatListener extends ListenerAdapter {
 
             EmbedBuilder orderPromptEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 182, 193))
-                    .setDescription(" **Want to buy this?**\nClick the button below to instantly open a private order ticket with " + author.getAsMention() + "!\n\n" +
+                    .setDescription(" **Want to buy this?**\nClick the buttons below to instantly open a private order ticket or request a custom commission from " + author.getAsMention() + "!\n\n" +
                                     "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
 
             channel.sendMessageEmbeds(orderPromptEmbed.build())
