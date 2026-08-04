@@ -703,6 +703,10 @@ public class CommandListener extends ListenerAdapter {
     @Override
     public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
         if (event.getModalId().startsWith("comm_modal_")) {
+            
+            // Instantly acknowledge the form submission so Discord doesn't throw a 10062 Error!
+            event.deferReply(true).queue(); 
+            
             String creatorId = event.getModalId().substring("comm_modal_".length());
             User buyer = event.getUser();
             
@@ -718,6 +722,27 @@ public class CommandListener extends ListenerAdapter {
             if (orderChannel == null) return;
 
             event.getJDA().retrieveUserById(creatorId).queue(creator -> {
+                
+                // --- CART & QUEUE CHECKS MOVED HERE ---
+                long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
+                    .filter(t -> t.getThreadMembers().stream().anyMatch(m -> m.getId().equals(buyer.getId())))
+                    .count();
+
+                if (buyerTotalActiveOrders >= 3) {
+                    event.getHook().sendMessage(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish an existing transaction!").queue();
+                    return;
+                }
+
+                long creatorActiveOrders = orderChannel.getThreadChannels().stream()
+                        .filter(t -> t.getName().contains("➔ " + creator.getName()))
+                        .count();
+
+                if (creatorActiveOrders >= 5) {
+                    event.getHook().sendMessage(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait!").queue();
+                    return;
+                }
+                
+                // --- PROCEED WITH ORDER ---
                 String buyerName = buyer.getName();
                 String creatorName = creator.getName();
                 DatabaseManager db = DatabaseManager.getInstance();
@@ -736,7 +761,8 @@ public class CommandListener extends ListenerAdapter {
                         .setThumbnail(buyer.getEffectiveAvatarUrl())
                         .setFooter("AMORA Designated Order System", null);
 
-                event.reply(" **Commission placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ".").setEphemeral(true).queue();
+                // Use getHook().sendMessage since we deferred earlier!
+                event.getHook().sendMessage(" **Commission placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ".").queue();
 
                 String generatingUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
                                       ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
@@ -2470,54 +2496,19 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
-            if (orderChannelId == null) {
-                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
-                return;
-            }
-
-            TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
-            if (orderChannel == null) {
-                event.reply("Cannot find the official order channel.").setEphemeral(true).queue();
-                return;
-            }
-
-            event.getJDA().retrieveUserById(creatorId).queue(creator -> {
-                long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
-                .filter(t -> t.getThreadMembers().stream().anyMatch(m -> m.getId().equals(buyer.getId())))
-                .count();
-
-                if (buyerTotalActiveOrders >= 3) {
-                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish an existing transaction!").setEphemeral(true).queue();
-                    return;
-                }
-
-                long creatorActiveOrders = orderChannel.getThreadChannels().stream()
-                        .filter(t -> t.getName().contains("➔ " + creator.getName()))
-                        .count();
-
-                if (creatorActiveOrders >= 5) {
-                    event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait!").setEphemeral(true).queue();
-                    return;
-                }
-
-                net.dv8tion.jda.api.interactions.components.text.TextInput whatOrder = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_what", "What are you ordering?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
-                net.dv8tion.jda.api.interactions.components.text.TextInput howPaying = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_how", "How are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
-                net.dv8tion.jda.api.interactions.components.text.TextInput howMuch = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_much", "How much are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
-                net.dv8tion.jda.api.interactions.components.text.TextInput song = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_song", "Song / Theme / Extra Details?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput whatOrder = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_what", "What are you ordering?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput howPaying = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_how", "How are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput howMuch = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_much", "How much are you paying?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput song = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comm_song", "Song / Theme / Extra Details?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("comm_modal_" + creatorId, "Commission Form")
+                .addActionRow(whatOrder)
+                .addActionRow(howPaying)
+                .addActionRow(howMuch)
+                .addActionRow(song)
+                .build();
                 
-                net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("comm_modal_" + creatorId, "Commission Form")
-                    .addActionRow(whatOrder)
-                    .addActionRow(howPaying)
-                    .addActionRow(howMuch)
-                    .addActionRow(song)
-                    .build();
-                    
-                event.replyModal(modal).queue();
-
-            }, error -> {
-                event.reply(MIKU_SAD + " Could not find the creator.").setEphemeral(true).queue();
-            });
+            event.replyModal(modal).queue();
             return;
         }
         if (componentId.startsWith("order_start_")) {
@@ -2529,15 +2520,17 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
+            event.deferReply(true).queue();
+
             String orderChannelId = System.getenv("ORDER_CHANNEL_ID");
             if (orderChannelId == null) {
-                event.reply(MIKU_SAD + " The server's order channel is not configured.").setEphemeral(true).queue();
+                event.getHook().sendMessage(MIKU_SAD + " The server's order channel is not configured.").queue();
                 return;
             }
 
             TextChannel orderChannel = event.getJDA().getTextChannelById(orderChannelId);
             if (orderChannel == null) {
-                event.reply("Cannot find the official order channel.").setEphemeral(true).queue();
+                event.getHook().sendMessage("Cannot find the official order channel.").queue();
                 return;
             }
 
@@ -2547,7 +2540,7 @@ public class CommandListener extends ListenerAdapter {
                         .findFirst();
 
                 if (activeThread.isPresent()) {
-                    event.reply(MIKU_SAD + " **Hold on!** You already have an open transaction with **" + creator.getName() + "** in " + activeThread.get().getAsMention() + "!\n\n🛒 **Want to buy this too?**\nJust drop the link to this outfit in that thread and use the `➕ Add Item` button to buy them all at once!").setEphemeral(true).queue();
+                    event.getHook().sendMessage(MIKU_SAD + " **Hold on!** You already have an open transaction with **" + creator.getName() + "** in " + activeThread.get().getAsMention() + "!\n\n🛒 **Want to buy this too?**\nJust drop the link to this outfit in that thread and use the `➕ Add Item` button to buy them all at once!").queue();
                     return;
                 }
 
@@ -2556,7 +2549,7 @@ public class CommandListener extends ListenerAdapter {
                 .count();
 
                 if (buyerTotalActiveOrders >= 3) {
-                    event.reply(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").setEphemeral(true).queue();
+                    event.getHook().sendMessage(MIKU_SAD + " **Cart Full!** You currently have 3 active orders open. Please finish or cancel an existing transaction before adding more items to your cart!").queue();
                     return;
                 }
 
@@ -2565,7 +2558,7 @@ public class CommandListener extends ListenerAdapter {
                         .count();
 
                 if (creatorActiveOrders >= 5) {
-                    event.reply(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").setEphemeral(true).queue();
+                    event.getHook().sendMessage(XB_CUTE + " **Queue Full!** " + creator.getName() + " currently has 5 active orders. Please wait for them to finish some commissions before ordering from them!").queue();
                     return;
                 }
 
@@ -2599,7 +2592,7 @@ public class CommandListener extends ListenerAdapter {
                         }
                     }
 
-                    event.reply(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").setEphemeral(true).queue();
+                    event.getHook().sendMessage(" **Order placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ". Please do the Orders inside of this Private Thread!!").queue();
 
                     String buyerName = buyer.getName();
                     String creatorName = creator.getName();
@@ -2619,18 +2612,7 @@ public class CommandListener extends ListenerAdapter {
                         String shortId = UUID.randomUUID().toString().substring(0, 4);
                         orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
                              
-                             String readyUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
-                                              ".⠀.   ᘛ   ˚⠀𝐀𝐌𝟎𝐑𝐀 **𝖲𝖬𝖠𝖱𝖳 𝖴𝖨** ! ˚\n\n" +
-                                              "⋆ ˚｡⋆୨୧˚\n\n" +
-                                              "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
-                                              "ྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌྌ\n" +
-                                              "֊   ᎔   ᎔   𑣩𑣨  ᎔   ᎔    ᎔   ᎔\n\n" +
-                                              "_ _  ✩   𓏼    ׅ    ۟ 𐐂 Commission Request 𐐚 ✧.\n" +
-                                              "_ _   ꒰ ଲ ꒱  ✦ **From:** " + buyerName + "\n" +
-                                              "_ _   ꒰ Ꮼ ꒱  ✦ **For:** " + creatorName + "\n" +
-                                              "_ _   ꒰ ⌾ ꒱  ✦ **Status:** 🔒 *Transaction Room Secured!*\n\n" +
-                                              "<a:Saur_Heart:1525689248391368796>  _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n" +
-                                              "_ _   " + thread.getAsMention();
+                             String readyUI = generatingUI.replace("⏳ *Weaving the digital threads...*", "🔒 *Transaction Room Secured!*\n\n<a:Saur_Heart:1525689248391368796>  _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n_ _   " + thread.getAsMention());
                              
                              mainMessage.editMessage(readyUI).queue();
                              
@@ -2647,7 +2629,7 @@ public class CommandListener extends ListenerAdapter {
                     });
                 });
             }, error -> {
-                event.reply(MIKU_SAD + " Could not find the creator.").setEphemeral(true).queue();
+                event.getHook().sendMessage(MIKU_SAD + " Could not find the creator.").queue();
             });
             return;
         }
