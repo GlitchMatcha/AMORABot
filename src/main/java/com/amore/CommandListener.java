@@ -784,6 +784,7 @@ public class CommandListener extends ListenerAdapter {
             
             if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
                 
+                // 1. Check for Cart Locks
                 if (thread.getName().startsWith("⏳")) {
                     event.getMessage().delete().queue();
                     
@@ -796,8 +797,7 @@ public class CommandListener extends ListenerAdapter {
                     
                     String content = event.getMessage().getContentRaw();
                     
-                    // This Regex matches "CODE : aofks7", "link: https://...", "ID=123", etc.
-                    Pattern sensitivePattern = Pattern.compile("(?i)(code|link|id|key|pass|password)\\s*[:=]\\s*(https?://\\S+|[a-zA-Z0-9_.-]+)");
+                    Pattern sensitivePattern = Pattern.compile("(?i)(https?://\\S+|\\b(?=[a-zA-Z]*\\d)(?=\\d*[a-zA-Z])[a-zA-Z0-9]{5,15}\\b|\\b\\d{8,17}\\b|(?:code|link|id|key|pass|password)\\s*[:=]\\s*[a-zA-Z0-9_*~]+)");
                     Matcher matcher = sensitivePattern.matcher(content);
 
                     if (matcher.find()) {
@@ -823,7 +823,7 @@ public class CommandListener extends ListenerAdapter {
                                 
                                 final String buyerId = foundBuyerId;
                                 
-                                String censoredContent = matcher.replaceAll("$1 : `[ 🔒 securely hidden by AM0RA ]`");
+                                String censoredContent = matcher.replaceAll("`[ 🔒 securely hidden by AM0RA ]`");
                                 boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
                                 
                                 event.getMessage().delete().queue();
@@ -863,6 +863,7 @@ public class CommandListener extends ListenerAdapter {
                             }
                         });
                     }
+
                     if (movingCarts.contains(thread.getId())) return;
                     
                     thread.getHistory().retrievePast(15).queue(messages -> {
@@ -3058,13 +3059,18 @@ public class CommandListener extends ListenerAdapter {
             String[] parts = componentId.split("_");
             String buyerId = parts[parts.length - 1]; 
             
-            if (processedInteractions.contains(event.getMessageId())) return;
-            processedInteractions.add(event.getMessageId());
+            if (processedInteractions.contains(event.getMessageId())) {
+                event.deferEdit().queue(); 
+                return;
+            }
             
             if (!event.getUser().getId().equals(buyerId)) {
                 event.reply("<a:67:1525300363849367615>  Only the buyer can interact with this prompt!").setEphemeral(true).queue();
                 return;
             }
+
+            processedInteractions.add(event.getMessageId());
+            event.deferEdit().queue(); 
 
             EmbedBuilder thanks = new EmbedBuilder().setColor(new Color(255, 215, 0));
 
@@ -3102,7 +3108,7 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.editMessageEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
+            event.getHook().editOriginalEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
                  event.getChannel().asThreadChannel().getManager().setLocked(true).setArchived(true).queue();
             });
             return;
