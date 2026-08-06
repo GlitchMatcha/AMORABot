@@ -2563,14 +2563,25 @@ public class CommandListener extends ListenerAdapter {
                 }
 
                 ThreadChannel shopThread = event.getChannel().asThreadChannel();
-                shopThread.retrieveStartMessage().queue(startMsg -> {
-                    String itemDescription = startMsg.getContentRaw();
+                
+                shopThread.getHistoryBefore(event.getMessageId(), 10).queue(history -> {
+                    net.dv8tion.jda.api.entities.Message targetMsg = history.getRetrievedHistory().stream()
+                            .filter(m -> m.getAuthor().getId().equals(creatorId))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (targetMsg == null) {
+                        event.getHook().sendMessage(MIKU_SAD + " I couldn't track down the original item message!").queue();
+                        return;
+                    }
+
+                    String itemDescription = targetMsg.getContentRaw();
                     if (itemDescription.length() > 300) {
                         itemDescription = itemDescription.substring(0, 300) + "..."; 
                     }
                     if (itemDescription.isBlank()) itemDescription = "_Visual asset (See image below)_";
 
-                    String messageLink = startMsg.getJumpUrl();
+                    String messageLink = targetMsg.getJumpUrl();
 
                     EmbedBuilder orderEmbed = new EmbedBuilder()
                             .setColor(new Color(255, 182, 193))
@@ -2585,8 +2596,8 @@ public class CommandListener extends ListenerAdapter {
                             .setThumbnail(buyer.getEffectiveAvatarUrl())
                             .setFooter("AMORA Smart UI Order System", null);
 
-                    if (!startMsg.getAttachments().isEmpty()) {
-                        Attachment image = startMsg.getAttachments().get(0);
+                    if (!targetMsg.getAttachments().isEmpty()) {
+                        Attachment image = targetMsg.getAttachments().get(0);
                         if (image.isImage()) {
                             orderEmbed.setImage(image.getUrl());
                         }
@@ -3054,44 +3065,46 @@ public class CommandListener extends ListenerAdapter {
             processedInteractions.add(event.getMessageId());
             event.deferEdit().queue(); 
 
-            EmbedBuilder thanks = new EmbedBuilder().setColor(new Color(255, 215, 0));
+            scheduler.execute(() -> {
+                EmbedBuilder thanks = new EmbedBuilder().setColor(new Color(255, 215, 0));
 
-            if (componentId.startsWith("ratenone_")) {
-                thanks.setDescription("<a:catnod:1527257308755660931>  Understood! Closing this transaction room.");
-            } else {
-                int stars = Integer.parseInt(parts[1]);
-                String creatorId = parts[2];
-                db.addCreatorRating(creatorId, stars);
-                thanks.setDescription("<a:HatsuneMikuHappy:1525684137237942374>  Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved.");
-                
-                String newRatingDisplay = db.getCreatorRatingString(creatorId);
-                List<String[]> prompts = db.getCreatorPrompts(creatorId);
-                
-                for (String[] pair : prompts) {
-                    String threadId = pair[0];
-                    String msgId = pair[1];
+                if (componentId.startsWith("ratenone_")) {
+                    thanks.setDescription("<a:catnod:1527257308755660931>  Understood! Closing this transaction room.");
+                } else {
+                    int stars = Integer.parseInt(parts[1]);
+                    String creatorId = parts[2];
+                    db.addCreatorRating(creatorId, stars);
+                    thanks.setDescription("<a:HatsuneMikuHappy:1525684137237942374>  Thank you! You rated <@" + creatorId + "> **" + stars + " Stars**! Your feedback has been saved.");
                     
-                    ThreadChannel t = event.getJDA().getThreadChannelById(threadId);
-                    if (t != null) {
-                        t.retrieveMessageById(msgId).queue(oldMsg -> {
-                            if (!oldMsg.getEmbeds().isEmpty()) {
-                                MessageEmbed oldEmbed = oldMsg.getEmbeds().get(0);
-                                String oldDesc = oldEmbed.getDescription();
-                                if (oldDesc != null && oldDesc.contains("Creator Rating:")) {
-                                    String newDesc = oldDesc.replaceAll("\\*\\*Creator Rating:\\*\\* .*", "**Creator Rating:** " + Matcher.quoteReplacement(newRatingDisplay));
-                                    EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed).setDescription(newDesc);
-                                    oldMsg.editMessageEmbeds(updatedEmbed.build()).queue();
+                    String newRatingDisplay = db.getCreatorRatingString(creatorId);
+                    List<String[]> prompts = db.getCreatorPrompts(creatorId);
+                    
+                    for (String[] pair : prompts) {
+                        String threadId = pair[0];
+                        String msgId = pair[1];
+                        
+                        ThreadChannel t = event.getJDA().getThreadChannelById(threadId);
+                        if (t != null) {
+                            t.retrieveMessageById(msgId).queue(oldMsg -> {
+                                if (!oldMsg.getEmbeds().isEmpty()) {
+                                    MessageEmbed oldEmbed = oldMsg.getEmbeds().get(0);
+                                    String oldDesc = oldEmbed.getDescription();
+                                    if (oldDesc != null && oldDesc.contains("Creator Rating:")) {
+                                        String newDesc = oldDesc.replaceAll("\\*\\*Creator Rating:\\*\\* .*", "**Creator Rating:** " + Matcher.quoteReplacement(newRatingDisplay));
+                                        EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed).setDescription(newDesc);
+                                        oldMsg.editMessageEmbeds(updatedEmbed.build()).queue();
+                                    }
                                 }
-                            }
-                        }, error -> db.removeCreatorPrompt(threadId, msgId));
-                    } else {
-                        db.removeCreatorPrompt(threadId, msgId); 
+                            }, error -> db.removeCreatorPrompt(threadId, msgId));
+                        } else {
+                            db.removeCreatorPrompt(threadId, msgId); 
+                        }
                     }
                 }
-            }
 
-            event.getHook().editOriginalEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
-                 event.getChannel().asThreadChannel().getManager().setLocked(true).setArchived(true).queue();
+                event.getHook().editOriginalEmbeds(thanks.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
+                     event.getChannel().asThreadChannel().getManager().setLocked(true).setArchived(true).queue();
+                });
             });
             return;
         }
