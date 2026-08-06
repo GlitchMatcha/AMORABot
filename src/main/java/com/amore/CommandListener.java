@@ -702,9 +702,61 @@ public class CommandListener extends ListenerAdapter {
     }
     @Override
     public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
+        if (event.getModalId().startsWith("shop_modal_")) {
+            String promptMsgId = event.getModalId().substring("shop_modal_".length());
+            event.deferReply(true).queue(); 
+
+            String priceStr = event.getValue("shop_price").getAsString();
+            String stockStr = event.getValue("shop_stock") != null ? event.getValue("shop_stock").getAsString().trim() : "";
+            String delivery = event.getValue("shop_delivery").getAsString();
+
+            int price;
+            try {
+                price = Integer.parseInt(priceStr);
+                if (price < 0) throw new NumberFormatException();
+            } catch (Exception e) {
+                event.getHook().sendMessage("❌ Invalid price! Must be a positive number.").queue();
+                return;
+            }
+            if (!stockStr.isEmpty()) {
+                try {
+                    int stockCheck = Integer.parseInt(stockStr);
+                    if (stockCheck <= 0) throw new NumberFormatException();
+                } catch (Exception e) {
+                    event.getHook().sendMessage("❌ Invalid stock amount! Please leave it blank for Unlimited, or enter a valid positive number.").queue();
+                    return;
+                }
+            }
+
+            String safeName = event.getChannel().getName(); 
+            if (safeName.length() > 30) safeName = safeName.substring(0, 30).trim(); 
+
+            DatabaseManager.getInstance().addShopItem(safeName, delivery);
+
+            String encodedName = encodeItem(safeName);
+            String stockData = stockStr.isEmpty() ? "U" : stockStr;
+            
+            String buyId = "smartbuy_" + price + "_" + stockData + "_" + encodedName;
+
+            String stockDisplay = stockStr.isEmpty() ? "Unlimited Stock" : "Only " + stockStr + " Left!";
+
+            EmbedBuilder checkoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193))
+                    .setTitle("🛍️ OFFICIAL CHECKOUT DESK")
+                    .setDescription("✦ **Asset:** `" + safeName + "`\n✦ **Price:** `" + price + " PTS`\n✦ **Status:** `" + stockDisplay + "`\n\n*(Click below to instantly deduct Points and receive your asset in DMs!)*")
+                    .setFooter("AM0RA Automated Distribution", null);
+
+            event.getChannel().sendMessageEmbeds(checkoutEmbed.build())
+                    .addActionRow(
+                            Button.success(buyId, "🛒 Purchase • " + price + " PTS")
+                    ).queue(success -> {
+                        event.getChannel().deleteMessageById(promptMsgId).queue();
+                        event.getHook().sendMessage("✅ Checkout desk created successfully! You can now safely delete the old `/publish` slash command from your code!").queue();
+                    });
+            return;
+        }
         if (event.getModalId().startsWith("comm_modal_")) {
             
-            // Instantly acknowledge the form submission so Discord doesn't throw a 10062 Error!
             event.deferReply(true).queue(); 
             
             String creatorId = event.getModalId().substring("comm_modal_".length());
@@ -742,7 +794,6 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
                 
-                // --- PROCEED WITH ORDER ---
                 String buyerName = buyer.getName();
                 String creatorName = creator.getName();
                 DatabaseManager db = DatabaseManager.getInstance();
@@ -807,10 +858,33 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
+            if (SHOP_FORUM_CHANNEL_ID != null && event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             
+            if (thread.getParentChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
+                
+                if (event.getMessageId().equals(thread.getId())) {
+                    
+                    //Role check: Admin as default 
+                    boolean isAuthorized = event.getMember() != null && event.getMember().hasPermission(Permission.ADMINISTRATOR);
+                    
+                    // if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals("1234567890"))) isAuthorized = true;
+
+                    if (!isAuthorized) {
+                        event.getMessage().delete().queue();
+                        thread.delete().queue();
+                        event.getAuthor().openPrivateChannel().flatMap(pc ->
+                            pc.sendMessage("❌ **Access Denied:** Only dedicated Staff and Directors can publish items to the Points Marketplace!")
+                        ).queue(s -> {}, e -> {});
+                        return;
+                    }
+                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " 🐾 *Sneaks in...* I see your new asset! Click below to set the price and stock so I can build your checkout desk!")
+                         .addActionRow(Button.success("setup_shop_" + event.getAuthor().getId(), "⚙️ Set Up Shop Asset"))
+                         .queue();
+                }
+            }
+        }
             if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
                 
-                // 1. Check for Cart Locks
                 if (thread.getName().startsWith("⏳")) {
                     event.getMessage().delete().queue();
                     
@@ -2487,6 +2561,108 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        if (componentId.startsWith("smartbuy_")) {
+            String[] parts = componentId.split("_", 4);
+            int price = Integer.parseInt(parts[1]);
+            String stockData = parts[2];
+            String itemName = decodeItem(parts[3]);
+            String clickerId = event.getUser().getId();
+
+            event.deferReply(true).queue();
+            
+            String secretDelivery = db.getSecretLink(itemName);
+            if (secretDelivery == null || secretDelivery.isBlank()) {
+                event.getHook().sendMessage(MIKU_SAD + " **Critical Error:** The secret delivery file is missing from the database! Purchase aborted to protect your points.").queue();
+                return;
+            }
+            
+            synchronized (this) {
+                int currentPoints = db.getPoints(clickerId);
+                if (getExactItemName(db.getInventory(clickerId), itemName) != null) {
+                    event.getHook().sendMessage(MIKU_SAD + " You already own this asset!").queue();
+                    return;
+                }
+                if (currentPoints < price) {
+                    event.getHook().sendMessage(MIKU_SAD + " Not enough Points!").queue();
+                    return;
+                }
+
+                if (!stockData.equals("U")) {
+                    int currentStock = Integer.parseInt(stockData);
+                    if (currentStock <= 0) {
+                        event.getHook().sendMessage("❌ Sorry, this item is completely Sold Out!").queue();
+                        return;
+                    }
+                    
+                    db.updatePoints(clickerId, currentPoints - price);
+                    db.addInventoryItem(clickerId, itemName);
+
+                    currentStock--;
+                    
+                    String newStockData = String.valueOf(currentStock);
+                    String newBuyId = "smartbuy_" + price + "_" + newStockData + "_" + parts[3];
+                    
+                    MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
+                    EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed);
+                    
+                    if (currentStock == 0) {
+                        updatedEmbed.setColor(Color.RED);
+                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Only \\d+ Left!", "SOLD OUT"));
+                        event.getMessage().editMessageEmbeds(updatedEmbed.build())
+                             .setActionRow(Button.danger("soldout", "❌ SOLD OUT").asDisabled())
+                             .queue();
+                    } else {
+                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Only \\d+ Left!", "Only " + currentStock + " Left!"));
+                        event.getMessage().editMessageEmbeds(updatedEmbed.build())
+                             .setActionRow(Button.success(newBuyId, "🛒 Purchase • " + price + " PTS (" + currentStock + " Left)"))
+                             .queue();
+                    }
+                } else {
+                    db.updatePoints(clickerId, currentPoints - price);
+                    db.addInventoryItem(clickerId, itemName);
+                }
+            }
+
+            EmbedBuilder checkoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193)) 
+                    .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
+                    .setDescription("Your purchase was processed successfully!\n\n📦 **Asset Acquired:** `" + itemName + "`\n💳 **Points Deducted:** `" + price + " PTS`\n💌 **Delivery Status:** Check your DMs for the secure package.")
+                    .setFooter("AM0RA Secure Commerce System", null);
+
+            event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
+
+            event.getUser().openPrivateChannel().flatMap(channel -> {
+                EmbedBuilder deliveryEmbed = new EmbedBuilder()
+                        .setColor(new Color(138, 43, 226))
+                        .setTitle("✦ ASSET DELIVERY: " + itemName.toUpperCase() + " ✦")
+                        .setDescription("Thank you for your purchase from the AMORA Asset Market.\n\n📦 **Your Secure Delivery Data:**\n`" + secretDelivery + "`\n\n💜 **Delivery Note:** This package was prepared exclusively for you.")
+                        .setFooter("AMORA Curated Ecosystem", null);
+                return channel.sendMessageEmbeds(deliveryEmbed.build());
+            }).queue(success -> {}, error -> event.getChannel().sendMessage(event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed.").queue());
+
+            sendShopLog(event.getGuild(), "Shop Direct Purchase", event.getUser().getAsMention() + " purchased **" + itemName + "** from the market for `" + price + " Points`.", new Color(138, 43, 226));
+            return;
+        }
+        if (componentId.startsWith("setup_shop_")) {
+            String ownerId = componentId.substring("setup_shop_".length());
+            if (!event.getUser().getId().equals(ownerId)) {
+                event.reply("❌ Only the person who posted this item can set it up!").setEphemeral(true).queue();
+                return;
+            }
+
+            net.dv8tion.jda.api.interactions.components.text.TextInput priceInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("shop_price", "Price (Points)", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(true).setPlaceholder("e.g. 100").build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput stockInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("shop_stock", "Stock Limit (Leave blank for Unlimited)", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setRequired(false).setPlaceholder("e.g. 5").build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput deliveryInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("shop_delivery", "Secret Delivery Code / Link", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).setPlaceholder("This will be DM'd securely to the buyer.").build();
+
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("shop_modal_" + event.getMessageId(), "Configure Shop Asset")
+                .addActionRow(priceInput)
+                .addActionRow(stockInput)
+                .addActionRow(deliveryInput)
+                .build();
+                
+            event.replyModal(modal).queue();
+            return;
+        }
         if (componentId.startsWith("comm_start_")) {
             String creatorId = componentId.substring("comm_start_".length());
             User buyer = event.getUser();
