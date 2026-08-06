@@ -775,7 +775,6 @@ public class CommandListener extends ListenerAdapter {
 
             event.getJDA().retrieveUserById(creatorId).queue(creator -> {
                 
-                // --- CART & QUEUE CHECKS MOVED HERE ---
                 long buyerTotalActiveOrders = orderChannel.getThreadChannels().stream()
                     .filter(t -> t.getThreadMembers().stream().anyMatch(m -> m.getId().equals(buyer.getId())))
                     .count();
@@ -812,7 +811,6 @@ public class CommandListener extends ListenerAdapter {
                         .setThumbnail(buyer.getEffectiveAvatarUrl())
                         .setFooter("AMORA Designated Order System", null);
 
-                // Use getHook().sendMessage since we deferred earlier!
                 event.getHook().sendMessage(" **Commission placed!** I am setting up a private transaction thread for you in " + orderChannel.getAsMention() + ".").queue();
 
                 String generatingUI = "# ------ᜊ  ⌒⌒ ⠀𓈒 𝐍𝐞𝐰 𝐎𝐫𝐝𝐞𝐫 🛒 ₊ ⊹---------\n" +
@@ -856,19 +854,16 @@ public class CommandListener extends ListenerAdapter {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
 
-        if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
+        if (event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
-            if (SHOP_FORUM_CHANNEL_ID != null && event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             
-            if (thread.getParentChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
+            if (SHOP_FORUM_CHANNEL_ID != null && thread.getParentChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
                 
                 if (event.getMessageId().equals(thread.getId())) {
                     
-                    //Role check: Admin as default 
+                    // Role check: Admin as default 
                     boolean isAuthorized = event.getMember() != null && event.getMember().hasPermission(Permission.ADMINISTRATOR);
                     
-                    // if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals("1234567890"))) isAuthorized = true;
-
                     if (!isAuthorized) {
                         event.getMessage().delete().queue();
                         thread.delete().queue();
@@ -877,12 +872,17 @@ public class CommandListener extends ListenerAdapter {
                         ).queue(s -> {}, e -> {});
                         return;
                     }
+                    
                     event.getChannel().sendMessage(event.getAuthor().getAsMention() + " 🐾 *Sneaks in...* I see your new asset! Click below to set the price and stock so I can build your checkout desk!")
                          .addActionRow(Button.success("setup_shop_" + event.getAuthor().getId(), "⚙️ Set Up Shop Asset"))
                          .queue();
                 }
             }
         }
+
+        if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            
             if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
                 
                 if (thread.getName().startsWith("⏳")) {
@@ -897,7 +897,7 @@ public class CommandListener extends ListenerAdapter {
                     
                     String content = event.getMessage().getContentRaw();
                     
-                    Pattern sensitivePattern = Pattern.compile("(?i)(https?://\\S+|\\b(?=[a-zA-Z]*\\d)(?=\\d*[a-zA-Z])[a-zA-Z0-9]{5,15}\\b|\\b\\d{8,17}\\b|(?:code|link|id|key|pass|password)\\s*[:=]\\s*[a-zA-Z0-9_*~]+)");
+                    Pattern sensitivePattern = Pattern.compile("(?i)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.])\\b\\d{6,20}\\b(?![-/.])|(?:code|link|id|key|pass|password)\\s*[:=]\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))\\S+)");
                     Matcher matcher = sensitivePattern.matcher(content);
 
                     if (matcher.find()) {
