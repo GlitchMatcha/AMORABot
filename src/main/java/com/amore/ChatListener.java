@@ -740,10 +740,12 @@ public class ChatListener extends ListenerAdapter {
                      .addActionRow(pingButtons)
                      .queue(msg -> {
                          DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                         
+                         //Auto-cleanup  
+                         msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
                      });
             } else {
-                channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<"
-                ).queue();
+                channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<").queue();
             }
             
             String ratingDisplay = DatabaseManager.getInstance().getCreatorRatingString(author.getId());
@@ -755,7 +757,7 @@ public class ChatListener extends ListenerAdapter {
 
             channel.sendMessageEmbeds(orderPromptEmbed.build())
                     .addActionRow(
-                        Button.success("order_start_" + author.getId(), "🛒 Buy Asset"),
+                        Button.success("order_start_" + author.getId(), " Order >p<"),
                         Button.primary("comm_start_" + author.getId(), "📝 Request Commission")
                     )
                     .queue(msg -> {
