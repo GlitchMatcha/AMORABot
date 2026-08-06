@@ -728,31 +728,101 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            String safeName = event.getChannel().getName(); 
+            String fullName = event.getChannel().getName(); 
+            String safeName = fullName;
             if (safeName.length() > 30) safeName = safeName.substring(0, 30).trim(); 
 
             DatabaseManager.getInstance().addShopItem(safeName, delivery);
 
             String encodedName = encodeItem(safeName);
             String stockData = stockStr.isEmpty() ? "U" : stockStr;
-            
             String buyId = "smartbuy_" + price + "_" + stockData + "_" + encodedName;
+            
+            String stockDisplay = stockStr.isEmpty() ? "In Stock (Unlimited)" : "Limited (" + stockStr + " Remaining)";
 
-            String stockDisplay = stockStr.isEmpty() ? "Unlimited Stock" : "Only " + stockStr + " Left!";
+            String lowerName = fullName.toLowerCase();
+            String bottomText;
+            String categoryEmoji;
 
-            EmbedBuilder checkoutEmbed = new EmbedBuilder()
-                    .setColor(new Color(255, 182, 193))
-                    .setTitle("🛍️ OFFICIAL CHECKOUT DESK")
-                    .setDescription("✦ **Asset:** `" + safeName + "`\n✦ **Price:** `" + price + " PTS`\n✦ **Status:** `" + stockDisplay + "`\n\n*(Click below to instantly deduct Points and receive your asset in DMs!)*")
-                    .setFooter("AM0RA Automated Distribution", null);
+            if (lowerName.contains("robux") || lowerName.contains("rbx") || lowerName.contains("funds")) {
+                categoryEmoji = "💸";
+                bottomText = "*(Click the button below to instantly deduct Points and receive your Robux claim instructions in DMs!)*";
+                
+            } else if (lowerName.contains("outfit") || lowerName.contains("fit") || lowerName.contains("clothing") || lowerName.contains("wardrobe")) {
+                categoryEmoji = "👗";
+                bottomText = "*(Click the button below to instantly deduct Points and receive your secure outfit code in DMs!)*";
+                
+            } else if (lowerName.contains("role") || lowerName.contains("vip") || lowerName.contains("perk") || lowerName.contains("title")) {
+                categoryEmoji = "👑";
+                bottomText = "*(Click the button below to instantly deduct Points and receive instructions to claim your new role in DMs!)*";
+                
+            } else if (lowerName.contains("render") || lowerName.contains("pfp") || lowerName.contains("art") || lowerName.contains("icon")) {
+                categoryEmoji = "🎨";
+                bottomText = "*(Click the button below to instantly deduct Points and receive your high-quality file link in DMs!)*";
+                
+            } else {
+                categoryEmoji = "📦";
+                bottomText = "*(Click the button below to instantly deduct Points and receive your secure digital asset in DMs!)*";
+            }
 
-            event.getChannel().sendMessageEmbeds(checkoutEmbed.build())
-                    .addActionRow(
-                            Button.success(buyId, "🛒 Purchase • " + price + " PTS")
-                    ).queue(success -> {
-                        event.getChannel().deleteMessageById(promptMsgId).queue();
-                        event.getHook().sendMessage("✅ Checkout desk created successfully! You can now safely delete the old `/publish` slash command from your code!").queue();
-                    });
+            String aestheticDesc = "# ୧ ╰ 𝐀𝐌𝟎𝐑𝐀 𝐏𝐎𝐈𝐍𝐓 𝐌𝐀𝐑𝐊𝐄𝐓 . .ᐟ\n" +
+                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                   categoryEmoji + " **" + fullName + "**\n\n" +
+                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n" +
+                                   "` ~ ୨୧ · ` ✦ 𝐏𝐫𝐢𝐜𝐞 : `" + price + " PTS`\n" +
+                                   "` ~ ୨୧ · ` ✦ 𝐒𝐭𝐚𝐭𝐮𝐬 : `" + stockDisplay + "`\n\n" +
+                                   bottomText;
+
+            ThreadChannel thread = event.getChannel().asThreadChannel();
+            
+            thread.retrieveStartMessage().queue(startMsg -> {
+                EmbedBuilder checkoutEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setDescription(aestheticDesc)
+                        .setFooter("AM0RA Automated Distribution 🎀", null);
+
+                boolean imageFound = false;
+
+                if (!startMsg.getAttachments().isEmpty()) {
+                    for (Attachment img : startMsg.getAttachments()) {
+                        if (img.isImage()) {
+                            checkoutEmbed.setThumbnail(img.getUrl());
+                            imageFound = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!imageFound) {
+                    String rawText = startMsg.getContentRaw();
+                    Matcher urlMatcher = Pattern.compile("https?://\\S+\\.(?:png|jpe?g|gif|webp)(?:\\?\\S*)?", Pattern.CASE_INSENSITIVE).matcher(rawText);
+                    if (urlMatcher.find()) {
+                        checkoutEmbed.setThumbnail(urlMatcher.group());
+                    }
+                }
+
+                thread.sendMessageEmbeds(checkoutEmbed.build())
+                        .addActionRow(
+                                Button.success(buyId, "🛒 Purchase • " + price + " PTS")
+                        ).queue(success -> {
+                            thread.deleteMessageById(promptMsgId).queue();
+                            event.getHook().sendMessage("✅ Beautiful checkout desk created!").queue();
+                        });
+                        
+            }, error -> {
+                EmbedBuilder checkoutEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setDescription(aestheticDesc)
+                        .setFooter("AM0RA Automated Distribution 🎀", null);
+
+                thread.sendMessageEmbeds(checkoutEmbed.build())
+                        .addActionRow(
+                                Button.success(buyId, "🛒 Purchase • " + price + " PTS")
+                        ).queue(success -> {
+                            thread.deleteMessageById(promptMsgId).queue();
+                            event.getHook().sendMessage("✅ Beautiful checkout desk created!").queue();
+                        });
+            });
             return;
         }
         if (event.getModalId().startsWith("comm_modal_")) {
@@ -2626,7 +2696,12 @@ public class CommandListener extends ListenerAdapter {
             EmbedBuilder checkoutEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 182, 193)) 
                     .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
-                    .setDescription("Your purchase was processed successfully!\n\n📦 **Asset Acquired:** `" + itemName + "`\n💳 **Points Deducted:** `" + price + " PTS`\n💌 **Delivery Status:** Check your DMs for the secure package.")
+                    .setDescription("Your purchase was processed successfully!\n\n" +
+                                    "📦 **Asset Acquired:** `" + itemName + "`\n" +
+                                    "💳 **Points Deducted:** `" + price + " PTS`\n\n" +
+                                    "🔒 **YOUR SECURE DELIVERY DATA:**\n" +
+                                    "> " + secretDelivery + "\n\n" +
+                                    "*(Please copy this data now! A backup receipt will also be sent to your DMs if they are open.)*")
                     .setFooter("AM0RA Secure Commerce System", null);
 
             event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
@@ -2634,11 +2709,17 @@ public class CommandListener extends ListenerAdapter {
             event.getUser().openPrivateChannel().flatMap(channel -> {
                 EmbedBuilder deliveryEmbed = new EmbedBuilder()
                         .setColor(new Color(138, 43, 226))
-                        .setTitle("✦ ASSET DELIVERY: " + itemName.toUpperCase() + " ✦")
-                        .setDescription("Thank you for your purchase from the AMORA Asset Market.\n\n📦 **Your Secure Delivery Data:**\n`" + secretDelivery + "`\n\n💜 **Delivery Note:** This package was prepared exclusively for you.")
+                        .setTitle("✦ ASSET RECEIPT: " + itemName.toUpperCase() + " ✦")
+                        .setDescription("Thank you for your purchase from the AMORA Asset Market.\n\n" +
+                                        "**Your Secure Delivery Data:**\n" +
+                                        "`" + secretDelivery + "`\n\n" +
+                                        "**Delivery Note:** This package was prepared exclusively for you.")
                         .setFooter("AMORA Curated Ecosystem", null);
                 return channel.sendMessageEmbeds(deliveryEmbed.build());
-            }).queue(success -> {}, error -> event.getChannel().sendMessage(event.getUser().getAsMention() + " ⚠️ I couldn’t send your delivery because your DMs are closed.").queue());
+            }).queue(
+                success -> {}, 
+                error -> {} 
+            );
 
             sendShopLog(event.getGuild(), "Shop Direct Purchase", event.getUser().getAsMention() + " purchased **" + itemName + "** from the market for `" + price + " Points`.", new Color(138, 43, 226));
             return;
