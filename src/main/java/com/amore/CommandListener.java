@@ -2707,6 +2707,12 @@ public class CommandListener extends ListenerAdapter {
             event.editMessage(event.getUser().getAsMention() + " ✦ **Ping sent!** (You can select another or click '✅ Done / Close' to dismiss)")
                  .setActionRow(newButtons)
                  .queue();
+
+            //Auto-delete the menu after .... minutes 
+            event.getMessage().delete().queueAfter(10, TimeUnit.MINUTES, 
+                success -> {}, 
+                error -> {} 
+            );
             return;
         }
 
