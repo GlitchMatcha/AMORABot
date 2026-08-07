@@ -666,8 +666,7 @@ public class ChatListener extends ListenerAdapter {
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
         String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2"); 
 
-        boolean isShopForum = (shopForumId1 != null && parentId.equals(shopForumId1)) || 
-                              (shopForumId2 != null && parentId.equals(shopForumId2));
+        boolean isShopForum = (shopForumId2 != null && parentId.equals(shopForumId2));
 
         if (!isShopForum) return;
         if (!author.getId().equals(thread.getOwnerId())) return;
