@@ -700,6 +700,7 @@ public class CommandListener extends ListenerAdapter {
             return null;
         }
     }
+    
     @Override
     public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
         if (event.getModalId().startsWith("shop_modal_")) {
@@ -727,7 +728,7 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
             }
-
+            
             String fullName = event.getChannel().getName(); 
             String safeName = fullName;
             if (safeName.length() > 30) safeName = safeName.substring(0, 30).trim(); 
@@ -801,12 +802,15 @@ public class CommandListener extends ListenerAdapter {
                     }
                 }
 
+                String giftId = "giftbuy_" + price + "_" + stockData + "_" + encodedName;
+
                 thread.sendMessageEmbeds(checkoutEmbed.build())
                         .addActionRow(
-                                Button.success(buyId, "🛒 Purchase • " + price + " PTS")
+                                Button.success(buyId, "🛒 Purchase • " + price + " PTS"),
+                                Button.primary(giftId, "🎁 Gift to a Friend") 
                         ).queue(success -> {
                             thread.deleteMessageById(promptMsgId).queue();
-                            event.getHook().sendMessage("✅ Beautiful checkout desk created!").queue();
+                            event.getHook().sendMessage("Beautiful checkout desk created!").queue();
                         });
                         
             }, error -> {
@@ -815,9 +819,12 @@ public class CommandListener extends ListenerAdapter {
                         .setDescription(aestheticDesc)
                         .setFooter("AM0RA Automated Distribution 🎀", null);
 
+                String giftId = "giftbuy_" + price + "_" + stockData + "_" + encodedName;
+
                 thread.sendMessageEmbeds(checkoutEmbed.build())
                         .addActionRow(
-                                Button.success(buyId, "🛒 Purchase • " + price + " PTS")
+                                Button.success(buyId, "🛒 Purchase • " + price + " PTS"),
+                                Button.primary(giftId, "🎁 Gift to a Friend") 
                         ).queue(success -> {
                             thread.deleteMessageById(promptMsgId).queue();
                             event.getHook().sendMessage("✅ Beautiful checkout desk created!").queue();
@@ -993,7 +1000,7 @@ public class CommandListener extends ListenerAdapter {
                                 
                                 final String targetId = event.getAuthor().getId().equals(foundCreatorId) ? foundBuyerId : foundCreatorId;
                                 
-                                String censoredContent = matcher.replaceAll("`[ 🔒 securely hidden by AM0RA ]`");
+                                String censoredContent = matcher.replaceAll("`[  securely hidden by AM0RA ]`");
                                 boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
                                 
                                 event.getMessage().delete().queue();
@@ -2626,11 +2633,148 @@ public class CommandListener extends ListenerAdapter {
             }
         }
     }
+    @Override
+    public void onEntitySelectInteraction(net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent event) {
+        String componentId = event.getComponentId();
+        DatabaseManager db = DatabaseManager.getInstance();
 
+        if (componentId.startsWith("sg_")) {
+            String[] parts = componentId.split("_", 5);
+            String shopMsgId = parts[1];
+            int price = Integer.parseInt(parts[2]);
+            String stockData = parts[3];
+            String itemName = decodeItem(parts[4]);
+            String buyerId = event.getUser().getId();
+            
+            User targetUser = event.getMentions().getUsers().get(0);
+            String targetId = targetUser.getId();
+
+            if (buyerId.equals(targetId)) {
+                event.reply("❌ You cannot gift an item to yourself! Use the Purchase button instead.").setEphemeral(true).queue();
+                return;
+            }
+            if (targetUser.isBot()) {
+                event.reply("❌ You cannot gift items to a bot!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+
+            String secretDelivery = db.getSecretLink(itemName);
+            if (secretDelivery == null || secretDelivery.isBlank()) {
+                event.getHook().sendMessage("❌ **Critical Error:** The secret delivery file is missing! Gift aborted to protect your points.").queue();
+                return;
+            }
+
+            synchronized (this) {
+                int currentPoints = db.getPoints(buyerId);
+                
+                if (getExactItemName(db.getInventory(targetId), itemName) != null) {
+                    event.getHook().sendMessage("❌ **" + targetUser.getName() + "** already owns this asset! Gift aborted to protect your points.").queue();
+                    return;
+                }
+                if (currentPoints < price) {
+                    event.getHook().sendMessage("❌ You do not have enough Points to gift this!").queue();
+                    return;
+                }
+
+                if (!stockData.equals("U")) {
+                    int parsedStock = Integer.parseInt(stockData);
+                    if (parsedStock <= 0) {
+                        event.getHook().sendMessage(" T^TSorry, this item is completely Sold Out!").queue();
+                        return;
+                    }
+
+                    db.updatePoints(buyerId, currentPoints - price);
+                    db.addInventoryItem(targetId, itemName);
+
+                    final int currentStock = parsedStock - 1;
+                    
+                    String newStockData = String.valueOf(currentStock);
+                    String newBuyId = "smartbuy_" + price + "_" + newStockData + "_" + parts[4];
+                    String newGiftId = "giftbuy_" + price + "_" + newStockData + "_" + parts[4];
+                    
+                    event.getChannel().retrieveMessageById(shopMsgId).queue(shopMsg -> {
+                        MessageEmbed oldEmbed = shopMsg.getEmbeds().get(0);
+                        EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed);
+                        
+                        if (currentStock == 0) {
+                            updatedEmbed.setColor(Color.RED);
+                            updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Limited \\(\\d+ Remaining\\)", "SOLD OUT"));
+                            shopMsg.editMessageEmbeds(updatedEmbed.build())
+                                 .setActionRow(
+                                     Button.danger("soldout", "❌ SOLD OUT").asDisabled(),
+                                     Button.danger("giftsoldout", "🎁 Sold Out").asDisabled()
+                                 ).queue();
+                        } else {
+                            updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Limited \\(\\d+ Remaining\\)", "Limited (" + currentStock + " Remaining)"));
+                            shopMsg.editMessageEmbeds(updatedEmbed.build())
+                                 .setActionRow(
+                                     Button.success(newBuyId, "🛒 Purchase • " + price + " PTS (" + currentStock + " Left)"),
+                                     Button.primary(newGiftId, "🎁 Gift to a Friend")
+                                 ).queue();
+                        }
+                    }, err -> {});
+                } else {
+                    db.updatePoints(buyerId, currentPoints - price);
+                    db.addInventoryItem(targetId, itemName);
+                }
+            }
+
+            EmbedBuilder checkoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193)) 
+                    .setTitle("✦ SECURE GIFT SENT ✦")
+                    .setDescription("Your gift was processed successfully!\n\n" +
+                                    "📦 **Asset Gifted:** `" + itemName + "`\n" +
+                                    "🎁 **Recipient:** " + targetUser.getAsMention() + "\n" +
+                                    "💳 **Points Deducted:** `" + price + " PTS`\n\n" +
+                                    "*(I have secretly slipped the asset into their DMs!)*")
+                    .setFooter("AM0RA Secure Commerce System", null);
+
+            event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
+
+            targetUser.openPrivateChannel().flatMap(channel -> {
+                EmbedBuilder deliveryEmbed = new EmbedBuilder()
+                        .setColor(new Color(138, 43, 226))
+                        .setTitle("✦ YOU RECEIVED A GIFT! ✦")
+                        .setDescription("Surprise! " + event.getUser().getAsMention() + " just bought you a gift from the AMORA Asset Market!\n\n" +
+                                        "📦 **Item Received:** `" + itemName + "`\n\n" +
+                                        "**Your Secure Delivery Data:**\n" +
+                                        "`" + secretDelivery + "`\n\n" +
+                                        "**Delivery Note:** Make sure to thank them for the gift! 🎀")
+                        .setFooter("AMORA Curated Ecosystem", null);
+                return channel.sendMessageEmbeds(deliveryEmbed.build());
+            }).queue(
+                success -> {}, 
+                error -> {
+                    event.getChannel().sendMessage("⚠️ " + event.getUser().getAsMention() + " The gift was successfully added to " + targetUser.getName() + "'s inventory, but their DMs are closed so I couldn't send them the code! Please ping them to open their DMs or give it to them manually!").queue();
+                } 
+            );
+
+            sendShopLog(event.getGuild(), "Shop Gift Purchase", event.getUser().getAsMention() + " purchased **" + itemName + "** as a gift for " + targetUser.getAsMention() + " for `" + price + " Points`.", new Color(255, 105, 180));
+            event.getMessage().delete().queue();
+        }
+    }
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        if (componentId.startsWith("giftbuy_")) {
+            String[] parts = componentId.split("_", 4);
+            
+            String menuId = "sg_" + event.getMessageId() + "_" + parts[1] + "_" + parts[2] + "_" + parts[3];
+            
+            net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu menu = 
+                net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.create(
+                    menuId, net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget.USER)
+                .setPlaceholder("Select a friend to receive this gift...")
+                .build();
+                
+            event.reply("🎁 **Who are you gifting this to?**\n*Select a server member from the menu below:*")
+                 .addActionRow(menu)
+                 .setEphemeral(true).queue();
+            return;
+        }
         if (componentId.startsWith("smartbuy_")) {
             String[] parts = componentId.split("_", 4);
             int price = Integer.parseInt(parts[1]);
@@ -2642,14 +2786,14 @@ public class CommandListener extends ListenerAdapter {
             
             String secretDelivery = db.getSecretLink(itemName);
             if (secretDelivery == null || secretDelivery.isBlank()) {
-                event.getHook().sendMessage(MIKU_SAD + " **Critical Error:** The secret delivery file is missing from the database! Purchase aborted to protect your points.").queue();
+                event.getHook().sendMessage(MIKU_SAD + " **Critical Error:** The content of this item is missing from the database! Purchase aborted to protect your points.").queue();
                 return;
             }
             
             synchronized (this) {
                 int currentPoints = db.getPoints(clickerId);
                 if (getExactItemName(db.getInventory(clickerId), itemName) != null) {
-                    event.getHook().sendMessage(MIKU_SAD + " You already own this asset!").queue();
+                    event.getHook().sendMessage(MIKU_SAD + " You already own this!").queue();
                     return;
                 }
                 if (currentPoints < price) {
@@ -2660,7 +2804,7 @@ public class CommandListener extends ListenerAdapter {
                 if (!stockData.equals("U")) {
                     int currentStock = Integer.parseInt(stockData);
                     if (currentStock <= 0) {
-                        event.getHook().sendMessage("❌ Sorry, this item is completely Sold Out!").queue();
+                        event.getHook().sendMessage("T^T Sorry, this item is completely Sold Out!").queue();
                         return;
                     }
                     
