@@ -248,12 +248,12 @@ public class AnnouncementListener extends ListenerAdapter {
         builder.addActionRow(
                 Button.success("qjoin_" + audience, "✋ Join"),
                 Button.danger("qleave_button", "⭕ Leave"),
-                Button.secondary("alert_party", "🔔 Alert Party")
+                Button.secondary("alert_party", " Alert the Current Team ")
         );
         builder.addActionRow(
-                Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, "✏️ Edit Details"),
-                Button.success("complete_prompt:" + audience + ":" + urgency, "🏆 Complete & Payout"),
-                Button.secondary("backup_request:" + audience, "📢 Call Backup"), 
+                Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, " Edit Details"),
+                Button.success("complete_prompt:" + audience + ":" + urgency, " Complete & Payout"),
+                Button.secondary("backup_request:" + audience, " Call More People! "), 
                 Button.secondary("close_event:" + audience, "🔒 Cancel / Close") 
         );
 
@@ -351,52 +351,89 @@ public class AnnouncementListener extends ListenerAdapter {
         String buttonId = event.getComponentId();
 
         if (buttonId.startsWith("backup_request:")) {
+            // 1. Security Check
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                event.reply(" **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
+                event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
                 return;
             }
 
             String[] parts = buttonId.split(":");
             String audience = parts.length > 1 ? parts[1] : "everyone";
+            String msgId = event.getMessageId();
 
-            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
-            String eventTitle = embed.getTitle() != null ? embed.getTitle().replace("🎯 DIRECTIVE: ", "") : "An AMORA Event";
-            
-            String loungeId = System.getenv("LOUNGE_CHANNEL_ID"); 
-            String memberChatId = System.getenv("MEMBER_CHAT_CHANNEL_ID"); 
-            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+            // 2. Ask the host where to route the broadcast
+            event.reply("📢 **Where would you like to broadcast the backup call?**\n*Note: The broadcast will auto-delete after 15 minutes to keep chat clean.*")
+                .addActionRow(
+                    Button.primary("route_backup:lounge:" + msgId + ":" + audience, " Lounge Channel"),
+                    Button.primary("route_backup:member:" + msgId + ":" + audience, " Member Chat Channel"),
+                    Button.success("route_backup:both:" + msgId + ":" + audience, " Both Channels")
+                ).setEphemeral(true).queue();
+            return;
+        }
+        if (buttonId.startsWith("route_backup:")) {
+            String[] parts = buttonId.split(":");
+            String target = parts[1]; // "lounge", "member", or "both"
+            String origMsgId = parts[2];
+            String audience = parts[3];
 
-            String pingMention = audience.equals("member") 
-                    ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
-                    : "@everyone";
-
-            EmbedBuilder broadcast = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193))
-                .setDescription("📢 **" + eventTitle + "** is starting soon!\n\n" +
-                                "If you haven't responded yet, or if you forgot, you should come to check it out! >p< \n\n" +
-                                " **[Click here to jump to the event ticket!](" + event.getMessage().getJumpUrl() + ")**")
-                .setFooter("This reminder will self-destruct in 15 minutes to keep chat clean ", null);
-
-            event.reply("Broadcasts sent with the correct pings,! They will auto-delete in 15 minutes.").setEphemeral(true).queue();
-
-            if (loungeId != null && !loungeId.isBlank()) {
-                TextChannel lounge = event.getJDA().getTextChannelById(loungeId);
-                if (lounge != null) {
-                    lounge.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
-                        msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
-                    });
+            event.getChannel().retrieveMessageById(origMsgId).queue(origMsg -> {
+                MessageEmbed embed = origMsg.getEmbeds().isEmpty() ? null : origMsg.getEmbeds().get(0);
+                if (embed == null) {
+                    event.reply("⚠️ Error: Original event data not found.").setEphemeral(true).queue();
+                    return;
                 }
-            }
 
-            if (memberChatId != null && !memberChatId.isBlank()) {
-                TextChannel memberChat = event.getJDA().getTextChannelById(memberChatId);
-                if (memberChat != null) {
-                    memberChat.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
-                        msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
-                    });
+                String eventTitle = embed.getTitle() != null ? embed.getTitle().replace("🎯 DIRECTIVE: ", "") : "An AMORA Event";
+                
+                String loungeId = System.getenv("LOUNGE_CHANNEL_ID"); 
+                String memberChatId = System.getenv("MEMBER_CHAT_CHANNEL_ID"); 
+                String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+
+                String pingMention = audience.equals("member") 
+                        ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
+                        : "@everyone";
+
+                EmbedBuilder broadcast = new EmbedBuilder()
+                    .setColor(new Color(255, 182, 193))
+                    .setDescription(" **" + eventTitle + "** is starting soon!\n\n" +
+                                    "If you haven't responded, you can still come and check it out in the event-training board!.\n\n" +
+                                    "🔗 **[Click here to jump to the event ticket!](" + origMsg.getJumpUrl() + ")**")
+                    .setFooter("This reminder will self-destruct in 15 minutes to keep chat clean ", null);
+
+                boolean sentLounge = false;
+                boolean sentMember = false;
+
+                if ((target.equals("lounge") || target.equals("both")) && loungeId != null && !loungeId.isBlank()) {
+                    TextChannel lounge = event.getJDA().getTextChannelById(loungeId);
+                    if (lounge != null) {
+                        lounge.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
+                            msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                        });
+                        sentLounge = true;
+                    }
                 }
-            }
-            
+
+                if ((target.equals("member") || target.equals("both")) && memberChatId != null && !memberChatId.isBlank()) {
+                    TextChannel memberChat = event.getJDA().getTextChannelById(memberChatId);
+                    if (memberChat != null) {
+                        memberChat.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
+                            msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                        });
+                        sentMember = true;
+                    }
+                }
+
+               
+                String result = "Event/Training calling successfully sent to: **" + 
+                    (sentLounge && sentMember ? "Lounge & Member Chat" : 
+                    (sentLounge ? "Lounge" : 
+                    (sentMember ? "Member Chat" : "None (Channels not configured!)"))) + "**";
+
+                event.editMessage(result).setComponents().queue();
+
+            }, error -> {
+                event.reply(" Error retrieving original event message.").setEphemeral(true).queue();
+            });
             return;
         }
 
@@ -549,12 +586,12 @@ public class AnnouncementListener extends ListenerAdapter {
                     return;
                 }
                 
-                StringBuilder pings = new StringBuilder("🔔 **MANUAL STAFF ALERT:**\n");
+                StringBuilder pings = new StringBuilder(" **MANUAL STAFF ALERT:**\n");
                 Matcher m = Pattern.compile("<@!?(\\d+)>").matcher(partyField);
                 while (m.find()) pings.append("<@").append(m.group(1)).append("> ");
                 
                 event.getMessage().getChannel().sendMessage(pings.toString()).queue();
-                event.reply("✅ The party has been successfully alerted!").setEphemeral(true).queue();
+                event.reply(" The party has been successfully alerted!").setEphemeral(true).queue();
                 return;
             }
 
@@ -563,7 +600,7 @@ public class AnnouncementListener extends ListenerAdapter {
                     String memberRoleId = System.getenv("MEMBER_ROLE_ID");
                     if (memberRoleId != null && !memberRoleId.isBlank()) {
                         if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
-                            event.reply("⚠️ **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
+                            event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
                             return;
                         }
                     }
@@ -575,7 +612,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 }
 
                 if (maxSlots > 0 && currentSlots >= maxSlots) {
-                    event.reply("⚠️ **Party Full:** There are no slots remaining for this event.").setEphemeral(true).queue();
+                    event.reply(" **Party Full:** There are no slots remaining for this event.").setEphemeral(true).queue();
                     return;
                 }
 
