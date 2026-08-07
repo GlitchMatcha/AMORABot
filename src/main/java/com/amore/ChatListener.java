@@ -278,6 +278,10 @@ public class ChatListener extends ListenerAdapter {
     private static final int PROMPT_REWARD_AMOUNT = 1;
     private static final int MIN_PROMPT_REPLY_LENGTH = 2; 
 
+    private static final long REMINDER_COOLDOWN_MS = 3 * 60 * 60_000L; 
+    private static final double REMINDER_CHANCE = 0.02;
+    private static volatile long lastReminderAt = 0L;
+
     private static volatile long lastQuestionAt = 0L;
     private static volatile long lastSparkDropAt = 0L;
 
@@ -1207,6 +1211,9 @@ public class ChatListener extends ListenerAdapter {
         if (maybePostQuestion(event, now)) {
             return;
         }
+        if (maybePostReminder(event, now)) {
+            return;
+        }
 
         maybeSpawnGame(event, now);
     }
@@ -1883,5 +1890,39 @@ public class ChatListener extends ListenerAdapter {
             String removed = recentPrompts.removeFirst();
             recentPromptSet.remove(removed);
         }
+    }
+    private boolean maybePostReminder(MessageReceivedEvent event, long now) {
+        synchronized (ChatListener.class) {
+            if (now - lastReminderAt < REMINDER_COOLDOWN_MS) {
+                return false;
+            }
+
+            if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() >= REMINDER_CHANCE) {
+                return false;
+            }
+
+            lastReminderAt = now;
+        }
+
+        String scheduleId = System.getenv("SCHEDULE_CHANNEL_ID");
+        String bountyId = System.getenv("STANDARD_BOUNTY_FORUM_ID");
+        
+        String channelLinks = "";
+        if (scheduleId != null && !scheduleId.isBlank()) channelLinks += "<#" + scheduleId + "> ";
+        if (bountyId != null && !bountyId.isBlank()) channelLinks += (channelLinks.isEmpty() ? "" : "and ") + "<#" + bountyId + ">";
+        if (channelLinks.isEmpty()) channelLinks = "our Event Boards";
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .setColor(new Color(255, 182, 193))
+            .setDescription("**AM0RA's Gentle Reminder!** \n\n" +
+                            "Don't forget to check out " + channelLinks.trim() + "!\n" +
+                            "There could be active trainings, and events . Join the the team to earn Points which can be used to exchange for Rewards! ✨")
+            .setFooter("This ghost message will vanish in 15 minutes ", null);
+
+        event.getChannel().sendMessageEmbeds(embed.build()).queue(msg -> {
+            msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+        });
+
+        return true;
     }
 }
