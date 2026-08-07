@@ -682,10 +682,18 @@ public class ChatListener extends ListenerAdapter {
             || normalizedContent.contains("[noshop]")) {
             return; 
         }
-        boolean isExplicitListing = java.util.regex.Pattern.compile("(?i)(price|cost|selling)[^0-9]{0,30}\\d+").matcher(normalizedContent).find() 
-                                 || java.util.regex.Pattern.compile("(?i)\\d+[^a-zA-Z0-9]{0,15}(robux|rbx|r\\$|<a?:[^>]*robux[^>]*>)").matcher(normalizedContent).find()
+
+        String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
+        boolean hasImage = !message.getAttachments().isEmpty();
+        
+        boolean isExplicitListing = ultraCleanContent.contains("price") 
+                                 || ultraCleanContent.contains("cost") 
+                                 || ultraCleanContent.contains("selling")
+                                 || ultraCleanContent.contains("rbx") 
+                                 || ultraCleanContent.contains("robux") 
                                  || normalizedContent.contains("🛒") 
-                                 || normalizedContent.contains("🏷️");
+                                 || normalizedContent.contains("🏷️")
+                                 || hasImage; 
         
         if (isExplicitListing) {
             long msgId = message.getIdLong();

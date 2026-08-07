@@ -963,11 +963,11 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                if (thread.getName().startsWith("🔒") || thread.getName().startsWith("✅")) {
+                if (!thread.getName().startsWith("⏳")) {
                     
                     String content = event.getMessage().getContentRaw();
                     
-                    Pattern sensitivePattern = Pattern.compile("(?i)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.])\\b\\d{6,20}\\b(?![-/.])|(?:code|link|id|key|pass|password)\\s*[:=]\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))\\S+)");
+                    Pattern sensitivePattern = Pattern.compile("(?iU)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");
                     Matcher matcher = sensitivePattern.matcher(content);
 
                     if (matcher.find()) {
