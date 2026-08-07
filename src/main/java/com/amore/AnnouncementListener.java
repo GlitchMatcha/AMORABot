@@ -352,60 +352,51 @@ public class AnnouncementListener extends ListenerAdapter {
 
         if (buttonId.startsWith("backup_request:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
+                event.reply(" **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
                 return;
             }
 
-            String audience = buttonId.split(":")[1];
-            String loungeId = System.getenv("LOUNGE_CHANNEL_ID");
+            String[] parts = buttonId.split(":");
+            String audience = parts.length > 1 ? parts[1] : "everyone";
+
+            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
+            String eventTitle = embed.getTitle() != null ? embed.getTitle().replace("🎯 DIRECTIVE: ", "") : "An AMORA Event";
             
-            if (loungeId == null) {
-                event.reply("⚠️ **Error:** `LOUNGE_CHANNEL_ID` is not configured in the .env file!").setEphemeral(true).queue();
-                return;
-            }
-
-            TextChannel lounge = event.getJDA().getTextChannelById(loungeId);
-            if (lounge == null) {
-                event.reply("⚠️ **Error:** Could not find the Lounge channel!").setEphemeral(true).queue();
-                return;
-            }
-
+            String loungeId = System.getenv("LOUNGE_CHANNEL_ID"); 
+            String memberChatId = System.getenv("MEMBER_CHAT_CHANNEL_ID"); 
             String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+
             String pingMention = audience.equals("member") 
                     ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
                     : "@everyone";
 
-            ThreadChannel thread = event.getChannel().asThreadChannel();
-            String threadLink = thread.getJumpUrl();
-            String eventName = event.getMessage().getEmbeds().isEmpty() ? "an Event" : event.getMessage().getEmbeds().get(0).getTitle();
+            EmbedBuilder broadcast = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setDescription("📢 **" + eventTitle + "** is starting soon!\n\n" +
+                                "If you haven't responded yet, or if you forgot, you should come to check it out! >p< \n\n" +
+                                " **[Click here to jump to the event ticket!](" + event.getMessage().getJumpUrl() + ")**")
+                .setFooter("This reminder will self-destruct in 15 minutes to keep chat clean ", null);
 
-            lounge.sendMessage(pingMention + " 🚨 **HOST NEEDS BACKUP!** 🚨\n" +
-                               event.getUser().getAsMention() + " is looking for more players to join **" + eventName + "** right now!\n\n" +
-                               "🔗 **>> [CLICK HERE TO JUMP IN](" + threadLink + ") <<**").queue();
+            event.reply("Broadcasts sent with the correct pings,! They will auto-delete in 15 minutes.").setEphemeral(true).queue();
 
-            event.reply("✅ **Backup Requested!** A call-to-arms has been successfully broadcasted to the Lounge chat.").setEphemeral(true).queue();
-            return;
-        }
-
-        if (buttonId.startsWith("complete_prompt:")) {
-            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                event.reply("⚠️ **Access Denied:** Only Staff can complete events!").setEphemeral(true).queue();
-                return;
+            if (loungeId != null && !loungeId.isBlank()) {
+                TextChannel lounge = event.getJDA().getTextChannelById(loungeId);
+                if (lounge != null) {
+                    lounge.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
+                        msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                    });
+                }
             }
-            String[] parts = buttonId.split(":");
-            String audience = parts[1];
-            String urgency = parts[2];
 
-            TextInput excludeInput = TextInput.create("input_exclude", "Exclude Users (Tags allowed)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. @freeloader (Leave blank to pay everyone)")
-                .setRequired(false)
-                .build();
-                
-            Modal modal = Modal.create("modal_complete:" + audience + ":" + urgency, "Complete Event & Payout")
-                .addActionRow(excludeInput)
-                .build();
-                
-            event.replyModal(modal).queue();
+            if (memberChatId != null && !memberChatId.isBlank()) {
+                TextChannel memberChat = event.getJDA().getTextChannelById(memberChatId);
+                if (memberChat != null) {
+                    memberChat.sendMessage(pingMention).setEmbeds(broadcast.build()).queue(msg -> {
+                        msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
+                    });
+                }
+            }
+            
             return;
         }
 
