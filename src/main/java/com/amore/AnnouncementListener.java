@@ -351,7 +351,6 @@ public class AnnouncementListener extends ListenerAdapter {
         String buttonId = event.getComponentId();
 
         if (buttonId.startsWith("backup_request:")) {
-            // 1. Security Check
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
                 event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
                 return;
@@ -361,7 +360,6 @@ public class AnnouncementListener extends ListenerAdapter {
             String audience = parts.length > 1 ? parts[1] : "everyone";
             String msgId = event.getMessageId();
 
-            // 2. Ask the host where to route the broadcast
             event.reply("📢 **Where would you like to broadcast the backup call?**\n*Note: The broadcast will auto-delete after 15 minutes to keep chat clean.*")
                 .addActionRow(
                     Button.primary("route_backup:lounge:" + msgId + ":" + audience, " Lounge Channel"),
@@ -372,14 +370,14 @@ public class AnnouncementListener extends ListenerAdapter {
         }
         if (buttonId.startsWith("route_backup:")) {
             String[] parts = buttonId.split(":");
-            String target = parts[1]; // "lounge", "member", or "both"
+            String target = parts[1]; 
             String origMsgId = parts[2];
             String audience = parts[3];
 
             event.getChannel().retrieveMessageById(origMsgId).queue(origMsg -> {
                 MessageEmbed embed = origMsg.getEmbeds().isEmpty() ? null : origMsg.getEmbeds().get(0);
                 if (embed == null) {
-                    event.reply("⚠️ Error: Original event data not found.").setEphemeral(true).queue();
+                    event.reply(" Error: Original event data not found.").setEphemeral(true).queue();
                     return;
                 }
 
