@@ -63,6 +63,7 @@ public class CommandListener extends ListenerAdapter {
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
     private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
+    private static final String SHOP_FORUM_CHANNEL_ID_2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
 
     public static final String MIKU_SAD = "<:1MikuSad:1511388491429449850>";
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
@@ -927,11 +928,11 @@ public class CommandListener extends ListenerAdapter {
         if (event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             
+            // --- 1. POINTS MARKETPLACE LOGIC (Uses SHOP_FORUM_CHANNEL_ID) ---
             if (SHOP_FORUM_CHANNEL_ID != null && thread.getParentChannel().getId().equals(SHOP_FORUM_CHANNEL_ID)) {
                 
                 if (event.getMessageId().equals(thread.getId())) {
                     
-                    // Role check: Admin as default 
                     boolean isAuthorized = event.getMember() != null && event.getMember().hasPermission(Permission.ADMINISTRATOR);
                     
                     if (!isAuthorized) {
@@ -946,9 +947,10 @@ public class CommandListener extends ListenerAdapter {
                     event.getChannel().sendMessage(event.getAuthor().getAsMention() + " 🐾 *Sneaks in...* I see your new asset! Click below to set the price and stock so I can build your checkout desk!")
                          .addActionRow(Button.success("setup_shop_" + event.getAuthor().getId(), "⚙️ Set Up Shop Asset"))
                          .queue();
+                    return; 
                 }
             }
-        }
+        
 
         if (event.getChannelType() == ChannelType.GUILD_PRIVATE_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
@@ -963,11 +965,11 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                if (!thread.getName().startsWith("⏳")) {
+                if (thread.getName().startsWith("🔒") || thread.getName().startsWith("✅")) {
                     
                     String content = event.getMessage().getContentRaw();
                     
-                    Pattern sensitivePattern = Pattern.compile("(?iU)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");
+                    Pattern sensitivePattern = Pattern.compile("(?iU)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.])\\b\\d{6,20}\\b(?![-/.])|(?:code|link|id|key|pass|password)\\s*[:=]\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg))[^\n]+)");
                     Matcher matcher = sensitivePattern.matcher(content);
 
                     if (matcher.find()) {
@@ -2677,12 +2679,12 @@ public class CommandListener extends ListenerAdapter {
                     
                     if (currentStock == 0) {
                         updatedEmbed.setColor(Color.RED);
-                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Only \\d+ Left!", "SOLD OUT"));
+                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Limited \\(\\d+ Remaining\\)", "SOLD OUT"));
                         event.getMessage().editMessageEmbeds(updatedEmbed.build())
                              .setActionRow(Button.danger("soldout", "❌ SOLD OUT").asDisabled())
                              .queue();
                     } else {
-                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Only \\d+ Left!", "Only " + currentStock + " Left!"));
+                        updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Limited \\(\\d+ Remaining\\)", "Limited (" + currentStock + " Remaining)"));
                         event.getMessage().editMessageEmbeds(updatedEmbed.build())
                              .setActionRow(Button.success(newBuyId, "🛒 Purchase • " + price + " PTS (" + currentStock + " Left)"))
                              .queue();
