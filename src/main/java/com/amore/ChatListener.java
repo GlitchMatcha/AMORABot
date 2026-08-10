@@ -972,7 +972,7 @@ public class ChatListener extends ListenerAdapter {
                             FileUpload upload = FileUpload.fromData(cardData, "profile.png");
                             
                             event.getChannel().sendFiles(upload).setContent(shoutoutText)
-                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .addActionRow(Button.primary("serverprofile_" + user.getId(), "View Profile 🌸"))
                                  .queueAfter(5, TimeUnit.SECONDS, 
                                 success -> {}, 
                                 error -> event.getChannel().sendMessage(" **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
@@ -982,7 +982,7 @@ public class ChatListener extends ListenerAdapter {
                                     .setColor(new java.awt.Color(255, 182, 193)) 
                                     .setDescription(shoutoutText + "\n\n*( `+5 Sparks` )*");
                             event.getChannel().sendMessageEmbeds(firstEmbed.build())
-                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .addActionRow(Button.primary("serverprofile_" + user.getId(), "View Profile 🌸"))
                                  .queueAfter(5, TimeUnit.SECONDS);
                         }
                     }, error -> {
@@ -992,7 +992,7 @@ public class ChatListener extends ListenerAdapter {
                         if (cardData != null) {
                             FileUpload upload = FileUpload.fromData(cardData, "profile.png");
                             event.getChannel().sendFiles(upload).setContent(shoutoutText)
-                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .addActionRow(Button.primary("serverprofile_" + user.getId(), "View Profile 🌸"))
                                  .queueAfter(5, TimeUnit.SECONDS);
                         }
                     });
@@ -1095,7 +1095,7 @@ public class ChatListener extends ListenerAdapter {
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
                                             event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨")
-                                                 .addActionRow(Button.link("https://discord.com/users/" + winnerId, "View Profile 🌸"))
+                                                 .addActionRow(Button.primary("serverprofile_" + winnerId, "View Profile 🌸"))
                                                  .queue();
                                         }
                                     }, error -> {
@@ -1104,7 +1104,7 @@ public class ChatListener extends ListenerAdapter {
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
                                             event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨")
-                                                 .addActionRow(Button.link("https://discord.com/users/" + winnerId, "View Profile 🌸"))
+                                                 .addActionRow(Button.primary("serverprofile_" + winnerId, "View Profile 🌸"))
                                                  .queue();
                                         }
                                     });
