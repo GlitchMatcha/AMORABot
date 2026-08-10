@@ -926,6 +926,61 @@ public class CommandListener extends ListenerAdapter {
         }
     }
     
+    private boolean isValidTransactionCode(String word) {
+        if (word == null) return false;
+        word = word.trim().toUpperCase();
+        
+        int length = word.length();
+        
+        if (length < 8) return false;
+        if (Pattern.compile("(.)\\1{2,}").matcher(word).find()) return false;
+        
+        Map<Character, Integer> charCounts = new HashMap<>();
+        int maxFrequency = 0;
+        
+        for (char c : word.toCharArray()) {
+            int count = charCounts.getOrDefault(c, 0) + 1;
+            charCounts.put(c, count);
+            if (count > maxFrequency) {
+                maxFrequency = count;
+            }
+        }
+        
+        int uniqueCharacters = charCounts.size();
+        if (uniqueCharacters <= 3) return false;
+        if (maxFrequency >= (length / 2)) return false;
+        
+        if (Pattern.compile("^([A-Z0-9]{4,5}-)+[A-Z0-9]{4,5}$").matcher(word).matches()) return true;
+        
+        if (word.matches("\\d{10,}")) return true;
+        
+        int letters = 0;
+        int digits = 0;
+        int maxLetterStreak = 0;
+        int currentLetterStreak = 0;
+        boolean isAlnum = true;
+        
+        for (char c : word.toCharArray()) {
+            if (Character.isLetter(c)) {
+                letters++;
+                currentLetterStreak++;
+                if (currentLetterStreak > maxLetterStreak) maxLetterStreak = currentLetterStreak;
+            } else if (Character.isDigit(c)) {
+                digits++;
+                currentLetterStreak = 0; 
+            } else if (c != '-' && c != '_') {
+                isAlnum = false; 
+            }
+        }
+        
+        if (isAlnum && letters > 0 && digits > 0) {
+            if (digits >= 2 && maxLetterStreak <= 6) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
@@ -974,14 +1029,36 @@ public class CommandListener extends ListenerAdapter {
                     
                     String content = event.getMessage().getContentRaw();
                     
+                    // The original greedy regex
                     Pattern sensitivePattern = Pattern.compile("(?iU)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");
                     Matcher matcher = sensitivePattern.matcher(content);
 
-                    if (matcher.find()) {
+                    boolean shouldIntercept = false;
+                    StringBuffer censoredBuffer = new StringBuffer();
+
+                    while (matcher.find()) {
+                        String matchText = matcher.group();
+                        
+                        // Check if the match is a malicious URL, an explicit prefix, OR passes the Smart Code Validator
+                        boolean isUrl = matchText.matches("(?iU)^https?://.*");
+                        boolean isExplicitPrefix = matchText.matches("(?iU)^(code|link|id|key|pass|password|file|asset)\\s*[:=].*");
+                        
+                        if (isUrl || isExplicitPrefix || isValidTransactionCode(matchText.replace("||", "").trim())) {
+                            shouldIntercept = true;
+                            matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
+                        } else {
+                            // If it fails the validator (like "YAYYY"), put the slang back exactly as it was
+                            matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                        }
+                    }
+                    matcher.appendTail(censoredBuffer);
+                    if (shouldIntercept) {
+                        String censoredContent = censoredBuffer.toString();
+                        boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
+
                         thread.getHistoryFromBeginning(20).queue(history -> {
                             String foundCreatorId = null;
                             String foundBuyerId = null;
-
                             for (net.dv8tion.jda.api.entities.Message m : history.getRetrievedHistory()) {
                                 if (!m.getButtons().isEmpty()) {
                                     Button btn = m.getButtons().get(0);
@@ -1000,8 +1077,7 @@ public class CommandListener extends ListenerAdapter {
                                 
                                 final String targetId = event.getAuthor().getId().equals(foundCreatorId) ? foundBuyerId : foundCreatorId;
                                 
-                                String censoredContent = matcher.replaceAll("`[  securely hidden by AM0RA ]`");
-                                boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
+                                
                                 
                                 event.getMessage().delete().queue();
 
