@@ -2852,6 +2852,12 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        if (componentId.startsWith("serverprofile_")) {
+            String targetId = componentId.substring("serverprofile_".length());
+            event.reply(" **Click the name below to open their Server Profile!**\n> <@" + targetId + ">")
+                 .setEphemeral(true).queue();
+            return;
+        }
         if (componentId.startsWith("viewprofile_")) {
             String targetId = componentId.substring("viewprofile_".length());
 
