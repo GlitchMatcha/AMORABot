@@ -2841,6 +2841,42 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+        if (componentId.startsWith("viewprofile_")) {
+            String targetId = componentId.substring("viewprofile_".length());
+
+            event.getJDA().retrieveUserById(targetId).queue(targetUser -> {
+                int sparks = db.getSparks(targetId);
+                int points = db.getPoints(targetId);
+                int pity = db.getPity(targetId);
+                int collectionSize = getInventoryCount(db.getInventory(targetId));
+                int directivesCleared = db.getBountiesCleared(targetId);
+                int urgentCleared = db.getUrgentCleared(targetId);
+
+                EmbedBuilder profileEmbed = new EmbedBuilder()
+                        .setColor(new Color(186, 85, 211))
+                        .setTitle("✦ AMORA PROFILE ✦")
+                        .setDescription("An intimate snapshot of " + targetUser.getAsMention() + "'s presence in the AMORA network.")
+                        .addField(" Economy",
+                                "**Sparks:** `" + sparks + "`\n" +
+                                "**Points:** `" + points + "`\n" +
+                                "**Pity:** `" + pity + "/50`",
+                                false)
+                        .addField(" Collection",
+                                "**Items Owned:** `" + collectionSize + "`",
+                                false)
+                        .addField(" Activity",
+                                "**Directives Cleared:** `" + directivesCleared + "`\n" +
+                                "**Urgent Directives:** `" + urgentCleared + "`",
+                                false)
+                        .setThumbnail(targetUser.getEffectiveAvatarUrl())
+                        .setFooter("AMORA Profile Archive", null);
+
+                event.replyEmbeds(profileEmbed.build()).setEphemeral(true).queue();
+            }, error -> {
+                event.reply("❌ Could not find that user's data!").setEphemeral(true).queue();
+            });
+            return;
+        }
         if (componentId.startsWith("giftbuy_")) {
             String[] parts = componentId.split("_", 4);
             
