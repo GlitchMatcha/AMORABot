@@ -916,8 +916,8 @@ public class CommandListener extends ListenerAdapter {
                          thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                                .addEmbeds(orderEmbed.build())
                                .addActionRow(
-                                   Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
-                                   Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "  Decline")
+                                   Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Accept Order"),
+                                   Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "  Decline")
                                ).queue();
                     });
                 });
@@ -3116,8 +3116,8 @@ public class CommandListener extends ListenerAdapter {
                              thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                                    .addEmbeds(orderEmbed.build())
                                    .addActionRow(
-                                       Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId(), " Accept Order"),
-                                       Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId(), "  Decline")
+                                       Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Accept Order"),
+                                       Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "  Decline")
                                    ).queue();
                         });
                     });
@@ -3280,6 +3280,7 @@ public class CommandListener extends ListenerAdapter {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
             String buyerId = parts[2];
+            String mainMsgId = parts.length > 3 ? parts[3] : ""; 
             
             if (!event.getUser().getId().equals(creatorId)) {
                 event.reply("  Only the requested creator can accept this order!").setEphemeral(true).queue();
@@ -3306,11 +3307,11 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(miniCart.build())
                  .addActionRow(
-                     Button.primary("buyerconfirm_" + creatorId + "_" + buyerId, "🛍️ Buyer Confirm"),
-                     Button.primary("sellerconfirm_" + creatorId + "_" + buyerId, "🤝 Seller Confirm"),
-                     Button.secondary("additem_" + creatorId + "_" + buyerId, "➕ Add Item"),
-                     Button.secondary("remitem_" + creatorId + "_" + buyerId, "➖ Remove"),
-                     Button.danger("ordercancel_" + creatorId + "_" + buyerId, " Cancel Order")
+                     Button.primary("buyerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Buyer Confirm (After Payment!)"),
+                     Button.primary("sellerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Seller (After Payment!)"),
+                     Button.secondary("additem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➕ Add Item"),
+                     Button.secondary("remitem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➖ Remove"),
+                     Button.danger("ordercancel_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Cancel Order")
                  ).queue();
 
             return;
@@ -3386,6 +3387,7 @@ public class CommandListener extends ListenerAdapter {
             String type = parts[0];
             String creatorId = parts[1];
             String buyerId = parts[2];
+            String mainMsgId = parts.length > 3 ? parts[3] : "";
 
             if (type.equals("buyerconfirm") && !event.getUser().getId().equals(buyerId)) {
                 event.reply("  Only the BUYER (<@" + buyerId + ">) can click this button!").setEphemeral(true).queue();
@@ -3469,6 +3471,14 @@ public class CommandListener extends ListenerAdapter {
                          .setComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(finalButtons))
                          .queue(); 
                     
+                    if (!mainMsgId.isEmpty()) {
+                        thread.getParentChannel().asTextChannel().retrieveMessageById(mainMsgId).queue(mainMsg -> {
+                            String oldContent = mainMsg.getContentRaw();
+                            String newContent = oldContent.replace("Status:** 🔒 *Transaction Room Secured!*", "Status:**  **ORDER SUCCESSFULLY COMPLETED!** >p<");
+                            mainMsg.editMessage(newContent).queue();
+                        }, err -> {});
+                    }
+                    
                     generateAndLogTranscript(thread, "COMPLETED");
                     
                     event.getChannel().sendMessage( CinnaSurprise + " **Transaction Complete!** The sale of **" + totalItems + "** items has been officially logged for <@" + creatorId + ">.")
@@ -3513,6 +3523,7 @@ public class CommandListener extends ListenerAdapter {
             String[] parts = componentId.split("_");
             String creatorId = parts[1];
             String buyerId = parts[2];
+            String mainMsgId = parts.length > 3 ? parts[3] : "";
             
             if (!event.getUser().getId().equals(creatorId) && !event.getUser().getId().equals(buyerId)) {
                 event.reply("  Only the buyer or creator involved in this order can cancel it!").setEphemeral(true).queue();
@@ -3526,6 +3537,16 @@ public class CommandListener extends ListenerAdapter {
             event.editMessageEmbeds(declined.build()).setComponents(java.util.Collections.emptyList()).queue();
             
             ThreadChannel thread = event.getChannel().asThreadChannel();
+            
+            if (!mainMsgId.isEmpty()) {
+                thread.getParentChannel().asTextChannel().retrieveMessageById(mainMsgId).queue(mainMsg -> {
+                    String oldContent = mainMsg.getContentRaw();
+                    String newContent = oldContent.replace("Status:** 🔒 *Transaction Room Secured!*", "Status:** ❌ ~~*Order Cancelled / Voided!*~~")
+                                                  .replace("Status:** ⏳ *Weaving the digital threads...*", "Status:** ❌ ~~*Order Declined!*~~");
+                    mainMsg.editMessage(newContent).queue();
+                }, err -> {});
+            }
+            
             generateAndLogTranscript(thread, "CANCELLED/DECLINED");
             
             event.getChannel().sendMessage("Order ticket was marked as cancelled/declined. Locking thread...")
