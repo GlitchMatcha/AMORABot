@@ -971,15 +971,19 @@ public class ChatListener extends ListenerAdapter {
                         if (cardData != null) {
                             FileUpload upload = FileUpload.fromData(cardData, "profile.png");
                             
-                            event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS, 
+                            event.getChannel().sendFiles(upload).setContent(shoutoutText)
+                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .queueAfter(5, TimeUnit.SECONDS, 
                                 success -> {}, 
-                                error -> event.getChannel().sendMessage("⚠️ **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
+                                error -> event.getChannel().sendMessage(" **ERROR:** Check 'Attach Files' permissions for AMORA.").queue()
                             );
                         } else {
                             net.dv8tion.jda.api.EmbedBuilder firstEmbed = new net.dv8tion.jda.api.EmbedBuilder()
                                     .setColor(new java.awt.Color(255, 182, 193)) 
                                     .setDescription(shoutoutText + "\n\n*( `+5 Sparks` )*");
-                            event.getChannel().sendMessageEmbeds(firstEmbed.build()).queueAfter(5, TimeUnit.SECONDS);
+                            event.getChannel().sendMessageEmbeds(firstEmbed.build())
+                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .queueAfter(5, TimeUnit.SECONDS);
                         }
                     }, error -> {
                         byte[] cardData = generateProfileCard(user.getEffectiveName(), user.getEffectiveAvatarUrl(), null, newTotal);
@@ -987,7 +991,9 @@ public class ChatListener extends ListenerAdapter {
                         
                         if (cardData != null) {
                             FileUpload upload = FileUpload.fromData(cardData, "profile.png");
-                            event.getChannel().sendFiles(upload).setContent(shoutoutText).queueAfter(5, TimeUnit.SECONDS);
+                            event.getChannel().sendFiles(upload).setContent(shoutoutText)
+                                 .addActionRow(Button.link("https://discord.com/users/" + user.getId(), "View Profile 🌸"))
+                                 .queueAfter(5, TimeUnit.SECONDS);
                         }
                     });
                 } 
@@ -1088,14 +1094,18 @@ public class ChatListener extends ListenerAdapter {
                                         byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), bannerUrl, updatedSparks);
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
-                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨")
+                                                 .addActionRow(Button.link("https://discord.com/users/" + winnerId, "View Profile 🌸"))
+                                                 .queue();
                                         }
                                     }, error -> {
                                         int updatedSparks = db.getSparks(winnerId);
                                         byte[] cardData = generateProfileCard(wUser.getEffectiveName(), wUser.getEffectiveAvatarUrl(), null, updatedSparks);
                                         if (cardData != null) {
                                             FileUpload upload = FileUpload.fromData(cardData, "winner_profile.png");
-                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨").queue();
+                                            event.getChannel().sendFiles(upload).setContent("✨ ✦ **Secondary Winner Canvas:** " + wUser.getAsMention() + " ✦ ✨")
+                                                 .addActionRow(Button.link("https://discord.com/users/" + winnerId, "View Profile 🌸"))
+                                                 .queue();
                                         }
                                     });
                                 });
@@ -1290,6 +1300,7 @@ public class ChatListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+        
         if (buttonId.startsWith("grid_")) {
             String msgId = event.getMessageId();
             GridState state = activeGrids.get(msgId);
