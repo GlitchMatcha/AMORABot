@@ -1049,9 +1049,8 @@ public class CommandListener extends ListenerAdapter {
                         String matchText = matcher.group();
                         
                         boolean isUrl = matchText.matches("(?iU)^https?://.*");
-                        boolean isExplicitPrefix = matchText.matches("(?iU)^(code|link|id|key|pass|password|file|asset)\\s*[:=].*");
                         
-                        if (isUrl || isExplicitPrefix || isValidTransactionCode(matchText.replace("||", "").trim())) {
+                        if (isUrl || isValidTransactionCode(matchText)) {
                             shouldIntercept = true;
                             matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
                         } else {
