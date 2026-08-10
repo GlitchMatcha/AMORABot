@@ -990,6 +990,16 @@ public class CommandListener extends ListenerAdapter {
         
         return false;
     }
+    private String buildProgressBar(int current, int max, int length) {
+        int filled = (int) Math.round(((double) current / max) * length);
+        StringBuilder bar = new StringBuilder("`[");
+        for (int i = 0; i < length; i++) {
+            if (i < filled) bar.append("█");
+            else bar.append("░");
+        }
+        bar.append("]`");
+        return bar.toString();
+    }
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
@@ -1556,15 +1566,16 @@ public class CommandListener extends ListenerAdapter {
             int collectionSize = getInventoryCount(db.getInventory(targetId));
             int directivesCleared = db.getBountiesCleared(targetId);
             int urgentCleared = db.getUrgentCleared(targetId);
+            String pityBar = buildProgressBar(pity, 50, 15);
 
             EmbedBuilder profileEmbed = new EmbedBuilder()
                     .setColor(new Color(186, 85, 211))
                     .setTitle("✦ AMORA PROFILE ✦")
                     .setDescription("An intimate snapshot of " + targetUser.getAsMention() + "'s presence in the AMORA network.")
-                    .addField("⚡ Economy",
+                    .addField("💎 Economy",
                             "**Sparks:** `" + sparks + "`\n" +
                             "**Points:** `" + points + "`\n" +
-                            "**Pity:** `" + pity + "/50`",
+                            "**Gacha Pity:** " + pityBar + " `" + pity + "/50`",
                             false)
                     .addField("🃏 Collection",
                             "**Items Owned:** `" + collectionSize + "`",

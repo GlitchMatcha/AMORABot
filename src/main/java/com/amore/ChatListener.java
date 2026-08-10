@@ -1113,7 +1113,7 @@ public class ChatListener extends ListenerAdapter {
                         });
                     }
 
-                    activeChecks.remove(event.getMessageId());
+                    completedChecks.add(event.getMessageId());
                     activeChecks.remove(event.getMessageId());
                 }
             }

@@ -333,7 +333,7 @@ public class AnnouncementListener extends ListenerAdapter {
                                 newsChannel.sendMessage(notificationMessage).queue();
                             }
                             
-                            event.getHook().sendMessage("✅ Hybrid Event successfully routed!").queue();
+                            event.getHook().sendMessage("✅ Event successfully routed!").queue();
                         } else {
                             event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the target schedules channel!** Check permissions and ID.").queue();
                         }
@@ -349,7 +349,28 @@ public class AnnouncementListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+        if (buttonId.startsWith("complete_prompt:")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
+                event.reply(" **Access Denied:** Only Directors can complete events and issue payouts!").setEphemeral(true).queue();
+                return;
+            }
 
+            String[] parts = buttonId.split(":");
+            String audience = parts[1];
+            String urgency = parts[2];
+
+            TextInput excludeInput = TextInput.create("input_exclude", "Exclude Users (Optional)", TextInputStyle.SHORT)
+                    .setPlaceholder("Ping users to exclude (e.g., @Matcha) or leave blank")
+                    .setRequired(false)
+                    .build();
+
+            Modal modal = Modal.create("modal_complete:" + audience + ":" + urgency, "Complete Event Payout")
+                    .addActionRow(excludeInput)
+                    .build();
+
+            event.replyModal(modal).queue();
+            return;
+        }
         if (buttonId.startsWith("backup_request:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
                 event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
