@@ -932,34 +932,22 @@ public class CommandListener extends ListenerAdapter {
         
         int length = word.length();
         
-        if (length < 6) return false;
-        
-        if (Pattern.compile("(.)\\1{2,}").matcher(word).find()) return false;
-        
-        Map<Character, Integer> charCounts = new HashMap<>();
-        int maxFrequency = 0;
-        int vowels = 0;
-        
-        for (char c : word.toCharArray()) {
-            int count = charCounts.getOrDefault(c, 0) + 1;
-            charCounts.put(c, count);
-            if (count > maxFrequency) maxFrequency = count;
-            if ("AEIOU".indexOf(c) != -1) vowels++;
-        }
-        
-        int uniqueCharacters = charCounts.size();
-        
-        if (uniqueCharacters <= 3) return false;
-        if (maxFrequency > (length / 2)) return false; 
-        
+       
         if (Pattern.compile("^([A-Z0-9]{4,5}-)+[A-Z0-9]{4,5}$").matcher(word).matches()) return true;
         if (word.matches("\\d{10,}")) return true;
         
+       
+        if (length != 4 && length != 6 && length != 8 && length < 10) {
+            return false;
+        }
+        
         int letters = 0;
         int digits = 0;
+        int vowels = 0;
+        Map<Character, Integer> charCounts = new HashMap<>();
+        int maxFrequency = 0;
         int maxLetterStreak = 0;
         int currentLetterStreak = 0;
-        boolean isAlnum = true;
         
         for (char c : word.toCharArray()) {
             if (Character.isLetter(c)) {
@@ -969,25 +957,34 @@ public class CommandListener extends ListenerAdapter {
             } else if (Character.isDigit(c)) {
                 digits++;
                 currentLetterStreak = 0; 
-            } else if (c != '-' && c != '_') {
-                isAlnum = false; 
+            } else {
+                return false;
             }
+            
+            if ("AEIOU".indexOf(c) != -1) vowels++;
+            
+            int count = charCounts.getOrDefault(c, 0) + 1;
+            charCounts.put(c, count);
+            if (count > maxFrequency) maxFrequency = count;
         }
         
-        if (isAlnum && letters > 0) {
+        if (maxFrequency > (length / 2)) return false;
+        
+        
+        if (length >= 10) {
+            if (digits < 2) return false;
+        
+            if (maxLetterStreak > 6) return false;
+            
+            return true;
+        } 
+     
+        else {
             if (digits > 0) {
-                if (length < 8) {
-                    if (digits == 1 && vowels > 0) return false;
-                    if (maxLetterStreak <= 5) return true;
-                } else {
-                    if (digits >= 2 && maxLetterStreak <= 6) return true;
-                    if (digits == 1 && vowels == 0 && maxLetterStreak <= 8) return true; 
-                }
-            } 
-            else if (digits == 0) {
-                if (vowels == 0 && length >= 6 && length <= 8) {
-                    return true;
-                }
+                if (vowels > 1) return false;
+                return true;
+            } else {
+                if (vowels == 0) return true;
             }
         }
         
@@ -1051,7 +1048,6 @@ public class CommandListener extends ListenerAdapter {
                     while (matcher.find()) {
                         String matchText = matcher.group();
                         
-                        // Check if the match is a malicious URL, an explicit prefix, OR passes the Smart Code Validator
                         boolean isUrl = matchText.matches("(?iU)^https?://.*");
                         boolean isExplicitPrefix = matchText.matches("(?iU)^(code|link|id|key|pass|password|file|asset)\\s*[:=].*");
                         
@@ -1059,7 +1055,6 @@ public class CommandListener extends ListenerAdapter {
                             shouldIntercept = true;
                             matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
                         } else {
-                            // If it fails the validator (like "YAYYY"), put the slang back exactly as it was
                             matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
                         }
                     }
