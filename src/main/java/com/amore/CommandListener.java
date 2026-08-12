@@ -1060,7 +1060,17 @@ public class CommandListener extends ListenerAdapter {
                         
                         boolean isUrl = matchText.matches("(?iU)^https?://.*");
                         
-                        if (isUrl || isValidTransactionCode(matchText)) {
+                        String codeToTest = matchText;
+                        if (matchText.toLowerCase().matches("^(code|link|id|key|pass|password|file|asset)\\s*[:=].*")) {
+                            int splitIndex = Math.max(matchText.indexOf(':'), matchText.indexOf('='));
+                            if (splitIndex != -1) {
+                                codeToTest = matchText.substring(splitIndex + 1).trim();
+                            }
+                        }
+                        
+                        codeToTest = codeToTest.replace("|", "").trim();
+                        
+                        if (isUrl || isValidTransactionCode(codeToTest)) {
                             shouldIntercept = true;
                             matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
                         } else {
