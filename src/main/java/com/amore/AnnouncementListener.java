@@ -70,7 +70,143 @@ public class AnnouncementListener extends ListenerAdapter {
 
         event.replyModal(buildEventModal("modal_fused:", "Create Hybrid Event", type, audience, urgency, "", "", "", "", "")).queue();
     }
+    @Override
+    public void onEntitySelectInteraction(net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent event) {
+        String componentId = event.getComponentId();
 
+        if (componentId.startsWith("select_add_")) {
+            String msgId = componentId.substring("select_add_".length());
+            event.getChannel().retrieveMessageById(msgId).queue(msg -> {
+                MessageEmbed oldEmbed = msg.getEmbeds().get(0);
+                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+                
+                String partyField = "None";
+                int fieldIndex = -1;
+                int current = 0;
+                String maxStr = "Unlimited";
+                
+                for (int i = 0; i < oldEmbed.getFields().size(); i++) {
+                    MessageEmbed.Field field = oldEmbed.getFields().get(i);
+                    if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                        partyField = field.getValue();
+                        fieldIndex = i;
+                        Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
+                        if (m.find()) {
+                            current = Integer.parseInt(m.group(1));
+                            maxStr = m.group(2);
+                        }
+                        break;
+                    }
+                }
+                
+                if (fieldIndex == -1) {
+                    event.reply("❌ Party data missing!").setEphemeral(true).queue();
+                    return;
+                }
+                
+                int max = maxStr.equalsIgnoreCase("Unlimited") ? Integer.MAX_VALUE : Integer.parseInt(maxStr);
+                List<net.dv8tion.jda.api.entities.User> selectedUsers = event.getMentions().getUsers();
+                int addedCount = 0;
+                
+                if (partyField.equals("None")) partyField = "";
+                
+                for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
+                    String mention = u.getAsMention();
+                    if (!partyField.contains(mention)) {
+                        if (current >= max) break; 
+                        partyField += (partyField.isEmpty() ? "" : "\n") + mention;
+                        current++;
+                        addedCount++;
+                    }
+                }
+                
+                if (addedCount == 0) {
+                    event.reply("⚠️ No new members were added (Party might be full, or they are already in!).").setEphemeral(true).queue();
+                    return;
+                }
+                
+                newEmbed.getFields().remove(fieldIndex);
+                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
+                if (current >= max) newEmbed.setColor(Color.YELLOW);
+                
+                msg.editMessageEmbeds(newEmbed.build()).queue();
+                event.reply("✅ Successfully added " + addedCount + " member(s) to the party!").setEphemeral(true).queue();
+            });
+            return;
+        }
+
+        if (componentId.startsWith("select_kick_")) {
+            String msgId = componentId.substring("select_kick_".length());
+            event.getChannel().retrieveMessageById(msgId).queue(msg -> {
+                MessageEmbed oldEmbed = msg.getEmbeds().get(0);
+                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+                
+                String partyField = "None";
+                int fieldIndex = -1;
+                int current = 0;
+                String maxStr = "Unlimited";
+                
+                for (int i = 0; i < oldEmbed.getFields().size(); i++) {
+                    MessageEmbed.Field field = oldEmbed.getFields().get(i);
+                    if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                        partyField = field.getValue();
+                        fieldIndex = i;
+                        Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
+                        if (m.find()) {
+                            current = Integer.parseInt(m.group(1));
+                            maxStr = m.group(2);
+                        }
+                        break;
+                    }
+                }
+                
+                if (fieldIndex == -1) {
+                    event.reply("❌ Party data missing!").setEphemeral(true).queue();
+                    return;
+                }
+                
+                List<net.dv8tion.jda.api.entities.User> selectedUsers = event.getMentions().getUsers();
+                int removedCount = 0;
+                
+                for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
+                    String mention = u.getAsMention();
+                    if (partyField.contains(mention)) {
+                        partyField = partyField.replace(mention + "\n", "").replace("\n" + mention, "").replace(mention, "");
+                        current--;
+                        removedCount++;
+                    }
+                }
+                
+                if (partyField.trim().isEmpty()) partyField = "None";
+                
+                if (removedCount == 0) {
+                    event.reply("⚠️ None of the selected users were in the party.").setEphemeral(true).queue();
+                    return;
+                }
+                
+                newEmbed.getFields().remove(fieldIndex);
+                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
+                
+                msg.editMessageEmbeds(newEmbed.build()).queue();
+                event.reply("✅ Successfully removed " + removedCount + " member(s) from the party!").setEphemeral(true).queue();
+            });
+            return;
+        }
+
+        if (componentId.startsWith("select_exclude_")) {
+            String[] parts = componentId.split(":", 3);
+            String originalMsgId = parts[0].replace("select_exclude_", "");
+            String audience = parts.length > 1 ? parts[1] : "everyone";
+            boolean isUrgent = parts.length > 2 && parts[2].equals("urgent");
+            
+            List<String> excludedIds = event.getMentions().getUsers().stream().map(net.dv8tion.jda.api.entities.User::getId).toList();
+            
+            event.deferReply(true).queue(hook -> {
+                executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, excludedIds, isUrgent, audience);
+            });
+            return;
+        }
+    }
     @Override
     public void onModalInteraction(ModalInteractionEvent event) {
         
@@ -252,7 +388,11 @@ public class AnnouncementListener extends ListenerAdapter {
         );
         builder.addActionRow(
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, " Edit Details"),
-                Button.success("complete_prompt:" + audience + ":" + urgency, " Complete & Payout"),
+                Button.success("event_complete:" + audience + ":" + urgency, " Finish & Payout"),
+                Button.secondary("event_add", " Add Member"),
+                Button.danger("event_kick", " Kick Member")
+        );
+        builder.addActionRow(
                 Button.secondary("backup_request:" + audience, " Call More People! "), 
                 Button.secondary("close_event:" + audience, "🔒 Cancel / Close") 
         );
@@ -341,7 +481,7 @@ public class AnnouncementListener extends ListenerAdapter {
                     error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
                 );
             } else {
-                event.reply("⚠️ Routing Error: Could not find the target forum channel.").setEphemeral(true).queue();
+                event.reply("Routing Error: Could not find the target forum channel.").setEphemeral(true).queue();
             }
         }
     }
@@ -349,31 +489,72 @@ public class AnnouncementListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
-        if (buttonId.startsWith("complete_prompt:")) {
+        if (buttonId.startsWith("event_complete:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
-                event.reply(" **Access Denied:** Only Directors can complete events and issue payouts!").setEphemeral(true).queue();
+                event.reply(" Director clearance required to authorize payouts!").setEphemeral(true).queue();
                 return;
             }
-
+            
             String[] parts = buttonId.split(":");
-            String audience = parts[1];
-            String urgency = parts[2];
+            String audience = parts.length > 1 ? parts[1] : "everyone";
+            String urgency = parts.length > 2 ? parts[2] : "standard";
+            
+            net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu excludeMenu = 
+                net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.create("select_exclude_" + event.getMessageId() + ":" + audience + ":" + urgency, net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget.USER)
+                .setPlaceholder("Select user(s) to EXCLUDE (Optional)...")
+                .setMinValues(1).setMaxValues(25).build();
 
-            TextInput excludeInput = TextInput.create("input_exclude", "Exclude Users (Optional)", TextInputStyle.SHORT)
-                    .setPlaceholder("Ping users to exclude (e.g., @Matcha) or leave blank")
-                    .setRequired(false)
-                    .build();
+            event.reply(" **Ready to Complete & Payout!**\nIf you need to exclude anyone (AFK, troll, left early), select them in the dropdown below. If everyone did a great job, just click **Payout Everyone**!")
+                .addActionRow(excludeMenu)
+                .addActionRow(Button.success("payout_all_" + event.getMessageId() + ":" + audience + ":" + urgency, "✅ Payout Everyone!"))
+                .setEphemeral(true).queue();
+            return;
+        }
+        
+        if (buttonId.equals("event_add")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
+                event.reply("Director clearance required to manually add members!").setEphemeral(true).queue();
+                return;
+            }
+            net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu menu = 
+                net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.create("select_add_" + event.getMessageId(), net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget.USER)
+                .setPlaceholder("Select user(s) to manually add...")
+                .setMinValues(1).setMaxValues(10).build();
+                
+            event.reply("Please select the user(s) you want to add to the party:")
+                .addActionRow(menu).setEphemeral(true).queue();
+            return;
+        }
 
-            Modal modal = Modal.create("modal_complete:" + audience + ":" + urgency, "Complete Event Payout")
-                    .addActionRow(excludeInput)
-                    .build();
-
-            event.replyModal(modal).queue();
+        if (buttonId.equals("event_kick")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
+                event.reply("Director clearance required to kick members!").setEphemeral(true).queue();
+                return;
+            }
+            net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu menu = 
+                net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.create("select_kick_" + event.getMessageId(), net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget.USER)
+                .setPlaceholder("Select user(s) to kick from the party...")
+                .setMinValues(1).setMaxValues(10).build();
+                
+            event.reply("Please select the user(s) you want to kick:")
+                .addActionRow(menu).setEphemeral(true).queue();
+            return;
+        }
+        
+        if (buttonId.startsWith("payout_all_")) {
+            String[] parts = buttonId.split(":", 3);
+            String originalMsgId = parts[0].replace("payout_all_", "");
+            String audience = parts.length > 1 ? parts[1] : "everyone";
+            boolean isUrgent = parts.length > 2 && parts[2].equals("urgent");
+            
+            event.deferReply(true).queue(hook -> {
+                executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, new ArrayList<>(), isUrgent, audience);
+            });
             return;
         }
         if (buttonId.startsWith("backup_request:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                event.reply("⚠️ **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
+                event.reply(" **Access Denied:** Only Staff can request backup!").setEphemeral(true).queue();
                 return;
             }
 
@@ -915,4 +1096,93 @@ public class AnnouncementListener extends ListenerAdapter {
             default: return "Error building template.";
         }
     }
+    private void executeEventPayout(net.dv8tion.jda.api.interactions.InteractionHook hook, net.dv8tion.jda.api.entities.User executor, net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel, String msgId, List<String> excludedIds, boolean isUrgent, String audience) {
+        channel.retrieveMessageById(msgId).queue(startMsg -> {
+            MessageEmbed embed = startMsg.getEmbeds().get(0);
+            int rewardAmount = 0;
+            if (embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mReward = Pattern.compile("Reward embedded:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mReward.find()) rewardAmount = Integer.parseInt(mReward.group(1));
+            }
+
+            String partyData = "None";
+            int fieldIndex = -1;
+            for (int i = 0; i < embed.getFields().size(); i++) {
+                MessageEmbed.Field field = embed.getFields().get(i);
+                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                    partyData = field.getValue();
+                    fieldIndex = i;
+                    break;
+                }
+            }
+
+            if (partyData == null || partyData.equals("None") || partyData.isEmpty()) {
+                hook.sendMessage("❌ Cannot complete. The party is empty!").queue();
+                return;
+            }
+
+            List<String> userIds = new ArrayList<>();
+            Matcher mUser = Pattern.compile("<@!?(\\d+)>").matcher(partyData);
+            while (mUser.find()) userIds.add(mUser.group(1));
+
+            StringBuilder payoutLog = new StringBuilder();
+            DatabaseManager db = DatabaseManager.getInstance();
+
+            for (String uid : userIds) {
+                if (excludedIds.contains(uid)) {
+                    payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
+                    continue;
+                }
+                int currentPoints = db.getPoints(uid);
+                db.updatePoints(uid, currentPoints + rewardAmount);
+                db.incrementBountyStats(uid, isUrgent);
+                payoutLog.append("• <@").append(uid).append("> received `").append(rewardAmount).append(" PTS`\n");
+            }
+
+            EmbedBuilder completedEmbed = new EmbedBuilder(embed);
+            completedEmbed.setColor(new Color(50, 205, 50));
+            String title = embed.getTitle();
+            if (title != null && !title.startsWith("✅")) {
+                completedEmbed.setTitle("✅ [COMPLETED] " + title);
+            }
+
+            if (fieldIndex != -1) {
+                completedEmbed.getFields().remove(fieldIndex);
+            }
+            completedEmbed.addField("🏆 EVENT CLEARED", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
+
+            startMsg.editMessageEmbeds(completedEmbed.build()).setComponents().queue();
+
+            if (channel.getType().isThread()) {
+                ThreadChannel thread = (ThreadChannel) channel;
+                
+                String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
+                if (targetPingChannelId != null) {
+                    TextChannel textChannel = startMsg.getJDA().getTextChannelById(targetPingChannelId);
+                    net.dv8tion.jda.api.entities.channel.concrete.NewsChannel newsChannel = startMsg.getJDA().getNewsChannelById(targetPingChannelId);
+                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
+
+                    if (pingChannel != null) {
+                        String jumpUrl = thread.getJumpUrl();
+                        pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
+                            for (Message msg : messages) {
+                                if (msg.getAuthor().getId().equals(startMsg.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
+                                    msg.editMessage("✅ **[THIS EVENT IS COMPLETED]**\n~~" + msg.getContentRaw().replace("~~", "") + "~~").queue();
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                }
+
+                hook.sendMessage("✅ Payout processing complete! Thread locking and archiving...").queue();
+                thread.sendMessage("🏆 **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
+                    success -> thread.getManager().setLocked(true).setArchived(true).queue()
+                );
+            } else {
+                hook.sendMessage("✅ Payout processing complete!").queue();
+            }
+        }, error -> hook.sendMessage("❌ Error fetching the event message.").queue());
+    }
+    
 }
