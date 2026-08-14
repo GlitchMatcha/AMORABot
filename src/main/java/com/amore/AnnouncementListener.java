@@ -202,8 +202,9 @@ public class AnnouncementListener extends ListenerAdapter {
             List<String> excludedIds = event.getMentions().getUsers().stream().map(net.dv8tion.jda.api.entities.User::getId).toList();
             
             event.deferReply(true).queue(hook -> {
-                executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, excludedIds, isUrgent, audience);
-            });
+            executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, excludedIds, isUrgent, audience);
+            event.getMessage().delete().queue(); 
+        });
             return;
         }
     }
@@ -334,6 +335,11 @@ public class AnnouncementListener extends ListenerAdapter {
             unixEpoch = zdt.toEpochSecond();
             displayTime = "<t:" + unixEpoch + ":F>\n` ~ ୨୧ · ` <t:" + unixEpoch + ":R>";
         } catch (Exception e) {
+            long currentEpoch = System.currentTimeMillis() / 1000;
+        if (unixEpoch > 0 && unixEpoch < currentEpoch - 60) {
+            event.reply(" **Invalid Time:** The time you entered (`" + rawTime + "`) is in the past! Please enter a future time for this event.").setEphemeral(true).queue();
+            return;
+        }
             displayTime = "` " + rawTime + " `"; 
         }
         
@@ -494,7 +500,27 @@ public class AnnouncementListener extends ListenerAdapter {
                 event.reply(" Director clearance required to authorize payouts!").setEphemeral(true).queue();
                 return;
             }
-            
+            MessageEmbed embed = event.getMessage().getEmbeds().isEmpty() ? null : event.getMessage().getEmbeds().get(0);
+            if (embed != null && embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(embed.getFooter().getText());
+                if (mTime.find()) {
+                    try {
+                        String rawTime = mTime.group(1).trim();
+                        String smartTime = rawTime.toUpperCase();
+                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00");
+                        smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00");
+                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00");
+                        smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
+                        long eventEpoch = ZonedDateTime.parse(smartTime, formatter).toEpochSecond();
+                        
+                        if ((System.currentTimeMillis() / 1000) < eventEpoch) {
+                            event.reply("⚠️ **The event hasn't started yet!**\nYou cannot complete and payout an event that is still in the future. To cancel or close this event early without payouts, please click the 🔒 **Cancel / Close** button instead.").setEphemeral(true).queue();
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
             String[] parts = buttonId.split(":");
             String audience = parts.length > 1 ? parts[1] : "everyone";
             String urgency = parts.length > 2 ? parts[2] : "standard";
@@ -548,8 +574,9 @@ public class AnnouncementListener extends ListenerAdapter {
             boolean isUrgent = parts.length > 2 && parts[2].equals("urgent");
             
             event.deferReply(true).queue(hook -> {
-                executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, new ArrayList<>(), isUrgent, audience);
-            });
+            executeEventPayout(hook, event.getUser(), event.getChannel(), originalMsgId, new ArrayList<>(), isUrgent, audience);
+            event.getMessage().delete().queue(); 
+        });
             return;
         }
         if (buttonId.startsWith("backup_request:")) {
@@ -656,9 +683,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 closedEmbed.setTitle("🔒 [CLOSED/CANCELLED] " + title);
             }
             
-            event.editMessageEmbeds(closedEmbed.build())
-                 .setComponents() 
-                 .queue();
+            event.editMessageEmbeds(closedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
 
             if (event.getChannel().getType().isThread()) {
                 ThreadChannel thread = event.getChannel().asThreadChannel();
@@ -1149,9 +1174,9 @@ public class AnnouncementListener extends ListenerAdapter {
             if (fieldIndex != -1) {
                 completedEmbed.getFields().remove(fieldIndex);
             }
-            completedEmbed.addField("🏆 EVENT CLEARED", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
+            completedEmbed.addField(" EVENT FINISHED!", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
 
-            startMsg.editMessageEmbeds(completedEmbed.build()).setComponents().queue();
+            startMsg.editMessageEmbeds(completedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
 
             if (channel.getType().isThread()) {
                 ThreadChannel thread = (ThreadChannel) channel;
