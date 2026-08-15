@@ -122,7 +122,8 @@ public class LoungeManager {
             "If you can't find the sunshine, be the sunshine.",
             "Every challenge is just a puzzle waiting for your specific genius.",
             "Your journey is uniquely yours. Embrace every single pixel of it.",
-            "DEAD Fish Quote: You arent alone, there are always plenty of fishes in the sea, there to help **you** . Ride the waves, follow the current, chase the horizon. There is always sunshines behind the thunderstorms"
+            "DEAD Fish Quote: You arent alone, there are always plenty of fishes in the sea, there to help **you** . Ride the waves, follow the current, chase the horizon. There is always sunshines behind the thunderstorms",
+            "I Once saw an Owl, he whispered: six seven ohio fanum tax skibidi toilet auraaa"
     );
 
     public static void start(JDA jda) {
