@@ -1048,8 +1048,7 @@ public class CommandListener extends ListenerAdapter {
                     
                     String content = event.getMessage().getContentRaw();
                     
-                    // The original greedy regex
-                    Pattern sensitivePattern = Pattern.compile("(?iU)(https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");
+                    Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");                    
                     Matcher matcher = sensitivePattern.matcher(content);
 
                     boolean shouldIntercept = false;
@@ -1058,6 +1057,11 @@ public class CommandListener extends ListenerAdapter {
                     while (matcher.find()) {
                         String matchText = matcher.group();
                         
+                        if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
+                            matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                            continue;
+                        }
+
                         boolean isUrl = matchText.matches("(?iU)^https?://.*");
                         
                         String codeToTest = matchText;
