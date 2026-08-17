@@ -1344,35 +1344,78 @@ public class CommandListener extends ListenerAdapter {
             }
             return;
         }
-        if (event.getName().equals("mikushop")) {
+        if (event.getName().equals("gift")) {
             String itemCode = event.getOption("item").getAsString();
             String userId = event.getUser().getId();
             DatabaseManager db = DatabaseManager.getInstance();
-            int sparks = db.getSparks(userId);
-            
+            int currentSparks = db.getSparks(userId);
+
             int cost = 0;
             String itemName = "";
             int relief = 0;
-            String emoji = "";
-            
-            if (itemCode.equals("matcha")) { cost = 50; itemName = "Matcha Latte"; relief = 1; emoji = "🍵"; }
-            else if (itemCode.equals("plushie")) { cost = 150; itemName = "Miku Plushie"; relief = 3; emoji = "🧸"; }
-            else if (itemCode.equals("spa")) { cost = 300; itemName = "Spa Vacation"; relief = 999; emoji = "🧖‍♀️"; }
-            
-            if (sparks < cost) {
-                event.reply(" You need **" + cost + " Sparks** to buy the " + itemName + ", but you only have **" + sparks + "**!").setEphemeral(true).queue();
+            int trustBonus = 0;
+            String itemEmoji = "";
+            String flavorText = "";
+
+            if (itemCode.equals("matcha")) {
+                cost = 50;
+                itemName = "Warm Matcha Latte";
+                relief = 1;
+                trustBonus = 5;
+                itemEmoji = "🍵";
+                flavorText = "A sweet, calming warm drink to soothe her nerves.";
+            } else if (itemCode.equals("plushie")) {
+                cost = 150;
+                itemName = "Soft Leek Plushie";
+                relief = 3;
+                trustBonus = 10;
+                itemEmoji = "🧸";
+                flavorText = "A super soft plushie to hug when the Lounge gets overwhelming.";
+            } else if (itemCode.equals("spa")) {
+                cost = 300;
+                itemName = "Luxury Spa & Hot Spring Pass";
+                relief = 999;
+                trustBonus = 20;
+                itemEmoji = "🧖‍♀️";
+                flavorText = "A complete mental reset ticket! Completely wipes all active stress.";
+            } else if (itemCode.equals("energy")) {
+                cost = 100;
+                itemName = "Sparkling Energy Boba";
+                relief = 2;
+                trustBonus = 8;
+                itemEmoji = "⚡";
+                flavorText = "A burst of sugary energy to boost her spirits!";
+            }
+
+            if (currentSparks < cost) {
+                event.reply("❌ You need **" + cost + " Sparks** to send a " + itemName + ", but you only have **" + currentSparks + " Sparks**!").setEphemeral(true).queue();
                 return;
             }
-            
-            db.updateSparks(userId, sparks - cost);
-            
+
+            // Deduct Sparks from PostgreSQL
+            db.updateSparks(userId, currentSparks - cost);
+
+            // Dispatch the Bridge Embed into the channel for Python M.IKU to intercept
             EmbedBuilder giftEmbed = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193))
-                .setTitle("🎁 A Gift for M.IKU!")
-                .setDescription(event.getUser().getAsMention() + " just spent `" + cost + " Sparks` to buy M.IKU a **" + itemName + " " + emoji + "**!")
-                .setFooter("BRIDGE_MIKU_GIFT | Relief: " + relief + " | User: " + event.getUser().getName(), null);
-                
+                    .setColor(new Color(255, 182, 193))
+                    .setTitle("🎁 A Special Gift for M.IKU! " + itemEmoji)
+                    .setDescription(
+                            event.getUser().getAsMention() + " just gifted M.IKU a **" + itemName + "**!\n\n" +
+                            "*" + flavorText + "*\n\n" +
+                            "✨ **Sparks Spent:** `" + cost + " Sparks`\n" +
+                            "💖 **Stress Relief:** `-" + (relief == 999 ? "ALL" : relief) + " Stress Points`"
+                    )
+                    .setThumbnail(event.getUser().getEffectiveAvatarUrl())
+                    .setFooter("BRIDGE_MIKU_GIFT | Item: " + itemCode + " | Relief: " + relief + " | TrustBonus: " + trustBonus + " | User: " + event.getUser().getName() + " | UserId: " + userId, null);
+
             event.replyEmbeds(giftEmbed.build()).queue();
+
+            sendShopLog(
+                    event.getGuild(),
+                    "M.IKU Gift Sent",
+                    event.getUser().getAsMention() + " sent **" + itemName + "** to M.IKU for `" + cost + " Sparks`.",
+                    new Color(255, 105, 180)
+            );
             return;
         }
         if (event.getName().equals("transcript")) {
