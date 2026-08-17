@@ -1344,6 +1344,37 @@ public class CommandListener extends ListenerAdapter {
             }
             return;
         }
+        if (event.getName().equals("mikushop")) {
+            String itemCode = event.getOption("item").getAsString();
+            String userId = event.getUser().getId();
+            DatabaseManager db = DatabaseManager.getInstance();
+            int sparks = db.getSparks(userId);
+            
+            int cost = 0;
+            String itemName = "";
+            int relief = 0;
+            String emoji = "";
+            
+            if (itemCode.equals("matcha")) { cost = 50; itemName = "Matcha Latte"; relief = 1; emoji = "🍵"; }
+            else if (itemCode.equals("plushie")) { cost = 150; itemName = "Miku Plushie"; relief = 3; emoji = "🧸"; }
+            else if (itemCode.equals("spa")) { cost = 300; itemName = "Spa Vacation"; relief = 999; emoji = "🧖‍♀️"; }
+            
+            if (sparks < cost) {
+                event.reply(" You need **" + cost + " Sparks** to buy the " + itemName + ", but you only have **" + sparks + "**!").setEphemeral(true).queue();
+                return;
+            }
+            
+            db.updateSparks(userId, sparks - cost);
+            
+            EmbedBuilder giftEmbed = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setTitle("🎁 A Gift for M.IKU!")
+                .setDescription(event.getUser().getAsMention() + " just spent `" + cost + " Sparks` to buy M.IKU a **" + itemName + " " + emoji + "**!")
+                .setFooter("BRIDGE_MIKU_GIFT | Relief: " + relief + " | User: " + event.getUser().getName(), null);
+                
+            event.replyEmbeds(giftEmbed.build()).queue();
+            return;
+        }
         if (event.getName().equals("transcript")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required to pull transcripts.").setEphemeral(true).queue();
