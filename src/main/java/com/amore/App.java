@@ -73,6 +73,12 @@ public class App {
             
             jda.updateCommands()
                 .addCommands(
+                    Commands.slash("mikushop", "Spend Sparks to buy comforting gifts to lower M.IKU's stress!")
+                        .addOptions(new OptionData(OptionType.STRING, "item", "What to buy for her", true)
+                            .addChoice("Matcha Latte (50 Sparks)", "matcha")
+                            .addChoice("Miku Plushie (150 Sparks)", "plushie")
+                            .addChoice("Spa Vacation (300 Sparks)", "spa")
+                        ),
                     Commands.slash("eventsetup", "Admin: Spawn the Smart UI Fused Event Panel"),
                     Commands.slash("pull", "Spend 50 Sparks to pull a random Gacha reward!"),
                     Commands.slash("balance", "Check your current AMORA Sparks balance."),
