@@ -1346,8 +1346,6 @@ public class CommandListener extends ListenerAdapter {
         }
         if (event.getName().equals("gift")) {
             String itemCode = event.getOption("item").getAsString();
-            String userId = event.getUser().getId();
-            DatabaseManager db = DatabaseManager.getInstance();
             int currentSparks = db.getSparks(userId);
 
             int cost = 0;
