@@ -1189,6 +1189,39 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
+        
+        if (event.getName().equals("help")) {
+            EmbedBuilder helpEmbed = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setTitle("✦ AM0RA COMMAND DIRECTORY ✦")
+                .setDescription("Welcome to the AM0RA terminal! Here is everything you can do:")
+                
+                .addField("💎 Economy & Collection",
+                        "`/balance` — Check your Sparks, Points, and Pity.\n" +
+                        "`/profile [user]` — View your or someone else's server profile.\n" +
+                        "`/inventory` — View your collected Gacha assets.\n" +
+                        "`/leaderboard` — View the Top 10 rankings in the server.", false)
+                        
+                .addField("🎮 Gacha & Fun",
+                        "`/pull` — Spend 50 Sparks to pull a random Gacha reward!\n" +
+                        "`/forge` — Open the Synthesis Forge to craft or recycle items.\n" +
+                        "`/trade` — Safely exchange your duplicate assets with another member.\n" +
+                        "`/gift` — Buy a comforting treat for M.IKU to lower her stress level!", false)
+                        
+                .addField("🎵 Music Network",
+                        "`/song suggest` — Get a random song recommendation from the pool.\n" +
+                        "`/song add` — Add your favorite Spotify/YouTube song to the pool.\n" +
+                        "`/song list` — Show the active AMORA music pool.", false)
+                        
+                .addField("🛠️ Staff & Director Commands",
+                        "`/eventsetup`, `/award`, `/addsparks`, `/payout`, `/publish`, `/transcript`", false)
+                        
+                .setFooter("AM0RA System Hub • Type any command to begin", null);
+
+            event.replyEmbeds(helpEmbed.build()).setEphemeral(true).queue();
+            return;
+        }
+        
         if (event.getName().equals("eventsetup")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
