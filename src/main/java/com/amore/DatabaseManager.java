@@ -520,6 +520,7 @@ public class DatabaseManager {
     }
 
     public int getPity(String userId) {
+        ensureConnected();
         String query = "SELECT pity FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -536,6 +537,7 @@ public class DatabaseManager {
     }
 
     public void updatePity(String userId, int newPity) {
+        ensureConnected();
         getPity(userId);
         String query = "UPDATE users SET pity = ? WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -548,6 +550,7 @@ public class DatabaseManager {
     }
 
     public int getBountiesCleared(String userId) {
+        ensureConnected();
         String query = "SELECT bounties_cleared FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -564,6 +567,7 @@ public class DatabaseManager {
     }
 
     public int getUrgentCleared(String userId) {
+        ensureConnected();
         String query = "SELECT urgent_cleared FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -580,6 +584,7 @@ public class DatabaseManager {
     }
 
     public void addInventoryItem(String userId, String item) {
+        ensureConnected();
         String currentInventory = getInventory(userId);
         String updatedInventory = currentInventory.isEmpty() ? item : currentInventory + "," + item;
         String query = "UPDATE users SET inventory = ? WHERE user_id = ?;";
@@ -593,6 +598,7 @@ public class DatabaseManager {
     }
 
     public void updateInventory(String userId, String newInventory) {
+        ensureConnected();
         getInventory(userId);
         String query = "UPDATE users SET inventory = ? WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -605,6 +611,7 @@ public class DatabaseManager {
     }
 
     public String getInventory(String userId) {
+        ensureConnected();
         String query = "SELECT inventory FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -639,6 +646,7 @@ public class DatabaseManager {
     }
 
     public PendingTradeSetupRecord getPendingTradeSetup(String setupId) {
+        ensureConnected();
         String query = "SELECT * FROM pending_trade_setups WHERE setup_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, setupId);
@@ -666,6 +674,7 @@ public class DatabaseManager {
     }
 
     public void updatePendingTradeOffer(String setupId, String selectedOffer) {
+        ensureConnected();
         String query = "UPDATE pending_trade_setups SET selected_offer = ? WHERE setup_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, selectedOffer);
@@ -677,6 +686,7 @@ public class DatabaseManager {
     }
 
     public void updatePendingTradeRequest(String setupId, String selectedRequest) {
+        ensureConnected();
         String query = "UPDATE pending_trade_setups SET selected_request = ? WHERE setup_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, selectedRequest);
@@ -688,6 +698,7 @@ public class DatabaseManager {
     }
 
     public void deletePendingTradeSetup(String setupId) {
+        ensureConnected();
         String query = "DELETE FROM pending_trade_setups WHERE setup_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, setupId);
@@ -719,6 +730,7 @@ public class DatabaseManager {
     }
 
     public ActiveTradeRecord getActiveTrade(String tradeId) {
+        ensureConnected();
         String query = "SELECT * FROM active_trades WHERE trade_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, tradeId);
@@ -746,6 +758,7 @@ public class DatabaseManager {
     }
 
     public void deleteActiveTrade(String tradeId) {
+        ensureConnected();
         String query = "DELETE FROM active_trades WHERE trade_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, tradeId);
@@ -756,6 +769,7 @@ public class DatabaseManager {
     }
 
     public void savePendingForge(String ownerId, String ingredient, long expiresAt) {
+        ensureConnected();
         String query = "INSERT INTO pending_forges (owner_id, ingredient, expires_at) VALUES (?, ?, ?) "
                 + "ON CONFLICT (owner_id) DO UPDATE SET ingredient = EXCLUDED.ingredient, expires_at = EXCLUDED.expires_at;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -769,6 +783,7 @@ public class DatabaseManager {
     }
 
     public String getPendingForgeIngredient(String ownerId) {
+        ensureConnected();
         String query = "SELECT ingredient, expires_at FROM pending_forges WHERE owner_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, ownerId);
@@ -789,6 +804,7 @@ public class DatabaseManager {
     }
 
     public void deletePendingForge(String ownerId) {
+        ensureConnected();
         String query = "DELETE FROM pending_forges WHERE owner_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, ownerId);
@@ -799,6 +815,7 @@ public class DatabaseManager {
     }
 
     private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
+        ensureConnected();
         return new SongSuggestionRecord(
                 rs.getInt("song_id"),
                 rs.getString("added_by"),
