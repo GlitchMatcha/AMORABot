@@ -52,14 +52,28 @@ public class ChatListener extends ListenerAdapter {
     
     private static final Deque<Long> processedShopMessages = new ArrayDeque<>();
     private static class GridState {
-        int pX = 2, pY = 2; 
-        int sX, sY; 
-        
+        int pX = 2, pY = 2;
+        int sX, sY;        
+        int eX, eY;        
+
         GridState() {
             do {
                 sX = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
                 sY = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
             } while (sX == pX && sY == pY);
+            
+            do {
+                eX = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
+                eY = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
+            } while ((eX == pX && eY == pY) || (eX == sX && eY == sY) || (Math.abs(eX - pX) < 2 && Math.abs(eY - pY) < 2));
+        }
+
+        void moveHunter() {
+            if (Math.abs(pX - eX) > Math.abs(pY - eY)) {
+                eX += (pX > eX) ? 1 : -1;
+            } else {
+                eY += (pY > eY) ? 1 : -1;
+            }
         }
         
         String render() {
@@ -67,6 +81,7 @@ public class ChatListener extends ListenerAdapter {
             for (int y = 0; y < 5; y++) {
                 for (int x = 0; x < 5; x++) {
                     if (x == pX && y == pY) sb.append("🍵");
+                    else if (x == eX && y == eY) sb.append("💀"); // Render the Hunter
                     else if (x == sX && y == sY) sb.append("✨");
                     else sb.append("⬛");
                 }
@@ -75,9 +90,11 @@ public class ChatListener extends ListenerAdapter {
             return sb.toString();
         }
     }
+
     private static class PetState {
         int fullness = 2;  
         int happiness = 2; 
+        int craving = java.util.concurrent.ThreadLocalRandom.current().nextInt(3); 
         
         String renderBar(int value) {
             StringBuilder sb = new StringBuilder();
@@ -85,6 +102,19 @@ public class ChatListener extends ListenerAdapter {
                 sb.append(i < value ? "🟢" : "⚪");
             }
             return sb.toString();
+        }
+        
+        String getCravingText() {
+            if (craving == 0) return "🍓 *The mascot is staring at its empty bowl... it looks hungry!*";
+            if (craving == 1) return "🧸 *The mascot is dragging a toy towards you... it wants to play!*";
+            return "✋ *The mascot is nudging your hand... it wants headpats!*";
+        }
+        
+        void rerollCraving() {
+            int old = craving;
+            do {
+                craving = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
+            } while (craving == old);
         }
     }
     
@@ -99,26 +129,40 @@ public class ChatListener extends ListenerAdapter {
         String playerXId = null; 
         String playerOId = null; 
         long expiresAt;
-        private static final long TTT_TIMEOUT_MS = 2 * 60_000L; 
+        long timeoutMs;
         
         TicTacToeState(int size) {
             this.size = size;
             this.board = new int[size * size];
             this.winCondition = (size == 3) ? 3 : 4;
-            this.expiresAt = System.currentTimeMillis() + TTT_TIMEOUT_MS;
+            
+            if (size == 3) this.timeoutMs = 2 * 60_000L;
+            else if (size == 4) this.timeoutMs = 4 * 60_000L;
+            else this.timeoutMs = 6 * 60_000L;
+            
+            this.expiresAt = System.currentTimeMillis() + this.timeoutMs;
+            
+            if (size > 3) {
+                int holes = (size == 4) ? 1 : java.util.concurrent.ThreadLocalRandom.current().nextInt(2) + 2; 
+                for (int i = 0; i < holes; i++) {
+                    int rCell;
+                    do {
+                        rCell = java.util.concurrent.ThreadLocalRandom.current().nextInt(size * size);
+                    } while (board[rCell] == -1);
+                    board[rCell] = -1; 
+                }
+            }
         }
+        
         void refreshTimer() {
-            this.expiresAt = System.currentTimeMillis() + TTT_TIMEOUT_MS;
-        }
-        long getUnixExpiry() {
-            return expiresAt / 1000L;
+            this.expiresAt = System.currentTimeMillis() + this.timeoutMs;
         }
 
         int checkWinner() {
             for (int r = 0; r < size; r++) {
                 for (int c = 0; c <= size - winCondition; c++) {
                     int first = board[r * size + c];
-                    if (first == 0) continue;
+                    if (first <= 0) continue; // 🚀 FIXED: Ignores Black Holes (-1) and Empty (0)
                     boolean win = true;
                     for (int i = 1; i < winCondition; i++) {
                         if (board[r * size + c + i] != first) { win = false; break; }
@@ -129,7 +173,7 @@ public class ChatListener extends ListenerAdapter {
             for (int c = 0; c < size; c++) {
                 for (int r = 0; r <= size - winCondition; r++) {
                     int first = board[r * size + c];
-                    if (first == 0) continue;
+                    if (first <= 0) continue;
                     boolean win = true;
                     for (int i = 1; i < winCondition; i++) {
                         if (board[(r + i) * size + c] != first) { win = false; break; }
@@ -140,7 +184,7 @@ public class ChatListener extends ListenerAdapter {
             for (int r = 0; r <= size - winCondition; r++) {
                 for (int c = 0; c <= size - winCondition; c++) {
                     int first = board[r * size + c];
-                    if (first == 0) continue;
+                    if (first <= 0) continue;
                     boolean win = true;
                     for (int i = 1; i < winCondition; i++) {
                         if (board[(r + i) * size + c + i] != first) { win = false; break; }
@@ -151,7 +195,7 @@ public class ChatListener extends ListenerAdapter {
             for (int r = 0; r <= size - winCondition; r++) {
                 for (int c = winCondition - 1; c < size; c++) {
                     int first = board[r * size + c];
-                    if (first == 0) continue;
+                    if (first <= 0) continue;
                     boolean win = true;
                     for (int i = 1; i < winCondition; i++) {
                         if (board[(r + i) * size + c - i] != first) { win = false; break; }
@@ -169,17 +213,34 @@ public class ChatListener extends ListenerAdapter {
 
         int currentTurn() {
             int played = 0;
-            for (int cell : board) if (cell != 0) played++;
+            for (int cell : board) if (cell == 1 || cell == 2) played++;
             return (played % 2 == 0) ? 1 : 2; 
+        }
+
+        int evaluateHeuristic() {
+            int score = 0;
+            int center = size / 2;
+            for (int r = 0; r < size; r++) {
+                for (int c = 0; c < size; c++) {
+                    int cell = board[r * size + c];
+                    if (cell == 2) { // AI
+                        score += 4 - (Math.abs(r - center) + Math.abs(c - center));
+                    } else if (cell == 1) { // Player
+                        score -= 4 - (Math.abs(r - center) + Math.abs(c - center));
+                    }
+                }
+            }
+            return score;
         }
 
         int minimax(int depth, boolean isMaximizing, int alpha, int beta) {
             int winner = checkWinner();
-            if (winner == 2) return 100 - depth; 
-            if (winner == 1) return depth - 100; 
+            if (winner == 2) return 1000 - depth; 
+            if (winner == 1) return depth - 1000; 
             if (isFull()) return 0; 
             
-            if (depth >= 6 && size > 3) return 0;
+            int maxDepth = (size == 3) ? 9 : 5; 
+            if (depth >= maxDepth) return evaluateHeuristic();
 
             if (isMaximizing) {
                 int bestScore = Integer.MIN_VALUE;
@@ -238,7 +299,8 @@ public class ChatListener extends ListenerAdapter {
                 for (int c = 0; c < size; c++) {
                     int i = r * size + c;
                     String id = "ttt_" + i;
-                    if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
+                    if (board[i] == -1) btns.add(Button.secondary(id, "⬛").asDisabled());
+                    else if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
                     else if (board[i] == 2) btns.add(Button.primary(id, "⭕").asDisabled());
                     else btns.add(Button.secondary(id, "➖"));
                 }
@@ -1324,23 +1386,38 @@ public class ChatListener extends ListenerAdapter {
                 
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + 1);
+                db.updateSparks(event.getUser().getId(), currentSparks + 2); // Buffed reward
                 
                 EmbedBuilder winEmbed = new EmbedBuilder()
                     .setTitle("🎉 Spark Captured!")
                     .setColor(new Color(255, 182, 193))
-                    .setDescription("🏆 " + event.getUser().getAsMention() + " navigated the grid and caught the Spark!\n\n*( `+1 Spark` )*");
+                    .setDescription("🏆 " + event.getUser().getAsMention() + " outran the Hunter and caught the Spark!\n\n*( `+2 Sparks` )*");
                 
                 event.editMessageEmbeds(winEmbed.build()).setComponents().queue();
                 return;
             }
+
+            // Move the Hunter after the player moves
+            state.moveHunter();
+
+            // Check if the Hunter caught the player
+            if (state.pX == state.eX && state.pY == state.eY) {
+                activeGrids.remove(msgId);
+                EmbedBuilder loseEmbed = new EmbedBuilder()
+                    .setTitle("💀 Caught!")
+                    .setColor(Color.RED)
+                    .setDescription("Oh no! " + event.getUser().getAsMention() + " was caught by the Hunter!\n\n" + state.render());
+                event.editMessageEmbeds(loseEmbed.build()).setComponents().queue();
+                return;
+            }
             
             EmbedBuilder updatedEmbed = new EmbedBuilder()
-                .setTitle("🕹️ Spark Grid")
+                .setTitle("🕹️ Spark Grid (HUNTED)")
                 .setColor(new Color(138, 43, 226))
-                .setDescription("Use the arrows to move your 🍵 to the ✨!\n\n" + state.render());
+                .setDescription("Use the arrows to move your 🍵 to the ✨!\n⚠️ **Watch out for the Hunter (💀)!**\n\n" + state.render());
                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
+            
         } else if (buttonId.startsWith("pet_")) {
             String msgId = event.getMessageId();
             PetState state = activePets.get(msgId);
@@ -1350,12 +1427,36 @@ public class ChatListener extends ListenerAdapter {
                 return;
             }
             
-            if (buttonId.equals("pet_feed") && state.fullness < 5) state.fullness++;
-            else if (buttonId.equals("pet_play") && state.happiness < 5) state.happiness++;
-            else if (buttonId.equals("pet_pat") && state.happiness < 5) {
-                if (Math.random() > 0.5) state.happiness++;
-            } else {
+            int action = -1;
+            if (buttonId.equals("pet_feed")) action = 0;
+            else if (buttonId.equals("pet_play")) action = 1;
+            else if (buttonId.equals("pet_pat")) action = 2;
+            
+            if (action == -1) {
                 event.deferEdit().queue(); 
+                return;
+            }
+            
+            String feedback = "";
+            
+            // Check if player satisfied the pet's craving
+            if (action == state.craving) {
+                feedback = "✅ *" + event.getUser().getName() + " made the mascot very happy!*";
+                if (action == 0 && state.fullness < 5) state.fullness++;
+                else if (state.happiness < 5) state.happiness++;
+            } else {
+                feedback = "💢 *" + event.getUser().getName() + " annoyed the mascot! That's not what it wanted!*";
+                if (state.happiness > 0) state.happiness--;
+            }
+            
+            // Runaway mechanic
+            if (state.happiness == 0) {
+                activePets.remove(msgId);
+                EmbedBuilder sadEmbed = new EmbedBuilder()
+                    .setTitle("🐾 The Pet Ran Away!")
+                    .setColor(Color.RED)
+                    .setDescription(event.getUser().getAsMention() + " annoyed the mascot too much and it ran away...");
+                event.editMessageEmbeds(sadEmbed.build()).setComponents().queue();
                 return;
             }
             
@@ -1364,28 +1465,31 @@ public class ChatListener extends ListenerAdapter {
                 
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + 1);
+                db.updateSparks(event.getUser().getId(), currentSparks + 2); // Buffed reward
                 
                 EmbedBuilder happyEmbed = new EmbedBuilder()
                     .setTitle("🐾 The Pet is Happy!")
                     .setColor(new Color(255, 182, 193))
-                    .setDescription(event.getUser().getAsMention() + " gave the final headpat!\n" +
-                                    "The mascot left behind a small gift before happily trotting away.\n\n*( `+1 Spark` )*");
+                    .setDescription(event.getUser().getAsMention() + " perfectly satisfied the mascot!\n" +
+                                    "It left behind a small gift before happily trotting away.\n\n*( `+2 Sparks` )*");
                 
                 event.editMessageEmbeds(happyEmbed.build()).setComponents().queue();
                 return;
             }
             
+            state.rerollCraving();
+            
             EmbedBuilder updatedEmbed = new EmbedBuilder()
                 .setTitle("🐾 AMORA Lounge Mascot")
                 .setColor(new Color(255, 182, 193))
-                .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
+                .setDescription(feedback + "\n\n" +
+                                state.getCravingText() + "\n\n" +
                                 "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
                                 "**Happiness:** " + state.renderBar(state.happiness));
                                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
-        }
-            else if (buttonId.startsWith("ttt_")) {
+
+        } else if (buttonId.startsWith("ttt_")) {
             String msgId = event.getMessageId();
             TicTacToeState state = activeTicTacToe.get(msgId);
             
@@ -1409,7 +1513,7 @@ public class ChatListener extends ListenerAdapter {
                     return;
                 }
                 
-                state.isLobby = false;
+                state.isLobby = false;  
                 state.playerXId = event.getUser().getId();
                 
                 if (buttonId.equals("ttt_mode_pvp")) {
@@ -1579,6 +1683,7 @@ public class ChatListener extends ListenerAdapter {
             .setTitle("🐾 AMORA Lounge Mascot")
             .setColor(new Color(255, 182, 193))
             .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
+                            state.getCravingText() + "\n\n" +
                             "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
                             "**Happiness:** " + state.renderBar(state.happiness));
 
