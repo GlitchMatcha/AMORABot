@@ -879,11 +879,11 @@ public class DatabaseManager {
         return count;
     }
 
-    public SongSuggestionRecord getSongSuggestionByLink(String link) {
+    public SongSuggestionRecord getSongSuggestionById(int songId) {
         ensureConnected();
-        String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
+        String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setString(1, link);
+            pstmt.setInt(1, songId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
                     return mapSongSuggestion(rs);
@@ -999,6 +999,7 @@ public class DatabaseManager {
     }
 
     public void incrementCreatorListed(String userId) {
+        ensureConnected();
         String query = "INSERT INTO creator_stats (user_id, listed_this_month, sold_this_month) VALUES (?, 1, 0) "
                 + "ON CONFLICT (user_id) DO UPDATE SET listed_this_month = creator_stats.listed_this_month + 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -1008,6 +1009,7 @@ public class DatabaseManager {
     }
 
     public void incrementCreatorOrder(String userId) {
+        ensureConnected();
         String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + 1, all_time_orders = all_time_orders + 1 WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -1016,6 +1018,7 @@ public class DatabaseManager {
     }
 
     public List<String> generateCompensationReport(boolean resetCounters) {
+        ensureConnected();
         List<String> needsCompensation = new ArrayList<>();
         String selectQuery = "SELECT user_id FROM creator_stats WHERE listed_this_month > 0 AND sold_this_month = 0;";
         String resetQuery = "UPDATE creator_stats SET listed_this_month = 0, sold_this_month = 0;";
@@ -1041,6 +1044,7 @@ public class DatabaseManager {
         return needsCompensation;
     }
     public List<String> getTopShopsThisMonth() {
+        ensureConnected();
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, sold_this_month FROM creator_stats WHERE sold_this_month > 0 ORDER BY sold_this_month DESC LIMIT 10;";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
@@ -1055,6 +1059,7 @@ public class DatabaseManager {
     }
 
     public List<String> getTopShopsAllTime() {
+        ensureConnected();
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, all_time_orders FROM creator_stats WHERE all_time_orders > 0 ORDER BY all_time_orders DESC LIMIT 10;";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
@@ -1068,6 +1073,7 @@ public class DatabaseManager {
         return top;
     }
     public void addCreatorRating(String userId, int stars) {
+        ensureConnected();
         String query = "UPDATE creator_stats SET total_stars = total_stars + ?, total_ratings = total_ratings + 1 WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setInt(1, stars);
@@ -1077,6 +1083,7 @@ public class DatabaseManager {
     }
 
     public String getCreatorRatingString(String userId) {
+        ensureConnected();
         String query = "SELECT total_stars, total_ratings FROM creator_stats WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -1106,6 +1113,7 @@ public class DatabaseManager {
         return "*(No reviews yet — be the first!)*";
     }
     public void saveCreatorPrompt(String creatorId, String channelId, String messageId, String originalMsgId) {
+        ensureConnected();
         String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id, original_msg_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, creatorId);
@@ -1117,6 +1125,7 @@ public class DatabaseManager {
     }
 
     public List<String[]> getCreatorPrompts(String creatorId) {
+        ensureConnected();
         List<String[]> list = new ArrayList<>();
         String query = "SELECT channel_id, message_id FROM creator_prompts WHERE creator_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -1131,6 +1140,7 @@ public class DatabaseManager {
     }
 
     public void removeCreatorPrompt(String channelId, String messageId) {
+        ensureConnected();
         String query = "DELETE FROM creator_prompts WHERE channel_id = ? AND message_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, channelId);
@@ -1140,6 +1150,7 @@ public class DatabaseManager {
     }
 
     public List<String> getLinkedBotMessages(String originalMsgId) {
+        ensureConnected();
         List<String> list = new ArrayList<>();
         String query = "SELECT message_id FROM creator_prompts WHERE original_msg_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
