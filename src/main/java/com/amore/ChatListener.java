@@ -1593,7 +1593,7 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private void spawnTicTacToe(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
-        int size = java.util.concurrent.ThreadLocalRandom.current().nextInt(3) + 3;
+        int size = 3; 
         TicTacToeState state = new TicTacToeState(size);
         
         EmbedBuilder embed = new EmbedBuilder()
