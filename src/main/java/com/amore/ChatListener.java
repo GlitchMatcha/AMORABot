@@ -157,6 +157,9 @@ public class ChatListener extends ListenerAdapter {
         void refreshTimer() {
             this.expiresAt = System.currentTimeMillis() + this.timeoutMs;
         }
+        long getUnixExpiry() {
+            return expiresAt / 1000L;
+        }
 
         int checkWinner() {
             for (int r = 0; r < size; r++) {
