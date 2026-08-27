@@ -165,7 +165,7 @@ public class ChatListener extends ListenerAdapter {
             for (int r = 0; r < size; r++) {
                 for (int c = 0; c <= size - winCondition; c++) {
                     int first = board[r * size + c];
-                    if (first <= 0) continue; // 🚀 FIXED: Ignores Black Holes (-1) and Empty (0)
+                    if (first <= 0) continue; 
                     boolean win = true;
                     for (int i = 1; i < winCondition; i++) {
                         if (board[r * size + c + i] != first) { win = false; break; }
@@ -1701,7 +1701,7 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private void spawnTicTacToe(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
-        int size = 3; 
+        int size = java.util.concurrent.ThreadLocalRandom.current().nextInt(3) + 3; 
         TicTacToeState state = new TicTacToeState(size);
         
         EmbedBuilder embed = new EmbedBuilder()
