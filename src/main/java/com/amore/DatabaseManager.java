@@ -813,6 +813,7 @@ public class DatabaseManager {
     }
 
     public boolean songLinkExists(String link) {
+        ensureConnected();
         String query = "SELECT 1 FROM song_suggestions WHERE LOWER(link) = LOWER(?) AND is_active = 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, link);
@@ -826,6 +827,7 @@ public class DatabaseManager {
     }
 
     public SongSuggestionRecord addSongSuggestion(String addedBy, String title, String artist, String link, String source) {
+        ensureConnected();
         String query = "INSERT INTO song_suggestions "
                 + "(added_by, title, artist, link, source, is_active, created_at, last_featured_at) "
                 + "VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
@@ -845,6 +847,7 @@ public class DatabaseManager {
     }
 
     public int bulkAddSongSuggestions(String addedBy, List<String> links, List<String> titles, List<String> artists, String source) {
+        ensureConnected();
         String query = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, last_featured_at) VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
         int count = 0;
         try {
@@ -877,6 +880,7 @@ public class DatabaseManager {
     }
 
     public SongSuggestionRecord getSongSuggestionByLink(String link) {
+        ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, link);
@@ -893,11 +897,13 @@ public class DatabaseManager {
 
     
 
-    public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
+    public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
+        ensureConnected();
         List<SongSuggestionRecord> songs = new ArrayList<>();
-        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
+        String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setInt(1, limit);
+            pstmt.setString(1, userId);
+            pstmt.setInt(2, limit);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     songs.add(mapSongSuggestion(rs));
@@ -926,6 +932,7 @@ public class DatabaseManager {
     }
 
     public boolean deactivateSongSuggestion(int songId) {
+        ensureConnected();
         String query = "UPDATE song_suggestions SET is_active = 0 WHERE song_id = ? AND is_active = 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setInt(1, songId);
@@ -949,6 +956,7 @@ public class DatabaseManager {
     }
 
     public int getActiveSongSuggestionCount() {
+        ensureConnected();
         String query = "SELECT COUNT(*) AS total FROM song_suggestions WHERE is_active = 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query);
              ResultSet rs = pstmt.executeQuery()) {
