@@ -815,7 +815,6 @@ public class DatabaseManager {
     }
 
     private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
-        ensureConnected();
         return new SongSuggestionRecord(
                 rs.getInt("song_id"),
                 rs.getString("added_by"),
@@ -896,6 +895,22 @@ public class DatabaseManager {
         return count;
     }
 
+    public SongSuggestionRecord getSongSuggestionByLink(String link) {
+        ensureConnected();
+        String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, link);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapSongSuggestion(rs);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     public SongSuggestionRecord getSongSuggestionById(int songId) {
         ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
@@ -912,7 +927,22 @@ public class DatabaseManager {
         return null;
     }
 
-    
+    public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
+        ensureConnected();
+        List<SongSuggestionRecord> songs = new ArrayList<>();
+        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, limit);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    songs.add(mapSongSuggestion(rs));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return songs;
+    }
 
     public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
         ensureConnected();
@@ -931,8 +961,6 @@ public class DatabaseManager {
         }
         return songs;
     }
-
-    
 
     public SongSuggestionRecord getRandomActiveSongSuggestion() {
         ensureConnected();
@@ -1042,7 +1070,6 @@ public class DatabaseManager {
 
         try (Statement stmt = connection.createStatement(); 
              ResultSet rs = stmt.executeQuery(selectQuery)) {
-            
             while (rs.next()) {
                 needsCompensation.add(rs.getString("user_id"));
             }
@@ -1060,6 +1087,7 @@ public class DatabaseManager {
         
         return needsCompensation;
     }
+
     public List<String> getTopShopsThisMonth() {
         ensureConnected();
         List<String> top = new ArrayList<>();
@@ -1089,6 +1117,7 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
         return top;
     }
+
     public void addCreatorRating(String userId, int stars) {
         ensureConnected();
         String query = "UPDATE creator_stats SET total_stars = total_stars + ?, total_ratings = total_ratings + 1 WHERE user_id = ?;";
@@ -1129,6 +1158,7 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
         return "*(No reviews yet — be the first!)*";
     }
+
     public void saveCreatorPrompt(String creatorId, String channelId, String messageId, String originalMsgId) {
         ensureConnected();
         String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id, original_msg_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;";
