@@ -205,21 +205,25 @@ public class App {
             return;
         }
 
-        DatabaseManager db = DatabaseManager.getInstance();
-        ZonedDateTime nowUtc = ZonedDateTime.now(ZoneOffset.UTC);
+        try {
+            DatabaseManager db = DatabaseManager.getInstance();
+            ZonedDateTime nowUtc = ZonedDateTime.now(ZoneOffset.UTC);
 
-        if (nowUtc.getHour() < DAILY_SONG_POST_HOUR_UTC) {
-            return;
+            if (nowUtc.getHour() < DAILY_SONG_POST_HOUR_UTC) {
+                return;
+            }
+
+            String todayUtc = LocalDate.now(ZoneOffset.UTC).toString();
+            String lastPostedDate = db.getBotState("daily_song_last_post_date");
+
+            if (todayUtc.equals(lastPostedDate)) {
+                return;
+            }
+
+            postSongRecommendation(jda, true);
+        } catch (Exception e) {
+            System.err.println("Warning during daily song check (Neon may be waking up): " + e.getMessage());
         }
-
-        String todayUtc = LocalDate.now(ZoneOffset.UTC).toString();
-        String lastPostedDate = db.getBotState("daily_song_last_post_date");
-
-        if (todayUtc.equals(lastPostedDate)) {
-            return;
-        }
-
-        postSongRecommendation(jda, true);
     }
 
     public static boolean postSongRecommendation(JDA jda, boolean lockForToday) {

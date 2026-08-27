@@ -106,7 +106,16 @@ public class DatabaseManager {
         return instance;
     }
 
-    private void connect() {
+    // ==========================================
+    // 🚀 REPLACE the old connect() method with this:
+    // ==========================================
+    private synchronized void connect() {
+        try {
+            if (connection != null && !connection.isClosed()) {
+                try { connection.close(); } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+
         try {
             Class.forName("org.postgresql.Driver");
             connection = DriverManager.getConnection(URL);
@@ -116,6 +125,22 @@ public class DatabaseManager {
             e.printStackTrace();
             connection = null;
         }
+    }
+
+    /**
+     * Ensures an active, valid connection before any query runs.
+     * Wakes up Neon if it has suspended!
+     */
+    public synchronized Connection ensureConnected() {
+        try {
+            if (connection == null || connection.isClosed() || !connection.isValid(2)) {
+                System.out.println("🔄 Database connection dropped or idle. Reconnecting to Neon PostgreSQL...");
+                connect();
+            }
+        } catch (Exception e) {
+            connect();
+        }
+        return connection;
     }
 
     private void initializeDatabase() {
@@ -192,6 +217,15 @@ public class DatabaseManager {
                 + "sold_this_month INTEGER DEFAULT 0"
                 + ");";
 
+        // Replace the creator_prompts table block with this:
+        String createCreatorPromptsTable = "CREATE TABLE IF NOT EXISTS creator_prompts ("
+                + "creator_id TEXT, "
+                + "channel_id TEXT, "
+                + "message_id TEXT, "
+                + "original_msg_id TEXT, "
+                + "PRIMARY KEY (channel_id, message_id)"
+                + ");";
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
@@ -202,29 +236,14 @@ public class DatabaseManager {
             stmt.execute(createBotStateTable);
             stmt.execute(createRoleTimersTable);
             stmt.execute(createCreatorStatsTable);
-            
-            try {
-                stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;");
-            } catch (SQLException ignored) { } 
-            try {
-                stmt.execute("ALTER TABLE creator_stats ADD COLUMN all_time_orders INTEGER DEFAULT 0;");
-            } catch (SQLException ignored) { }
-            try {
-                stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_stars INTEGER DEFAULT 0;");
-            } catch (SQLException ignored) { }
-            try {
-                stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;");
-            } catch (SQLException ignored) { }
-            try {
-                stmt.execute("ALTER TABLE creator_prompts ADD COLUMN original_msg_id TEXT;");
-            } catch (SQLException ignored) { }
-            String createCreatorPromptsTable = "CREATE TABLE IF NOT EXISTS creator_prompts ("
-                    + "creator_id TEXT, "
-                    + "channel_id TEXT, "
-                    + "message_id TEXT, "
-                    + "PRIMARY KEY (channel_id, message_id)"
-                    + ");";
             stmt.execute(createCreatorPromptsTable);
+            
+            try { stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;"); } catch (SQLException ignored) { } 
+            try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN all_time_orders INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_stars INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE creator_prompts ADD COLUMN original_msg_id TEXT;"); } catch (SQLException ignored) { }
+            
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
             e.printStackTrace();
@@ -440,6 +459,7 @@ public class DatabaseManager {
     }
 
     public int getSparks(String userId) {
+        ensureConnected();
         String query = "SELECT sparks FROM users WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, userId);
@@ -457,6 +477,7 @@ public class DatabaseManager {
     }
 
     public void updateSparks(String userId, int newAmount) {
+        ensureConnected();
         getSparks(userId);
         String query = "UPDATE users SET sparks = ? WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -486,6 +507,7 @@ public class DatabaseManager {
     }
 
     public void updatePoints(String userId, int newAmount) {
+        ensureConnected();
         getPoints(userId);
         String query = "UPDATE users SET points = ? WHERE user_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
@@ -869,20 +891,7 @@ public class DatabaseManager {
         return null;
     }
 
-    public SongSuggestionRecord getSongSuggestionById(int songId) {
-        String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setInt(1, songId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapSongSuggestion(rs);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
+    
 
     public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
         List<SongSuggestionRecord> songs = new ArrayList<>();
@@ -900,24 +909,10 @@ public class DatabaseManager {
         return songs;
     }
 
-    public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
-        List<SongSuggestionRecord> songs = new ArrayList<>();
-        String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
-            pstmt.setString(1, userId);
-            pstmt.setInt(2, limit);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    songs.add(mapSongSuggestion(rs));
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return songs;
-    }
+    
 
     public SongSuggestionRecord getRandomActiveSongSuggestion() {
+        ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY last_featured_at ASC, RANDOM() LIMIT 1;";
         try (PreparedStatement pstmt = connection.prepareStatement(query);
              ResultSet rs = pstmt.executeQuery()) {
@@ -942,6 +937,7 @@ public class DatabaseManager {
     }
 
     public void markSongFeatured(int songId, long featuredAt) {
+        ensureConnected();
         String query = "UPDATE song_suggestions SET last_featured_at = ? WHERE song_id = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setLong(1, featuredAt);
@@ -966,6 +962,7 @@ public class DatabaseManager {
     }
 
     public String getBotState(String key) {
+        ensureConnected();
         String query = "SELECT state_value FROM bot_state WHERE state_key = ?;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
             pstmt.setString(1, key);
@@ -981,6 +978,7 @@ public class DatabaseManager {
     }
 
     public void setBotState(String key, String value) {
+        ensureConnected();
         String query = "INSERT INTO bot_state (state_key, state_value) VALUES (?, ?) "
                 + "ON CONFLICT (state_key) DO UPDATE SET state_value = EXCLUDED.state_value;";
         try (PreparedStatement pstmt = connection.prepareStatement(query)) {
