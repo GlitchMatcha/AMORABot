@@ -314,10 +314,13 @@ public class ChatListener extends ListenerAdapter {
     }
     
     private static final Map<String, TicTacToeState> activeTicTacToe = new ConcurrentHashMap<>();
+    private static final java.util.concurrent.ScheduledExecutorService CHECK_SCHEDULER = java.util.concurrent.Executors.newScheduledThreadPool(2);
 
     private static class ActiveCheckTracker {
         String emojiCode;
         int goal;
+        boolean isTimerMode = false;
+        long endTime = 0L;
         boolean firstClaimed = false;
         boolean goalReached = false;
         String firstReactorId = null;
@@ -328,6 +331,12 @@ public class ChatListener extends ListenerAdapter {
         ActiveCheckTracker(String emojiCode, int goal) {
             this.emojiCode = emojiCode;
             this.goal = goal;
+        }
+
+        ActiveCheckTracker(String emojiCode, long durationMs, boolean isTimer) {
+            this.emojiCode = emojiCode;
+            this.isTimerMode = isTimer;
+            this.endTime = System.currentTimeMillis() + durationMs;
         }
     }
     private static final Map<String, ActiveCheckTracker> activeChecks = new ConcurrentHashMap<>();
@@ -967,6 +976,11 @@ public class ChatListener extends ListenerAdapter {
                     return; 
                 }
 
+                if (check.isTimerMode) {
+                    if (System.currentTimeMillis() > check.endTime || check.goalReached) return;
+                    return; 
+                }
+
                 DatabaseManager db = DatabaseManager.getInstance();
 
                 if (!check.firstClaimed) {
@@ -1227,33 +1241,60 @@ public class ChatListener extends ListenerAdapter {
 
             Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
+            Matcher timerMatcher = Pattern.compile("(?i)Timer[^0-9]*(\\d+)([sm])?").matcher(cleanContent); // 🚀 NEW: Detects "Timer 60s" or "Timer 2m"
 
-            if (emojiMatcher.find() && goalMatcher.find()) {
+            boolean hasGoal = goalMatcher.find();
+            boolean hasTimer = timerMatcher.find();
+
+            if (emojiMatcher.find() && (hasGoal || hasTimer)) {
                 String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
-                
-                int finalGoal = 1;
-                try {
-                    int originalGoal = Integer.parseInt(goalMatcher.group(1));
-                    finalGoal = originalGoal;
-                    if (originalGoal > 1 && originalGoal < 5) {
+
+                if (hasTimer) {
+                    int duration = Integer.parseInt(timerMatcher.group(1));
+                    String unit = timerMatcher.group(2);
+                    long durationMs = duration * 1000L;
+                    if (unit != null && unit.equalsIgnoreCase("m")) durationMs *= 60;
+
+                    if (completedChecks.contains(event.getMessageId())) return;
+                    
+                    ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
+                    if (tracker != null) {
+                        tracker.emojiCode = emojiStr;
+                        tracker.isTimerMode = true;
+                        tracker.endTime = System.currentTimeMillis() + durationMs;
+                    } else {
+                        tracker = new ActiveCheckTracker(emojiStr, durationMs, true);
+                        activeChecks.put(event.getMessageId(), tracker);
+                        
+                        CHECK_SCHEDULER.schedule(() -> {
+                            endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
+                        }, durationMs, TimeUnit.MILLISECONDS);
+                    }
+                    
+                } else if (hasGoal) {
+                    int finalGoal = 1;
+                    try {
+                        int originalGoal = Integer.parseInt(goalMatcher.group(1));
+                        finalGoal = originalGoal;
+                        if (originalGoal > 1 && originalGoal < 5) {
+                            finalGoal = 1;
+                        }
+                    } catch (NumberFormatException e) {
                         finalGoal = 1;
                     }
-                } catch (NumberFormatException e) {
-                    finalGoal = 1;
-                }
-                if (completedChecks.contains(event.getMessageId())) return;
-                
-                ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
-                if (tracker != null) {
-                    tracker.emojiCode = emojiStr;
-                    tracker.goal = finalGoal;
-                } else {
-                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
+                    if (completedChecks.contains(event.getMessageId())) return;
+                    
+                    ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
+                    if (tracker != null) {
+                        tracker.emojiCode = emojiStr;
+                        tracker.goal = finalGoal;
+                    } else {
+                        activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
+                    }
                 }
             }
         }
     }
-
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
@@ -1301,27 +1342,46 @@ public class ChatListener extends ListenerAdapter {
 
             Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
+            Matcher timerMatcher = Pattern.compile("(?i)Timer[^0-9]*(\\d+)([sm])?").matcher(cleanContent);
 
-            if (emojiMatcher.find() && goalMatcher.find()) {
+            boolean hasGoal = goalMatcher.find();
+            boolean hasTimer = timerMatcher.find();
+
+            if (emojiMatcher.find() && (hasGoal || hasTimer)) {
                 String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
-                
-                int finalGoal = 1;
-                try {
-                    int originalGoal = Integer.parseInt(goalMatcher.group(1));
-                    finalGoal = originalGoal;
 
-                    if (originalGoal > 1 && originalGoal < 5) {
+                if (hasTimer) {
+                    int duration = Integer.parseInt(timerMatcher.group(1));
+                    String unit = timerMatcher.group(2);
+                    long durationMs = duration * 1000L;
+                    if (unit != null && unit.equalsIgnoreCase("m")) durationMs *= 60;
+
+                    if (completedChecks.contains(event.getMessageId())) return;
+                    
+                    ActiveCheckTracker tracker = new ActiveCheckTracker(emojiStr, durationMs, true);
+                    activeChecks.put(event.getMessageId(), tracker);
+                    
+                    CHECK_SCHEDULER.schedule(() -> {
+                        endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
+                    }, durationMs, TimeUnit.MILLISECONDS);
+                    
+                } else if (hasGoal) {
+                    int finalGoal = 1;
+                    try {
+                        int originalGoal = Integer.parseInt(goalMatcher.group(1));
+                        finalGoal = originalGoal;
+                        if (originalGoal > 1 && originalGoal < 5) {
+                            finalGoal = 1;
+                            event.getChannel().sendMessage("⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** You set the goal to `" + originalGoal + "`, but the RNG Bonus Loot requires a minimum of `5` players! I have automatically converted the goal to `1` so your players don't have to wait unnecessarily. ").queue();
+                        }
+                    } catch (NumberFormatException e) {
                         finalGoal = 1;
-                        event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** You set the goal to `" + originalGoal + "`, but the RNG Bonus Loot requires a minimum of `5` players! I have automatically converted the goal to `1` so your players don't have to wait unnecessarily. 👾🎀").queue();
+                        event.getChannel().sendMessage("⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** The goal number you entered is impossibly huge! I have safely defaulted the goal to `1` to prevent a system crash. ").queue();
                     }
-                } catch (NumberFormatException e) {
-                    finalGoal = 1;
-                    event.getChannel().sendMessage("⚠️ ⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** The goal number you entered is impossibly huge! I have safely defaulted the goal to `1` to prevent a system crash. 👾🎀").queue();
+                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
                 }
-
-                activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
             } else {
-                event.getChannel().sendMessage("⚠️ **System Glitch:** Trigger recognized, but I could not extract the Emoji or Goal. Please check formatting!").queue();
+                event.getChannel().sendMessage("**Error:** Trigger recognized, but I could not extract the Emoji, Goal, or Timer. Please check formatting!").queue();
             }
             return; 
         }
@@ -2112,5 +2172,76 @@ public class ChatListener extends ListenerAdapter {
         });
 
         return true;
+    }
+    private void endTimerActiveCheck(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel, String messageId, net.dv8tion.jda.api.entities.Guild guild) {
+        ActiveCheckTracker check = activeChecks.remove(messageId);
+        if (check == null || check.goalReached) return;
+
+        synchronized (check) {
+            check.goalReached = true;
+            completedChecks.add(messageId);
+        }
+
+        if (check.allReactors.isEmpty()) {
+            EmbedBuilder empty = new EmbedBuilder()
+                .setColor(Color.DARK_GRAY)
+                .setDescription("⏳ The active check timer ended, but no one reacted in time!");
+            channel.sendMessageEmbeds(empty.build()).queue();
+            return;
+        }
+
+        DatabaseManager db = DatabaseManager.getInstance();
+        StringBuilder winnersMentions = new StringBuilder();
+
+        for (String winnerId : check.allReactors) {
+            winnersMentions.append("<@").append(winnerId).append("> ");
+
+            int curSparks = db.getSparks(winnerId);
+            db.updateSparks(winnerId, curSparks + 3);
+
+            int curWins = db.getAcWins(winnerId);
+            int newWins = curWins + 1;
+            db.updateAcWins(winnerId, newWins);
+
+            guild.retrieveMemberById(winnerId).queue(member -> {
+                String todaysWinnerId = System.getenv("ROLE_TODAYS_WINNER");
+                if (todaysWinnerId != null && guild.getRoleById(todaysWinnerId) != null) {
+                    guild.addRoleToMember(member, guild.getRoleById(todaysWinnerId)).queue();
+                    db.scheduleRoleRemoval(winnerId, todaysWinnerId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(2));
+                }
+
+                if (newWins == 10) {
+                    String mostActiveId = System.getenv("ROLE_MOST_ACTIVE");
+                    if (mostActiveId != null && guild.getRoleById(mostActiveId) != null) {
+                        guild.addRoleToMember(member, guild.getRoleById(mostActiveId)).queue();
+                        db.scheduleRoleRemoval(winnerId, mostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                        channel.sendMessage("🎉 ✦ **MILESTONE REACHED!** ✦ " + member.getAsMention() + " hit 10 Active Check wins and unlocked the **MOST ACTIVE** role!").queue();
+                    }
+                } else if (newWins == 25) {
+                    String superMostActiveId = System.getenv("ROLE_SUPER_MOST_ACTIVE");
+                    if (superMostActiveId != null && guild.getRoleById(superMostActiveId) != null) {
+                        guild.addRoleToMember(member, guild.getRoleById(superMostActiveId)).queue();
+                        db.scheduleRoleRemoval(winnerId, superMostActiveId, System.currentTimeMillis() + TimeUnit.DAYS.toMillis(14));
+                        channel.sendMessage("🔥 ✦ **MILESTONE REACHED!** ✦ " + member.getAsMention() + " claimed 25 Wins for the **SUPER MOST ACTIVE** role!").queue();
+                    }
+                } else if (newWins == 50) {
+                    String frenzyKillerId = System.getenv("ROLE_FRENZY_KILLER");
+                    if (frenzyKillerId != null && guild.getRoleById(frenzyKillerId) != null) {
+                        guild.addRoleToMember(member, guild.getRoleById(frenzyKillerId)).queue();
+                        channel.sendMessage("👑 ✦ **LEGENDARY ACHIEVEMENT!** ✦ " + member.getAsMention() + " claimed their 50th Win for the **FRENZY KILLER** title!").queue();
+                    }
+                }
+            }, error -> {});
+        }
+
+        EmbedBuilder groupShoutout = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setTitle("⏱️ ACTIVE CHECK COMPLETE!")
+                .setDescription("The time window has closed! A massive shoutout to all **" + check.allReactors.size() + "** members who locked in!\n\n"
+                        + winnersMentions.toString() + "\n\n"
+                        + "✨ *Everyone above earned `+3 Sparks`, +1 Active Check Win, and the Winner Role!*")
+                .setFooter("AMORA Dynamic Time Window", null);
+
+        channel.sendMessageEmbeds(groupShoutout.build()).queue();
     }
 }
