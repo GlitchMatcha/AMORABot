@@ -327,6 +327,8 @@ public class ChatListener extends ListenerAdapter {
         long firstReactionTime = 0L; 
         long createdAt = System.currentTimeMillis(); 
         List<String> allReactors = new ArrayList<>(); 
+        
+        java.util.concurrent.ScheduledFuture<?> scheduledTask = null; 
 
         ActiveCheckTracker(String emojiCode, int goal) {
             this.emojiCode = emojiCode;
@@ -921,6 +923,12 @@ public class ChatListener extends ListenerAdapter {
     @Override
     public void onMessageDelete(net.dv8tion.jda.api.events.message.MessageDeleteEvent event) {
         String deletedId = event.getMessageId();
+        
+        ActiveCheckTracker removedTracker = activeChecks.remove(deletedId);
+        if (removedTracker != null && removedTracker.scheduledTask != null) {
+            removedTracker.scheduledTask.cancel(false);
+        }
+
         DatabaseManager db = DatabaseManager.getInstance();
         
         List<String> linkedBotMessages = db.getLinkedBotMessages(deletedId);
@@ -1255,6 +1263,9 @@ public class ChatListener extends ListenerAdapter {
                     long durationMs = duration * 1000L;
                     if (unit != null && unit.equalsIgnoreCase("m")) durationMs *= 60;
 
+                    if (durationMs < 10000L) durationMs = 10000L;
+                    if (durationMs > 900000L) durationMs = 900000L;
+
                     if (completedChecks.contains(event.getMessageId())) return;
                     
                     ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
@@ -1262,11 +1273,18 @@ public class ChatListener extends ListenerAdapter {
                         tracker.emojiCode = emojiStr;
                         tracker.isTimerMode = true;
                         tracker.endTime = System.currentTimeMillis() + durationMs;
+                        
+                        if (tracker.scheduledTask != null) {
+                            tracker.scheduledTask.cancel(false);
+                        }
+                        tracker.scheduledTask = CHECK_SCHEDULER.schedule(() -> {
+                            endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
+                        }, durationMs, TimeUnit.MILLISECONDS);
                     } else {
                         tracker = new ActiveCheckTracker(emojiStr, durationMs, true);
                         activeChecks.put(event.getMessageId(), tracker);
                         
-                        CHECK_SCHEDULER.schedule(() -> {
+                        tracker.scheduledTask = CHECK_SCHEDULER.schedule(() -> {
                             endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
                         }, durationMs, TimeUnit.MILLISECONDS);
                     }
@@ -1292,9 +1310,10 @@ public class ChatListener extends ListenerAdapter {
                         activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
                     }
                 }
-            }
-        }
-    }
+            } 
+        } 
+    } 
+
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
@@ -1356,14 +1375,31 @@ public class ChatListener extends ListenerAdapter {
                     long durationMs = duration * 1000L;
                     if (unit != null && unit.equalsIgnoreCase("m")) durationMs *= 60;
 
+                    if (durationMs < 10000L) durationMs = 10000L;
+                    if (durationMs > 900000L) durationMs = 900000L;
+
                     if (completedChecks.contains(event.getMessageId())) return;
                     
-                    ActiveCheckTracker tracker = new ActiveCheckTracker(emojiStr, durationMs, true);
-                    activeChecks.put(event.getMessageId(), tracker);
-                    
-                    CHECK_SCHEDULER.schedule(() -> {
-                        endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
-                    }, durationMs, TimeUnit.MILLISECONDS);
+                    ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
+                    if (tracker != null) {
+                        tracker.emojiCode = emojiStr;
+                        tracker.isTimerMode = true;
+                        tracker.endTime = System.currentTimeMillis() + durationMs;
+                        
+                        if (tracker.scheduledTask != null) {
+                            tracker.scheduledTask.cancel(false);
+                        }
+                        tracker.scheduledTask = CHECK_SCHEDULER.schedule(() -> {
+                            endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
+                        }, durationMs, TimeUnit.MILLISECONDS);
+                    } else {
+                        tracker = new ActiveCheckTracker(emojiStr, durationMs, true);
+                        activeChecks.put(event.getMessageId(), tracker);
+                        
+                        tracker.scheduledTask = CHECK_SCHEDULER.schedule(() -> {
+                            endTimerActiveCheck(event.getChannel(), event.getMessageId(), event.getGuild());
+                        }, durationMs, TimeUnit.MILLISECONDS);
+                    }
                     
                 } else if (hasGoal) {
                     int finalGoal = 1;
@@ -1378,9 +1414,17 @@ public class ChatListener extends ListenerAdapter {
                         finalGoal = 1;
                         event.getChannel().sendMessage("⊹₊ ˚ **System Note for " + event.getAuthor().getAsMention() + ":** The goal number you entered is impossibly huge! I have safely defaulted the goal to `1` to prevent a system crash. ").queue();
                     }
-                    activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
-                }
-            } else {
+                    
+                    if (completedChecks.contains(event.getMessageId())) return;
+                    
+                    ActiveCheckTracker tracker = activeChecks.get(event.getMessageId());
+                    if (tracker != null) {
+                        tracker.emojiCode = emojiStr;
+                        tracker.goal = finalGoal;
+                    } else {
+                        activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
+                    }
+                } else {
                 event.getChannel().sendMessage("**Error:** Trigger recognized, but I could not extract the Emoji, Goal, or Timer. Please check formatting!").queue();
             }
             return; 
@@ -1421,7 +1465,7 @@ public class ChatListener extends ListenerAdapter {
 
         maybeSpawnGame(event, now);
     }
-
+}
     @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
@@ -2173,16 +2217,19 @@ public class ChatListener extends ListenerAdapter {
 
         return true;
     }
+
     private void endTimerActiveCheck(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel, String messageId, net.dv8tion.jda.api.entities.Guild guild) {
         ActiveCheckTracker check = activeChecks.remove(messageId);
         if (check == null || check.goalReached) return;
 
+        List<String> finalReactors; // 🚀 EDGE CASE FIX: Lock the list to prevent concurrent crashes!
         synchronized (check) {
             check.goalReached = true;
             completedChecks.add(messageId);
+            finalReactors = new ArrayList<>(check.allReactors);
         }
 
-        if (check.allReactors.isEmpty()) {
+        if (finalReactors.isEmpty()) {
             EmbedBuilder empty = new EmbedBuilder()
                 .setColor(Color.DARK_GRAY)
                 .setDescription("⏳ The active check timer ended, but no one reacted in time!");
@@ -2193,7 +2240,7 @@ public class ChatListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         StringBuilder winnersMentions = new StringBuilder();
 
-        for (String winnerId : check.allReactors) {
+        for (String winnerId : finalReactors) {
             winnersMentions.append("<@").append(winnerId).append("> ");
 
             int curSparks = db.getSparks(winnerId);
@@ -2237,7 +2284,7 @@ public class ChatListener extends ListenerAdapter {
         EmbedBuilder groupShoutout = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
                 .setTitle("⏱️ ACTIVE CHECK COMPLETE!")
-                .setDescription("The time window has closed! A massive shoutout to all **" + check.allReactors.size() + "** members who locked in!\n\n"
+                .setDescription("The time window has closed! A massive shoutout to all **" + finalReactors.size() + "** members who locked in!\n\n"
                         + winnersMentions.toString() + "\n\n"
                         + "✨ *Everyone above earned `+3 Sparks`, +1 Active Check Win, and the Winner Role!*")
                 .setFooter("AMORA Dynamic Time Window", null);
