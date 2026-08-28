@@ -1467,6 +1467,35 @@ public class ChatListener extends ListenerAdapter {
     }
 }
     @Override
+    public void onMessageReactionRemove(net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent event) {
+        ActiveCheckTracker check = activeChecks.get(event.getMessageId());
+        
+        if (check == null || !check.isTimerMode || check.goalReached) return; 
+
+        String rawReact = event.getEmoji().getFormatted().replace("\uFE0F", "");
+        String reactName = event.getEmoji().getName();
+        String savedEmoji = check.emojiCode;
+
+        boolean isMatch = false;
+
+        if (rawReact.equals(savedEmoji)) {
+            isMatch = true;
+        } else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
+            String cleanSaved = savedEmoji.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+            String cleanReactName = reactName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+            if (!cleanSaved.isEmpty() && cleanSaved.equals(cleanReactName)) isMatch = true;
+        } else if (!savedEmoji.startsWith("<") && !savedEmoji.startsWith(":")) {
+            if (rawReact.contains(savedEmoji) || savedEmoji.contains(rawReact)) isMatch = true;
+        }
+
+        if (isMatch) {
+            String userId = event.getUserId();
+            synchronized (check) {
+                check.allReactors.remove(userId);
+            }
+        }
+    }
+    @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
         
