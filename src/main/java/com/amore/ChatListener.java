@@ -1257,6 +1257,36 @@ public class ChatListener extends ListenerAdapter {
             if (emojiMatcher.find() && (hasGoal || hasTimer)) {
                 String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
 
+                // --- DAILY LIMIT CHECKER ---
+                String todayUtc = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString();
+                String savedDate = db.getBotState("ac_date");
+                int currentCount = 0;
+                
+                if (todayUtc.equals(savedDate)) {
+                    String countStr = db.getBotState("ac_count");
+                    if (countStr != null) currentCount = Integer.parseInt(countStr);
+                } else {
+                    db.setBotState("ac_date", todayUtc);
+                    db.setBotState("ac_count", "0");
+                }
+
+                String limitStr = db.getBotState("ac_limit");
+                int dailyLimit = limitStr != null ? Integer.parseInt(limitStr) : 9999;
+
+                // Check if this is a brand new check we haven't tracked yet
+                boolean isNewCheck = !activeChecks.containsKey(event.getMessageId()) && !completedChecks.contains(event.getMessageId());
+
+                if (isNewCheck) {
+                    if (currentCount >= dailyLimit) {
+                        event.getMessage().delete().queue();
+                        event.getChannel().sendMessage("❌ " + event.getAuthor().getAsMention() + " The daily limit of **" + dailyLimit + "** Activity Checks has already been reached for today!")
+                             .queue(m -> m.delete().queueAfter(7, TimeUnit.SECONDS));
+                        return;
+                    }
+                    db.setBotState("ac_count", String.valueOf(currentCount + 1));
+                }
+                // --------------------------
+
                 if (hasTimer) {
                     int duration = Integer.parseInt(timerMatcher.group(1));
                     String unit = timerMatcher.group(2);
@@ -1310,7 +1340,7 @@ public class ChatListener extends ListenerAdapter {
                         activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
                     }
                 }
-            } 
+            }
         } 
     } 
 
@@ -1369,6 +1399,35 @@ public class ChatListener extends ListenerAdapter {
             if (emojiMatcher.find() && (hasGoal || hasTimer)) {
                 String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
 
+                // --- DAILY LIMIT CHECKER ---
+                String todayUtc = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString();
+                String savedDate = db.getBotState("ac_date");
+                int currentCount = 0;
+                
+                if (todayUtc.equals(savedDate)) {
+                    String countStr = db.getBotState("ac_count");
+                    if (countStr != null) currentCount = Integer.parseInt(countStr);
+                } else {
+                    db.setBotState("ac_date", todayUtc);
+                    db.setBotState("ac_count", "0");
+                }
+
+                String limitStr = db.getBotState("ac_limit");
+                int dailyLimit = limitStr != null ? Integer.parseInt(limitStr) : 9999;
+
+                boolean isNewCheck = !activeChecks.containsKey(event.getMessageId()) && !completedChecks.contains(event.getMessageId());
+
+                if (isNewCheck) {
+                    if (currentCount >= dailyLimit) {
+                        event.getMessage().delete().queue();
+                        event.getChannel().sendMessage("❌ " + event.getAuthor().getAsMention() + " The daily limit of **" + dailyLimit + "** Activity Checks has already been reached for today!")
+                             .queue(m -> m.delete().queueAfter(7, TimeUnit.SECONDS));
+                        return;
+                    }
+                    db.setBotState("ac_count", String.valueOf(currentCount + 1));
+                }
+                // --------------------------
+
                 if (hasTimer) {
                     int duration = Integer.parseInt(timerMatcher.group(1));
                     String unit = timerMatcher.group(2);
@@ -1425,7 +1484,8 @@ public class ChatListener extends ListenerAdapter {
                         activeChecks.put(event.getMessageId(), new ActiveCheckTracker(emojiStr, finalGoal));
                     }
                 } else {
-                event.getChannel().sendMessage("**Error:** Trigger recognized, but I could not extract the Emoji, Goal, or Timer. Please check formatting!").queue();
+                    event.getChannel().sendMessage("**Error:** Trigger recognized, but I could not extract the Emoji, Goal, or Timer. Please check formatting!").queue();
+                }
             }
             return; 
         }
@@ -1465,7 +1525,7 @@ public class ChatListener extends ListenerAdapter {
 
         maybeSpawnGame(event, now);
     }
-}
+
     @Override
     public void onMessageReactionRemove(net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent event) {
         ActiveCheckTracker check = activeChecks.get(event.getMessageId());
