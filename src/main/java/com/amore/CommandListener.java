@@ -1724,18 +1724,29 @@ public class CommandListener extends ListenerAdapter {
             db.setBotState("ac_react", reactPhrase);
             db.setBotState("ac_goal", goalPhrase);
 
+            String limitDisplay = "Unlimited";
+            if (event.getOption("daily_limit") != null) {
+                int limit = event.getOption("daily_limit").getAsInt();
+                db.setBotState("ac_limit", String.valueOf(limit));
+                limitDisplay = String.valueOf(limit);
+            } else {
+                String currentLimit = db.getBotState("ac_limit");
+                if (currentLimit != null) limitDisplay = currentLimit;
+            }
+
             EmbedBuilder configEmbed = new EmbedBuilder()
                     .setColor(new Color(0, 250, 154))
                     .setTitle("✦ TEMPLATE CONFIGURATION SAVED ✦")
                     .setDescription("The AMORA tracking engine has been updated to hunt for your new template layout.")
-                    .addField("🎯 Required Trigger", "`" + trigger + "`", false)
-                    .addField("✨ Reaction Phrase", "`" + reactPhrase + "`", true)
-                    .addField("🏆 Goal Phrase", "`" + goalPhrase + "`", true)
+                    .addField(" Required Trigger", "`" + trigger + "`", false)
+                    .addField(" Reaction Phrase", "`" + reactPhrase + "`", true)
+                    .addField(" Goal Phrase", "`" + goalPhrase + "`", true)
+                    .addField(" Daily Limit", "`" + limitDisplay + "`", false)
                     .setFooter("AMORA Engine Systems", null);
 
             event.replyEmbeds(configEmbed.build()).queue();
             sendAuditLog(event.getGuild(), "Template Configured",
-                    event.getUser().getAsMention() + " updated the Activity Check template to trigger on: `" + trigger + "`",
+                    event.getUser().getAsMention() + " updated the Activity Check template to trigger on: `" + trigger + "` with a limit of `" + limitDisplay + "`",
                     new Color(0, 250, 154));
             return;
         }
