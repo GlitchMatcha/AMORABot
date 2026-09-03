@@ -73,6 +73,7 @@ public class App {
             
             jda.updateCommands()
                 .addCommands(
+                    Commands.slash("help", "Displays a list of all available AMORA commands and how to use them!"),
                     Commands.slash("gift", "Send a comforting treat or gift to M.IKU to lower her stress level!")
                         .addOptions(new OptionData(OptionType.STRING, "item", "Choose what to gift M.IKU", true)
                             .addChoice("🍵 Warm Matcha Latte (50 Sparks) [-1 Stress]", "matcha")
@@ -153,10 +154,11 @@ public class App {
                     //             .addOption(OptionType.STRING, "exclude", "Tag freeloaders to EXCLUDE from payout (e.g. @troll)", false)
                     //     ),
                         
-                    Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords")
+                    Commands.slash("activitycheck", "Director Only: Configure the Activity Check template keywords & limits")
                         .addOption(OptionType.STRING, "trigger", "Required word/symbol in the message (e.g. ᯓ★)", true)
                         .addOption(OptionType.STRING, "react_phrase", "Phrase directly before the emoji (e.g. React with)", true)
-                        .addOption(OptionType.STRING, "goal_phrase", "Phrase directly before the target number (e.g. Goal)", true),
+                        .addOption(OptionType.STRING, "goal_phrase", "Phrase directly before the target number (e.g. Goal)", true)
+                        .addOption(OptionType.INTEGER, "daily_limit", "Max number of Activity Checks allowed per day", false),
 
                     Commands.slash("profile", "View your AMORA profile")
                         .addOption(OptionType.USER, "user", "Whose profile to view", false),
