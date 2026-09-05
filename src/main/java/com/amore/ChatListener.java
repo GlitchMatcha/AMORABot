@@ -728,7 +728,7 @@ public class ChatListener extends ListenerAdapter {
             g2d.drawImage(circleAvatar, avatarX, avatarY, avatarSize, avatarSize, null);
 
             g2d.setFont(new Font("SansSerif", Font.BOLD, 28));
-            String safeName = username.replaceAll("[^a-zA-Z0-9 .,_\\-~*|!?'\"]", "").trim();
+            String safeName = username.replaceAll("[^\\p{L}\\p{N} .,_\\-~*|!?'\"♡♥ʚɞ⋆✧✦]+", "").trim();
             if (safeName.isEmpty()) safeName = "Player";
             
             g2d.setColor(new Color(0, 0, 0, 150)); // Shadow
@@ -1103,7 +1103,7 @@ public class ChatListener extends ListenerAdapter {
                         net.dv8tion.jda.api.entities.Guild guild = event.getGuild();
 
                         for (String winnerId : finalWinners) {
-                            winnersMentions.append("<@").append(winnerId).append("> ");
+                            winnersMentions.append("✦ <@").append(winnerId).append(">\n");
                             
                             int cur = db.getSparks(winnerId);
                             db.updateSparks(winnerId, cur + 3);
@@ -2330,7 +2330,7 @@ public class ChatListener extends ListenerAdapter {
         StringBuilder winnersMentions = new StringBuilder();
 
         for (String winnerId : finalReactors) {
-            winnersMentions.append("<@").append(winnerId).append("> ");
+            winnersMentions.append(" ╰ ✦ <@").append(winnerId).append(">\n");
 
             int curSparks = db.getSparks(winnerId);
             db.updateSparks(winnerId, curSparks + 3);
@@ -2370,13 +2370,22 @@ public class ChatListener extends ListenerAdapter {
             }, error -> {});
         }
 
+        String displayMentions = winnersMentions.toString();
+        // Failsafe: Prevent Discord from crashing if the list gets too massive!
+        if (displayMentions.length() > 3000) {
+            displayMentions = displayMentions.substring(0, 3000) + "\n ╰ ✦ ...and many more! (List truncated)";
+        }
+
         EmbedBuilder groupShoutout = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193))
-                .setTitle("⏱️ ACTIVE CHECK COMPLETE!")
-                .setDescription("The time window has closed! A massive shoutout to all **" + finalReactors.size() + "** members who locked in!\n\n"
-                        + winnersMentions.toString() + "\n\n"
-                        + "✨ *Everyone above earned `+3 Sparks`, +1 Active Check Win, and the Winner Role!*")
-                .setFooter("AMORA Dynamic Time Window", null);
+                .setColor(new Color(138, 43, 226))
+                .setTitle("⏱️ ✦ ACTIVE CHECK COMPLETE ✦")
+                .setDescription(
+                        "The time window has officially closed! A massive shoutout to the **" + finalReactors.size() + "** members who locked in fast enough!\n\n"
+                        + " **THE VERY FAST RESPONDERS:**\n"
+                        + ">>> " + displayMentions + "\n\n"
+                        + " *( Everyone above earned `+3 Sparks`, `+1 Check Win`, and the Winner Role! )*"
+                )
+                .setFooter("AMORA Dynamic Time Window • Sharp & Fast", null);
 
         channel.sendMessageEmbeds(groupShoutout.build()).queue();
     }
