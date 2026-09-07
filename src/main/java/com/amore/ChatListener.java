@@ -1247,14 +1247,22 @@ public class ChatListener extends ListenerAdapter {
                                  .map(Pattern::quote)
                                  .collect(java.util.stream.Collectors.joining("\\s*"));
 
-            Matcher emojiMatcher = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:|[^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
             Matcher goalMatcher = Pattern.compile("(?i)" + goalRegex + "[^0-9]*(\\d+)").matcher(cleanContent);
-            Matcher timerMatcher = Pattern.compile("(?i)Timer[^0-9]*(\\d+)([sm])?").matcher(cleanContent); // 🚀 NEW: Detects "Timer 60s" or "Timer 2m"
+            Matcher timerMatcher = Pattern.compile("(?i)Timer[^0-9]*(\\d+)([sm])?").matcher(cleanContent);
 
             boolean hasGoal = goalMatcher.find();
             boolean hasTimer = timerMatcher.find();
 
-            if (emojiMatcher.find() && (hasGoal || hasTimer)) {
+            String emojiStr = null;
+            Matcher explicitEmoji = Pattern.compile("(?i)" + reactRegex + ".*?(<a?:[a-zA-Z0-9_\\-~]+:\\d+>|:[a-zA-Z0-9_\\-~]+:)").matcher(cleanContent);
+            if (explicitEmoji.find()) {
+                emojiStr = explicitEmoji.group(1).replace("\uFE0F", "");
+            } else {
+                Matcher fallbackEmoji = Pattern.compile("(?i)" + reactRegex + ".*?([^\\s\\p{L}\\p{N}\\p{Punct}]+)").matcher(cleanContent);
+                if (fallbackEmoji.find()) emojiStr = fallbackEmoji.group(1).replace("\uFE0F", "");
+            }
+
+            if (emojiStr != null && (hasGoal || hasTimer)) {
                 String emojiStr = emojiMatcher.group(1).replace("\uFE0F", "");
 
                 // --- DAILY LIMIT CHECKER ---
