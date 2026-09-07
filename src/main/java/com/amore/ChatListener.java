@@ -1554,18 +1554,20 @@ public class ChatListener extends ListenerAdapter {
 
         if (rawReact.equals(savedEmoji)) {
             isMatch = true;
-        } else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
-            String cleanSaved = savedEmoji.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
-            String cleanReactName = reactName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
-            if (!cleanSaved.isEmpty() && cleanSaved.equals(cleanReactName)) isMatch = true;
-        } else if (!savedEmoji.startsWith("<") && !savedEmoji.startsWith(":")) {
-            if (rawReact.contains(savedEmoji) || savedEmoji.contains(rawReact)) isMatch = true;
-        }
+        } else {
+            String cleanSavedName = savedEmoji;
+            if (savedEmoji.startsWith("<") && savedEmoji.endsWith(">")) {
+                String[] parts = savedEmoji.split(":");
+                if (parts.length >= 2) cleanSavedName = parts[1];
+            } else if (savedEmoji.startsWith(":") && savedEmoji.endsWith(":")) {
+                cleanSavedName = savedEmoji.replaceAll(":", "");
+            }
 
-        if (isMatch) {
-            String userId = event.getUserId();
-            synchronized (check) {
-                check.allReactors.remove(userId);
+            String cleanSaved = cleanSavedName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+            String cleanReactName = reactName.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase();
+            
+            if (!cleanSaved.isEmpty() && (cleanSaved.equals(cleanReactName) || cleanSaved.contains(cleanReactName) || cleanReactName.contains(cleanSaved))) {
+                isMatch = true;
             }
         }
     }
