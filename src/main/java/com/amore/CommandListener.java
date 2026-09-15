@@ -3283,7 +3283,11 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("reopen_ticket")) {
             event.getMessage().delete().queue();
-            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**").queue();
+            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The ticket controls have been restored below:*")
+                 .addActionRow(
+                     Button.primary("ping_hr", " Ping HR Team"),
+                     Button.danger("initiate_close_ticket", "🔒 Close Ticket")
+                 ).queue();
             return;
         }
 
