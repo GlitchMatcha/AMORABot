@@ -217,6 +217,13 @@ public class DatabaseManager {
                 + "sold_this_month INTEGER DEFAULT 0"
                 + ");";
 
+        String createStaffStatsTable = "CREATE TABLE IF NOT EXISTS staff_stats ("
+                + "user_id TEXT PRIMARY KEY, "
+                + "tickets_handled INTEGER DEFAULT 0, "
+                + "events_hosted INTEGER DEFAULT 0, "
+                + "payouts_processed INTEGER DEFAULT 0"
+                + ");";
+
         // Replace the creator_prompts table block with this:
         String createCreatorPromptsTable = "CREATE TABLE IF NOT EXISTS creator_prompts ("
                 + "creator_id TEXT, "
@@ -237,7 +244,8 @@ public class DatabaseManager {
             stmt.execute(createRoleTimersTable);
             stmt.execute(createCreatorStatsTable);
             stmt.execute(createCreatorPromptsTable);
-            
+            stmt.execute(createStaffStatsTable);
+
             try { stmt.execute("ALTER TABLE users ADD COLUMN ac_wins INTEGER DEFAULT 0;"); } catch (SQLException ignored) { } 
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN all_time_orders INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_stars INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
@@ -1210,4 +1218,79 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
         return list;
     }
+
+    public void incrementGlobalStat(String key, int amount) {
+        ensureConnected();
+        String query = "INSERT INTO bot_state (state_key, state_value) VALUES (?, ?) "
+                + "ON CONFLICT (state_key) DO UPDATE SET state_value = CAST((CAST(bot_state.state_value AS INTEGER) + ?) AS TEXT);";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, key);
+            pstmt.setString(2, String.valueOf(amount));
+            pstmt.setInt(3, amount);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void incrementStaffStat(String userId, String column, int amount) {
+        ensureConnected();
+        String query = "INSERT INTO staff_stats (user_id, " + column + ") VALUES (?, ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET " + column + " = staff_stats." + column + " + ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setInt(2, amount);
+            pstmt.setInt(3, amount);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public long[] getTotalServerWealth() {
+        ensureConnected();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT SUM(sparks) as s, SUM(points) as p FROM users;")) {
+            if (rs.next()) return new long[]{rs.getLong("s"), rs.getLong("p")};
+        } catch (SQLException e) { e.printStackTrace(); }
+        return new long[]{0, 0};
+    }
+
+    public int getTotalMonthlyOrders() {
+        ensureConnected();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT SUM(sold_this_month) as total FROM creator_stats;")) {
+            if (rs.next()) return rs.getInt("total");
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public int getTotalAcWins() {
+        ensureConnected();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT SUM(ac_wins) as total FROM users;")) {
+            if (rs.next()) return rs.getInt("total");
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public List<String[]> getFullStaffLedger() {
+        ensureConnected();
+        List<String[]> ledger = new ArrayList<>();
+        String query = "SELECT user_id, tickets_handled, events_hosted, payouts_processed, "
+                + "(tickets_handled + events_hosted + payouts_processed) as total "
+                + "FROM staff_stats ORDER BY total DESC;";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+            while (rs.next()) {
+                ledger.add(new String[]{ rs.getString("user_id"), String.valueOf(rs.getInt("total")), String.valueOf(rs.getInt("tickets_handled")), String.valueOf(rs.getInt("events_hosted")), String.valueOf(rs.getInt("payouts_processed")) });
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return ledger;
+    }
+
+    public void wipeAllMonthlyStats() {
+        ensureConnected();
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate("UPDATE creator_stats SET sold_this_month = 0, listed_this_month = 0;");
+            stmt.executeUpdate("DELETE FROM staff_stats;");
+            stmt.executeUpdate("UPDATE bot_state SET state_value = '0' WHERE state_key IN ('global_gacha_pulls', 'global_items_forged', 'global_miku_gifts', 'global_points_injected', 'global_messages_sent', 'global_commands_used');");
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
 }

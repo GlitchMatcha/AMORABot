@@ -1279,7 +1279,72 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         String userId = event.getUser().getId();
         DatabaseManager db = DatabaseManager.getInstance();
+        db.incrementGlobalStat("global_commands_used", 1);
         
+        if (event.getName().equals("serverreport")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply(" Needs administrator permissions.").setEphemeral(true).queue();
+                return;
+            }
+            event.deferReply().queue();
+
+            scheduler.execute(() -> {
+                long[] wealth = db.getTotalServerWealth();
+                int orders = db.getTotalMonthlyOrders();
+                int acWins = db.getTotalAcWins();
+                
+                String pullsStr = db.getBotState("global_gacha_pulls");
+                int pulls = pullsStr != null ? Integer.parseInt(pullsStr) : 0;
+                
+                String giftsStr = db.getBotState("global_miku_gifts");
+                int gifts = giftsStr != null ? Integer.parseInt(giftsStr) : 0;
+                
+                String injectedStr = db.getBotState("global_points_injected");
+                int injected = injectedStr != null ? Integer.parseInt(injectedStr) : 0;
+
+                List<String[]> staffLedger = db.getFullStaffLedger();
+                String mvpName = "System AI";
+                BufferedImage mvpAvatar = null;
+
+                if (!staffLedger.isEmpty()) {
+                    String[] mvp = staffLedger.get(0);
+                    try {
+                        User mvpUser = event.getJDA().retrieveUserById(mvp[0]).complete();
+                        mvpName = mvpUser.getName();
+                        mvpAvatar = fetchAvatar(mvpUser.getEffectiveAvatarUrl() + "?size=128");
+                    } catch (Exception ignored) {}
+                }
+
+                String msgStr = db.getBotState("global_messages_sent");
+                int messages = msgStr != null ? Integer.parseInt(msgStr) : 0;
+                
+                String cmdStr = db.getBotState("global_commands_used");
+                int commands = cmdStr != null ? Integer.parseInt(cmdStr) : 0;
+
+                byte[] imageBytes = generateServerReportCard(wealth[0], wealth[1], orders, pulls, gifts, acWins, injected, messages, commands, mvpName, mvpAvatar);
+
+                StringBuilder ledgerTxt = new StringBuilder("✦ AMORA STAFF LEDGER (THIS MONTH) ✦\n=========================================\n");
+                for (String[] st : staffLedger) {
+                    try {
+                        String name = event.getJDA().retrieveUserById(st[0]).complete().getName();
+                        ledgerTxt.append(name).append(" -> Total Actions: ").append(st[1])
+                                 .append(" | Tickets: ").append(st[2])
+                                 .append(" | Events: ").append(st[3])
+                                 .append(" | Payouts: ").append(st[4]).append("\n");
+                    } catch (Exception ignored) {}
+                }
+                
+                FileUpload imgUpload = FileUpload.fromData(imageBytes, "AMORA_Report.png");
+                FileUpload txtUpload = FileUpload.fromData(ledgerTxt.toString().getBytes(StandardCharsets.UTF_8), "Staff_Ledger.txt");
+
+                event.getHook().sendMessage("📊 **The AMORA Global Server Report has been generated!**\nAttached is the visual infographic and the raw Staff Data Ledger.")
+                     .addFiles(imgUpload, txtUpload)
+                     .addActionRow(Button.danger("wipe_server_stats", " Wipe Data & Start Next Month"))
+                     .queue();
+            });
+            return;
+        }
+
         if (event.getName().equals("help")) {
             EmbedBuilder helpEmbed = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
@@ -1555,6 +1620,7 @@ public class CommandListener extends ListenerAdapter {
 
             // Deduct Sparks from PostgreSQL
             db.updateSparks(userId, currentSparks - cost);
+            db.incrementGlobalStat("global_miku_gifts", 1);
 
             // Dispatch the Bridge Embed into the channel for Python M.IKU to intercept
             EmbedBuilder giftEmbed = new EmbedBuilder()
@@ -1758,6 +1824,7 @@ public class CommandListener extends ListenerAdapter {
                 db.addInventoryItem(pullUserId, reward);
 
                 remainingSparks = currentSparks - pullCost;
+                db.incrementGlobalStat("global_gacha_pulls", 1);
             }
 
             EmbedBuilder pullEmbed = new EmbedBuilder()
@@ -2501,6 +2568,8 @@ public class CommandListener extends ListenerAdapter {
 
             int currentTargetPoints = db.getPoints(targetUser.getId());
             db.updatePoints(targetUser.getId(), currentTargetPoints + amount);
+            db.incrementGlobalStat("global_points_injected", amount);
+            db.incrementStaffStat(event.getUser().getId(), "payouts_processed", 1);
 
             EmbedBuilder payoutEmbed = new EmbedBuilder()
                     .setColor(new Color(0, 250, 154))
@@ -2534,7 +2603,9 @@ public class CommandListener extends ListenerAdapter {
             String reason = event.getOption("reason").getAsString();
             int currentTargetSparks = db.getSparks(targetUser.getId());
             db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
-
+            db.incrementGlobalStat("global_points_injected", amount);
+            db.incrementStaffStat(event.getUser().getId(), "payouts_processed", 1);
+            
             EmbedBuilder awardEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 215, 0))
                     .setTitle("STAGE CLEAR REWARD ISSUED")
@@ -3112,6 +3183,17 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+
+        if (componentId.equals("wipe_server_stats")) {
+            if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply(" Needs administrator permissions.").setEphemeral(true).queue();
+                return;
+            }
+            db.wipeAllMonthlyStats();
+            event.reply(" **All Monthly Trackers Wiped!** The server is now starting fresh for the new month.").queue();
+            event.getMessage().editMessageComponents(java.util.Collections.emptyList()).queue();
+            return;
+        }
 
         if (componentId.equals("ping_hr")) {
             String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
@@ -4418,6 +4500,90 @@ public class CommandListener extends ListenerAdapter {
                     "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@"
                             + trade.targetId + "> for **" + trade.requestItem + "**.",
                     new Color(50, 205, 50));
+        }
+
+    private byte[] generateServerReportCard(long totalSparks, long totalPoints, int orders, int pulls, int gifts, int acWins, int injected, int messages, int commands, String mvpName, BufferedImage mvpAvatar) {
+        try {
+            int w = 1000, h = 680; // 🚨 Increased height to fit new stats!
+            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            // Dark Base & Glows
+            g.setPaint(new GradientPaint(0, 0, new Color(20, 18, 25), 0, h, new Color(10, 8, 15)));
+            g.fillRect(0, 0, w, h);
+            g.setPaint(new RadialGradientPaint(new Point2D.Float(w/2, h/2), 600, new float[]{0f, 1f}, new Color[]{new Color(255, 105, 180, 40), new Color(0,0,0,0)}));
+            g.fillRect(0, 0, w, h);
+            g.setPaint(new RadialGradientPaint(new Point2D.Float(0, 0), 400, new float[]{0f, 1f}, new Color[]{new Color(138, 43, 226, 60), new Color(0,0,0,0)}));
+            g.fillRect(0, 0, w, h);
+
+            // Title
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("SansSerif", Font.BOLD, 42));
+            g.drawString("✦ AMORA MONTHLY SERVER REPORT ✦", 50, 70);
+            g.setColor(new Color(200, 200, 200));
+            g.setFont(new Font("SansSerif", Font.ITALIC, 20));
+            g.drawString("Official Group Performance & Engagement Evaluation", 55, 105);
+
+            // Boxes (Taller to fit new stats)
+            Color boxBg = new Color(255, 255, 255, 15);
+            g.setColor(boxBg);
+            g.fillRoundRect(50, 150, 420, 240, 20, 20); // Economy
+            g.fillRoundRect(530, 150, 420, 240, 20, 20); // Activity
+            g.fillRoundRect(50, 420, 420, 210, 20, 20); // Staff
+            g.fillRoundRect(530, 420, 420, 210, 20, 20); // Fun
+
+            // Headers
+            g.setColor(new Color(255, 182, 193));
+            g.setFont(new Font("SansSerif", Font.BOLD, 22));
+            g.drawString(" ECONOMY & COMMERCE", 70, 190);
+            g.drawString(" ENGAGEMENT & LIVELINESS", 550, 190);
+            g.setColor(new Color(138, 43, 226));
+            g.drawString(" HR & STAFF OPERATIONS", 70, 460);
+            g.drawString(" GACHA & LOUNGE", 550, 460);
+
+            // Text Setup
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 18));
+            
+            // Economy Text
+            g.drawString("Total Server Sparks: " + totalSparks, 70, 240);
+            g.drawString("Total Server Points: " + totalPoints, 70, 280);
+            g.drawString("Shop Orders Completed: " + orders, 70, 320);
+
+            // 🚨 NEW: Activity / Liveliness Text
+            g.drawString("Total Messages Sent: " + messages, 550, 240);
+            g.drawString("AMORA Commands Executed: " + commands, 550, 280);
+            g.drawString("Total Active Check Wins: " + acWins, 550, 320);
+            g.drawString("New Gacha Pulls Made: " + pulls, 550, 360);
+
+            // Staff Text
+            g.drawString("Points Injected by Staff: " + injected, 70, 510);
+            g.drawString("Most Valuable Staff Member:", 70, 550);
+            g.setColor(new Color(255, 215, 0));
+            g.setFont(new Font("SansSerif", Font.BOLD, 22));
+            g.drawString(mvpName.toUpperCase() + " 👑", 160, 590);
+            
+            // Draw MVP Avatar
+            if (mvpAvatar != null) {
+                g.setClip(new java.awt.geom.Ellipse2D.Float(70, 535, 70, 70));
+                g.drawImage(mvpAvatar, 70, 535, 70, 70, null);
+                g.setClip(null);
+            }
+
+            // Fun Text
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("SansSerif", Font.PLAIN, 18));
+            g.drawString("Total Gifts Sent to M.IKU: " + gifts, 550, 510);
+            g.drawString("M.IKU Stress Relieved: " + (gifts * 3) + " Pts", 550, 550);
+            g.drawString("Lounge Pet Happiness: 100%", 550, 590);
+
+            g.dispose();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(img, "png", baos);
+            return baos.toByteArray();
+        } catch (Exception e) { return null; }
         }
     }
 }
