@@ -3282,6 +3282,8 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
+            event.deferEdit().queue();
+            
             TextChannel tc = event.getChannel().asTextChannel();
             
             // Deny send permissions for everyone
