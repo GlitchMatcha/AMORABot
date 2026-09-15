@@ -4502,32 +4502,43 @@ public class CommandListener extends ListenerAdapter {
                     new Color(50, 205, 50));
         }
     }
-    private byte[] generateServerReportCard(long totalSparks, long totalPoints, int orders, int pulls, int gifts, int acWins, int injected, int messages, int commands, String mvpName, BufferedImage mvpAvatar) {
+    private java.awt.image.BufferedImage fetchAvatar(String urlStr) {
         try {
-            int w = 1000, h = 680; // 🚨 Increased height to fit new stats!
-            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = img.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            java.net.URL url = new java.net.URL(urlStr);
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+            return javax.imageio.ImageIO.read(connection.getInputStream());
+        } catch (Exception e) {
+            return new java.awt.image.BufferedImage(128, 128, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        }
+    }
+
+    private byte[] generateServerReportCard(long totalSparks, long totalPoints, int orders, int pulls, int gifts, int acWins, int injected, int messages, int commands, String mvpName, java.awt.image.BufferedImage mvpAvatar) {
+        try {
+            int w = 1000, h = 680;
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = img.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
             // Dark Base & Glows
-            g.setPaint(new GradientPaint(0, 0, new Color(20, 18, 25), 0, h, new Color(10, 8, 15)));
+            g.setPaint(new java.awt.GradientPaint(0, 0, new java.awt.Color(20, 18, 25), 0, h, new java.awt.Color(10, 8, 15)));
             g.fillRect(0, 0, w, h);
-            g.setPaint(new RadialGradientPaint(new Point2D.Float(w/2, h/2), 600, new float[]{0f, 1f}, new Color[]{new Color(255, 105, 180, 40), new Color(0,0,0,0)}));
+            g.setPaint(new java.awt.RadialGradientPaint(new java.awt.geom.Point2D.Float(w/2, h/2), 600, new float[]{0f, 1f}, new java.awt.Color[]{new java.awt.Color(255, 105, 180, 40), new java.awt.Color(0,0,0,0)}));
             g.fillRect(0, 0, w, h);
-            g.setPaint(new RadialGradientPaint(new Point2D.Float(0, 0), 400, new float[]{0f, 1f}, new Color[]{new Color(138, 43, 226, 60), new Color(0,0,0,0)}));
+            g.setPaint(new java.awt.RadialGradientPaint(new java.awt.geom.Point2D.Float(0, 0), 400, new float[]{0f, 1f}, new java.awt.Color[]{new java.awt.Color(138, 43, 226, 60), new java.awt.Color(0,0,0,0)}));
             g.fillRect(0, 0, w, h);
 
             // Title
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("SansSerif", Font.BOLD, 42));
+            g.setColor(java.awt.Color.WHITE);
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 42));
             g.drawString("✦ AMORA MONTHLY SERVER REPORT ✦", 50, 70);
-            g.setColor(new Color(200, 200, 200));
-            g.setFont(new Font("SansSerif", Font.ITALIC, 20));
+            g.setColor(new java.awt.Color(200, 200, 200));
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.ITALIC, 20));
             g.drawString("Official Group Performance & Engagement Evaluation", 55, 105);
 
-            // Boxes (Taller to fit new stats)
-            Color boxBg = new Color(255, 255, 255, 15);
+            // Boxes
+            java.awt.Color boxBg = new java.awt.Color(255, 255, 255, 15);
             g.setColor(boxBg);
             g.fillRoundRect(50, 150, 420, 240, 20, 20); // Economy
             g.fillRoundRect(530, 150, 420, 240, 20, 20); // Activity
@@ -4535,24 +4546,24 @@ public class CommandListener extends ListenerAdapter {
             g.fillRoundRect(530, 420, 420, 210, 20, 20); // Fun
 
             // Headers
-            g.setColor(new Color(255, 182, 193));
-            g.setFont(new Font("SansSerif", Font.BOLD, 22));
-            g.drawString(" ECONOMY & COMMERCE", 70, 190);
-            g.drawString(" ENGAGEMENT & LIVELINESS", 550, 190);
-            g.setColor(new Color(138, 43, 226));
-            g.drawString(" HR & STAFF OPERATIONS", 70, 460);
-            g.drawString(" GACHA & LOUNGE", 550, 460);
+            g.setColor(new java.awt.Color(255, 182, 193));
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 22));
+            g.drawString("💰 ECONOMY & COMMERCE", 70, 190);
+            g.drawString("🚀 ENGAGEMENT & LIVELINESS", 550, 190);
+            g.setColor(new java.awt.Color(138, 43, 226));
+            g.drawString("👑 HR & STAFF OPERATIONS", 70, 460);
+            g.drawString("🎲 GACHA & LOUNGE", 550, 460);
 
             // Text Setup
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("SansSerif", Font.PLAIN, 18));
+            g.setColor(java.awt.Color.WHITE);
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 18));
             
             // Economy Text
             g.drawString("Total Server Sparks: " + totalSparks, 70, 240);
             g.drawString("Total Server Points: " + totalPoints, 70, 280);
             g.drawString("Shop Orders Completed: " + orders, 70, 320);
 
-            // 🚨 NEW: Activity / Liveliness Text
+            // Activity / Liveliness Text
             g.drawString("Total Messages Sent: " + messages, 550, 240);
             g.drawString("AMORA Commands Executed: " + commands, 550, 280);
             g.drawString("Total Active Check Wins: " + acWins, 550, 320);
@@ -4561,8 +4572,8 @@ public class CommandListener extends ListenerAdapter {
             // Staff Text
             g.drawString("Points Injected by Staff: " + injected, 70, 510);
             g.drawString("Most Valuable Staff Member:", 70, 550);
-            g.setColor(new Color(255, 215, 0));
-            g.setFont(new Font("SansSerif", Font.BOLD, 22));
+            g.setColor(new java.awt.Color(255, 215, 0));
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 22));
             g.drawString(mvpName.toUpperCase() + " 👑", 160, 590);
             
             // Draw MVP Avatar
@@ -4573,17 +4584,18 @@ public class CommandListener extends ListenerAdapter {
             }
 
             // Fun Text
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("SansSerif", Font.PLAIN, 18));
+            g.setColor(java.awt.Color.WHITE);
+            g.setFont(new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 18));
             g.drawString("Total Gifts Sent to M.IKU: " + gifts, 550, 510);
             g.drawString("M.IKU Stress Relieved: " + (gifts * 3) + " Pts", 550, 550);
             g.drawString("Lounge Pet Happiness: 100%", 550, 590);
 
             g.dispose();
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(img, "png", baos);
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", baos);
             return baos.toByteArray();
         } catch (Exception e) { return null; }
-        }
     }
+
+} 
 
