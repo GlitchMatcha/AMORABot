@@ -73,6 +73,7 @@ public class CommandListener extends ListenerAdapter {
 
     private static final Set<String> processedInteractions = ConcurrentHashMap.newKeySet();
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
+    private static final Map<String, Long> ticketPingCooldowns = new ConcurrentHashMap<>(); 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -783,7 +784,8 @@ public class CommandListener extends ListenerAdapter {
                        .addEmbeds(appEmbed.build())
                        .addActionRow(
                            Button.primary("ping_hr", " Ping HR Team"),
-                           Button.danger("initiate_close_ticket", "🔒 Close Ticket") // 🚨 ONLY SHOW CLOSE AT FIRST
+                           Button.success("claim_ticket", " Claim Ticket"), 
+                           Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                        )
                        .queue();
                 
@@ -3203,6 +3205,14 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("ping_hr")) {
+            long now = System.currentTimeMillis();
+            long lastPing = ticketPingCooldowns.getOrDefault(event.getChannel().getId(), 0L);
+            if (now - lastPing < TimeUnit.MINUTES.toMillis(5)) {
+                event.reply("⏳ **Spam Protection:** Please wait 5 minutes before pinging HR again!").setEphemeral(true).queue();
+                return;
+            }
+            ticketPingCooldowns.put(event.getChannel().getId(), now);
+
             String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
             StringBuilder hrPingBuilder = new StringBuilder();
             if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
@@ -3218,6 +3228,39 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
+        if (componentId.equals("claim_ticket")) {
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            boolean isStaff = event.getMember().hasPermission(Permission.MESSAGE_MANAGE);
+            if (!isStaff && hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(id.trim()))) {
+                        isStaff = true; break;
+                    }
+                }
+            }
+            if (!isStaff) {
+                event.reply(" Only HR Staff can claim tickets!").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferEdit().queue();
+            
+            List<Button> newButtons = new ArrayList<>();
+            for (Button b : event.getMessage().getButtons()) {
+                if (b.getId() != null && b.getId().equals("ping_hr")) {
+                    newButtons.add(b.asDisabled().withLabel("HR Pinged")); // Disable ping
+                } else if (b.getId() != null && b.getId().equals("claim_ticket")) {
+                    newButtons.add(b.asDisabled().withLabel("Claimed by " + event.getUser().getName())); // Update claim
+                } else {
+                    newButtons.add(b);
+                }
+            }
+            
+            event.getMessage().editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
+            event.getChannel().sendMessage(" **Ticket Claimed!** " + event.getUser().getAsMention() + " will be assisting you shortly. You may begin or continue explaining your request!").queue();
+            return;
+        }
+
         if (componentId.equals("initiate_close_ticket")) {
             event.reply("⚠️ **Are you sure you want to close this ticket?**")
                  .addActionRow(
@@ -3228,7 +3271,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
+            event.deferEdit().queue(); 
             event.getMessage().delete().queue();
             
             TextChannel tc = event.getChannel().asTextChannel();
@@ -3507,7 +3550,8 @@ public class CommandListener extends ListenerAdapter {
                 channel.sendMessage(welcomeMessage)
                        .addActionRow(
                            Button.primary("ping_hr", " Ping HR Team"),
-                           Button.danger("initiate_close_ticket", "🔒 Close Ticket") // 🚨 ONLY SHOW CLOSE AT FIRST
+                           Button.success("claim_ticket", " Claim Ticket"), // 🚨 ADDED CLAIM
+                           Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                        )
                        .queue(); 
                 
