@@ -1356,6 +1356,8 @@ public class ChatListener extends ListenerAdapter {
         if (event.getAuthor().isBot() || !event.isFromGuild()) {
             return;
         }
+
+        DatabaseManager.getInstance().incrementGlobalStat("global_messages_sent", 1);
         if (event.getMessage().getContentRaw().equalsIgnoreCase("!spawngame")) {
             spawnRandomLoungeGame(event.getChannel());
             event.getMessage().delete().queue(); 
