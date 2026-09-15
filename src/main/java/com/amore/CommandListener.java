@@ -3271,11 +3271,9 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue(); // 🚨 ACKNOWLEDGED!
-            event.getMessage().delete().queue();
-            
+            event.getMessage().delete().queue(success -> {}, error -> {});
+
             TextChannel tc = event.getChannel().asTextChannel();
-            // Deny send permissions for everyone
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
