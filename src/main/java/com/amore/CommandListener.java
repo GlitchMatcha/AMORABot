@@ -729,18 +729,23 @@ public class CommandListener extends ListenerAdapter {
             String q5 = event.getValue("app_alt").getAsString();
             
             String hrRoleId = System.getenv("HR_ROLE_ID");
-            String appChannelId = System.getenv("APPLICATION_CHANNEL_ID");
-            TextChannel appChannel = event.getJDA().getTextChannelById(appChannelId);
+            String categoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
             
-            if (appChannel == null) {
-                event.getHook().sendMessage(" System Error: Application channel not found!").queue();
+            if (categoryId == null || categoryId.isBlank()) {
+                event.getHook().sendMessage("❌ System Error: `MEMBER_APP_CATEGORY_ID` is not configured in the .env file!").queue();
+                return;
+            }
+            
+            net.dv8tion.jda.api.entities.channel.concrete.Category category = event.getGuild().getCategoryById(categoryId);
+            if (category == null) {
+                event.getHook().sendMessage("❌ System Error: Member Application Category not found!").queue();
                 return;
             }
             
             String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
             User user = event.getUser();
-            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "");
-            String threadName = " Member App - " + safeName;
+            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
+            String channelName = "🎀・official-" + safeName; // Aesthetic Name!
             
             EmbedBuilder appEmbed = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
@@ -753,16 +758,38 @@ public class CommandListener extends ListenerAdapter {
                 .addField("5. Main Account / No Dual-Ent?", q5, true)
                 .setFooter("Applicant ID: " + user.getId(), null);
 
-            appChannel.createThreadChannel(threadName, true).queue(thread -> {
-                thread.addThreadMember(user).queue();
-                thread.sendMessage(user.getAsMention() + " " + hrPing + "\nThank you for applying! HR will review your answers below shortly.")
-                      .addEmbeds(appEmbed.build()).queue();
+            net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
+                .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
+                .addPermissionOverride(event.getMember(), java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+
+            if (hrRoleId != null && !hrRoleId.isBlank()) {
+                net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(hrRoleId);
+                if (hrRole != null) {
+                    action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+                }
+            }
+
+            action.queue(channel -> {
+                channel.sendMessage(user.getAsMention() + " " + hrPing + "\nThank you for applying! HR will review your answers below shortly.")
+                       .addEmbeds(appEmbed.build())
+                       .addActionRow(Button.primary("ping_hr", " Ping HR Team")) 
+                       .queue();
                 
-                event.getHook().sendMessage(" Your application has been submitted! Head over to " + thread.getAsMention() + " to wait for an HR member.").queue();
-                sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + thread.getAsMention(), new Color(138, 43, 226));
+                event.getHook().sendMessage(" Matcha:-> Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
+                sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage(" Failed to create application ticket.").queue();
+                event.getHook().sendMessage(" Matcha:-> Failed to create application channel. Please check permissions!").queue();
             });
+            return;
+        }
+
+        if (componentId.equals("ping_hr")) {
+            String hrRoleId = System.getenv("HR_ROLE_ID");
+            String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
+            
+            event.reply(" Matcha:-> Matcha's Staff Team has been notified! They will be with you shortly.").setEphemeral(true).queue();
+            
+            event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
             return;
         }
 
@@ -3096,13 +3123,6 @@ public class CommandListener extends ListenerAdapter {
             String visitorRoleId = "1516061302701817986";
             String memberRoleId = "1516061152843665549";
             String hrRoleId = System.getenv("HR_ROLE_ID");
-            String appChannelId = System.getenv("APPLICATION_CHANNEL_ID");
-            
-            if (appChannelId == null || appChannelId.isBlank()) {
-                event.reply("❌ System Error: `APPLICATION_CHANNEL_ID` is not configured in the .env file!").setEphemeral(true).queue();
-                return;
-            }
-            TextChannel appChannel = event.getJDA().getTextChannelById(appChannelId);
             
             if (componentId.equals("role_member")) {
                 net.dv8tion.jda.api.interactions.components.text.TextInput typeInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_type", "Comp or General?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., Comp").setRequired(true).build();
@@ -3121,7 +3141,7 @@ public class CommandListener extends ListenerAdapter {
             event.deferReply(true).queue(); 
             String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
             User user = event.getUser();
-            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "");
+            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
             
             if (componentId.equals("role_visitor")) {
                 net.dv8tion.jda.api.entities.Role role = event.getGuild().getRoleById(visitorRoleId);
@@ -3137,11 +3157,13 @@ public class CommandListener extends ListenerAdapter {
                 return;
             } 
 
-            String threadName;
+            String channelName;
             String welcomeMessage;
+            String targetCategoryId;
 
             if (componentId.equals("role_seller")) {
-                threadName = "🛒 Seller App - " + safeName;
+                targetCategoryId = System.getenv("SELLER_APP_CATEGORY_ID");
+                channelName = "🛍️・seller-" + safeName;
                 welcomeMessage = user.getAsMention() + " " + hrPing + "\n# ✦ SELLER APPLICATION ✦\nWelcome! To acquire the Seller role, please answer the following:\n\n**1.** What kind of items/services do you plan to sell?\n**2.** Please provide 2-3 visual examples of your work below.\n\n*An HR member will review your portfolio soon!*";
             }
             else if (componentId.equals("role_positions")) {
@@ -3151,19 +3173,42 @@ public class CommandListener extends ListenerAdapter {
                     sendRoleLog(event.getGuild(), "Application Blocked", user.getAsMention() + " attempted to apply for a Staff Position without the Official Member role.", Color.RED);
                     return;
                 }
-                threadName = "💼 Staff App - " + safeName;
+                targetCategoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
+                channelName = "💼・staff-" + safeName;
                 welcomeMessage = user.getAsMention() + " " + hrPing + "\n# ✦ AMORA POSITIONS APPLICATION ✦\nWelcome! Please state which position you are applying for, your timezone, and your past experience. An HR member will conduct your interview here.";
             } else {
                 return;
             }
 
-            appChannel.createThreadChannel(threadName, true).queue(thread -> {
-                thread.addThreadMember(user).queue();
-                thread.sendMessage(welcomeMessage).queue(); 
-                event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + thread.getAsMention() + " to answer the questions.").queue();
-                sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + thread.getAsMention(), new Color(138, 43, 226));
+            if (targetCategoryId == null || targetCategoryId.isBlank()) {
+                event.getHook().sendMessage(" System Error: The application Category ID is not configured in the .env file!").queue();
+                return;
+            }
+            
+            net.dv8tion.jda.api.entities.channel.concrete.Category category = event.getGuild().getCategoryById(targetCategoryId);
+            if (category == null) {
+                event.getHook().sendMessage(" System Error: Target application Category not found! Make sure the ID is correct in your .env file.").queue();
+                return;
+            }
+
+            // Create Private Channel
+            net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
+                .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
+                .addPermissionOverride(event.getMember(), java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+
+            if (hrRoleId != null && !hrRoleId.isBlank()) {
+                net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(hrRoleId);
+                if (hrRole != null) {
+                    action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+                }
+            }
+
+            action.queue(channel -> {
+                channel.sendMessage(welcomeMessage).queue(); 
+                event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
+                sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage(" Failed to create application ticket.").queue();
+                event.getHook().sendMessage(" Failed to create application channel. Does the bot have permission to manage channels?").queue();
             });
             return;
         }
