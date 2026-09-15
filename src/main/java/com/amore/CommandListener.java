@@ -3228,10 +3228,10 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
+            event.deferEdit().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
             event.getMessage().delete().queue();
             
             TextChannel tc = event.getChannel().asTextChannel();
-            // Deny send permissions for everyone
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
@@ -3259,6 +3259,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
+            event.deferEdit().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
             event.getMessage().delete().queue();
             
             TextChannel tc = event.getChannel().asTextChannel();
@@ -3277,7 +3278,7 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The channel has been unlocked and ticket controls have been restored below:*")
                  .addActionRow(
-                     Button.primary("ping_hr", "🔔 Ping HR Team"),
+                     Button.primary("ping_hr", " Ping HR Team"),
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
@@ -3302,12 +3303,15 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
+            event.deferEdit().queue(); 
             event.getMessage().delete().queue();
             return;
         }
 
         if (componentId.equals("confirm_delete_ticket")) {
-            event.getChannel().delete().queue();
+            event.reply(" **Deleting channel...**").queue(hook -> {
+                event.getChannel().delete().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
+            });
             return;
         }
 
