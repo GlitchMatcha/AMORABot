@@ -781,13 +781,17 @@ public class CommandListener extends ListenerAdapter {
             action.queue(channel -> {
                 channel.sendMessage(user.getAsMention() + " " + hrPing + "\nThank you for applying! HR will review your answers below shortly.")
                        .addEmbeds(appEmbed.build())
-                       .addActionRow(Button.primary("ping_hr", " Ping HR Team")) 
+                       .addActionRow(
+                           Button.primary("ping_hr", " Ping HR Team"),
+                           Button.secondary("close_ticket", "🔒 Close & Save"),
+                           Button.danger("delete_ticket", "🗑️ Delete Ticket")
+                       )
                        .queue();
                 
-                event.getHook().sendMessage("Matcha:-> Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
+                event.getHook().sendMessage(" Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
                 sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage("Matcha:-> Failed to create application channel. Please check permissions!").queue();
+                event.getHook().sendMessage(" Failed to create application channel. Please check permissions!").queue();
             });
             return;
         }
@@ -3214,6 +3218,120 @@ public class CommandListener extends ListenerAdapter {
             event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
             return;
         }
+
+        if (componentId.equals("close_ticket")) {
+            event.reply(" **Are you sure you want to close this ticket?**\nA full chat preview and `.txt` transcript will be saved to the HR logs, and this channel will be permanently deleted.")
+                 .addActionRow(
+                     Button.success("confirm_close_ticket", "✅ Confirm Close & Save"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+        
+        if (componentId.equals("transcript_ticket")) {
+            event.reply("⚠️ **Generate Transcript?**\nA full chat preview and `.txt` transcript will be saved to the HR logs. **This will NOT delete the ticket.**")
+                 .addActionRow(
+                     Button.success("confirm_transcript_ticket", "✅ Confirm Save"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("delete_ticket")) {
+            event.reply("⚠️ **Are you sure you want to FORCE DELETE this ticket?**\nNo transcript will be saved. This action is permanent.")
+                 .addActionRow(
+                     Button.danger("confirm_delete_ticket", "🗑️ Confirm Delete"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
+            event.getMessage().delete().queue();
+            return;
+        }
+        
+        if (componentId.equals("confirm_delete_ticket")) {
+            event.getChannel().delete().queue();
+            return;
+        }
+
+        if (componentId.equals("confirm_close_ticket")) {
+            event.deferEdit().queue();
+            event.getChannel().sendMessage("🔒 **Locking and archiving ticket... Please wait.**").queue();
+            
+            TextChannel ticketChannel = event.getChannel().asTextChannel();
+            String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
+            
+            if (logChannelId == null || logChannelId.isBlank()) {
+                event.getChannel().sendMessage("❌ Cannot archive: `ROLE_LOG_CHANNEL_ID` is not set in your .env file.").queue();
+                return;
+            }
+            TextChannel logChannel = event.getGuild().getTextChannelById(logChannelId);
+            
+            ticketChannel.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
+                StringBuilder sb = new StringBuilder();
+                StringBuilder embedSnippet = new StringBuilder();
+                
+                sb.append("=========================================\n");
+                sb.append(" ✦ AMORA SECURE TICKET TRANSCRIPT ✦\n");
+                sb.append(" Ticket Name: ").append(ticketChannel.getName()).append("\n");
+                sb.append(" Closed By:   ").append(event.getUser().getName()).append("\n");
+                sb.append(" Date:        ").append(Instant.now().toString()).append("\n");
+                sb.append("=========================================\n\n");
+
+                java.util.Collections.reverse(messages);
+
+                for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                    String time = msg.getTimeCreated().toLocalDateTime().toString().replace("T", " ");
+                    String author = msg.getAuthor().getName();
+                    String content = msg.getContentDisplay();
+                    
+                    sb.append("[").append(time).append("] ").append(author).append(": ").append(content).append("\n");
+                    
+                    String previewLine = "**" + author + "**: " + content + "\n";
+                    if (embedSnippet.length() + previewLine.length() < 3800) {
+                        embedSnippet.append(previewLine);
+                    }
+                    
+                    if (!msg.getAttachments().isEmpty()) {
+                        for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
+                            sb.append("   -> [Attachment]: ").append(attachment.getUrl()).append("\n");
+                        }
+                    }
+                }
+                
+                if (embedSnippet.length() >= 3800) {
+                    embedSnippet.append("\n*... (Transcript truncated. Download the .txt file to read the rest!)*");
+                }
+
+                byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+                FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + ticketChannel.getName() + ".txt");
+
+                EmbedBuilder logEmbed = new EmbedBuilder()
+                    .setColor(new Color(138, 43, 226))
+                    .setTitle(" TICKET ARCHIVED: " + ticketChannel.getName())
+                    .setDescription(embedSnippet.length() > 0 ? embedSnippet.toString() : "*No messages recorded.*")
+                    .addField("Saved By", event.getUser().getAsMention(), true)
+                    .addField("Ticket Name", "`" + ticketChannel.getName() + "`", true)
+                    .setFooter("AMORA Secure HR Logging System", null)
+                    .setTimestamp(Instant.now());
+
+                if (logChannel != null) {
+                    logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
+                        success -> event.getChannel().sendMessage("✅ **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
+                        error -> event.getChannel().sendMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
+                    );
+                } else {
+                    event.getChannel().sendMessage("❌ `ROLE_LOG_CHANNEL_ID` channel not found!").queue();
+                }
+            }).exceptionally(e -> {
+                event.getChannel().sendMessage("❌ Failed to generate transcript: " + e.getMessage()).queue();
+                return null;
+            });
+            return;
+        }
+
         if (componentId.startsWith("serverprofile_")) {
             String targetId = componentId.substring("serverprofile_".length());
             event.reply(" **Click the name below to open their Server Profile!**\n> <@" + targetId + ">")
@@ -3328,7 +3446,11 @@ public class CommandListener extends ListenerAdapter {
 
             action.queue(channel -> {
                 channel.sendMessage(welcomeMessage)
-                       .addActionRow(Button.primary("ping_hr", "🔔 Ping HR Team")) 
+                       .addActionRow(
+                           Button.primary("ping_hr", " Ping HR Team"),
+                           Button.secondary("close_ticket", "🔒 Close & Save"),
+                           Button.danger("delete_ticket", "🗑️ Delete Ticket")
+                       )
                        .queue(); 
                 
                 event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
@@ -4516,8 +4638,9 @@ public class CommandListener extends ListenerAdapter {
                     "<@" + trade.senderId + "> traded **" + trade.offerItem + "** to <@"
                             + trade.targetId + "> for **" + trade.requestItem + "**.",
                     new Color(50, 205, 50));
-        }
-    }
+        } 
+    } 
+
     private java.awt.image.BufferedImage fetchAvatar(String urlStr) {
         try {
             java.net.URL url = new java.net.URL(urlStr);
@@ -4564,11 +4687,11 @@ public class CommandListener extends ListenerAdapter {
             // Headers
             g.setColor(new Color(255, 182, 193));
             g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 22));
-            g.drawString(" ECONOMY & COMMERCE", 70, 190);
-            g.drawString(" ENGAGEMENT & LIVELINESS", 550, 190);
+            g.drawString("💰 ECONOMY & COMMERCE", 70, 190);
+            g.drawString("🚀 ENGAGEMENT & LIVELINESS", 550, 190);
             g.setColor(new Color(138, 43, 226));
-            g.drawString(" HR & STAFF OPERATIONS", 70, 460);
-            g.drawString(" GACHA & LOUNGE", 550, 460);
+            g.drawString("👑 HR & STAFF OPERATIONS", 70, 460);
+            g.drawString("🎲 GACHA & LOUNGE", 550, 460);
 
             // Text Setup
             g.setColor(Color.WHITE);
