@@ -3099,7 +3099,7 @@ public class CommandListener extends ListenerAdapter {
             String appChannelId = System.getenv("APPLICATION_CHANNEL_ID");
             
             if (appChannelId == null || appChannelId.isBlank()) {
-                event.reply(" System Error: `APPLICATION_CHANNEL_ID` is not configured in the .env file!").setEphemeral(true).queue();
+                event.reply("❌ System Error: `APPLICATION_CHANNEL_ID` is not configured in the .env file!").setEphemeral(true).queue();
                 return;
             }
             TextChannel appChannel = event.getJDA().getTextChannelById(appChannelId);
@@ -3131,14 +3131,14 @@ public class CommandListener extends ListenerAdapter {
                             event.getHook().sendMessage(" You are now an **AMORA Visitor**! Enjoy your stay 🌸").queue();
                             sendRoleLog(event.getGuild(), "Role Acquired", user.getAsMention() + " clicked the welcome panel and instantly acquired the **Visitor** role.", Color.PINK);
                         },
-                        error -> event.getHook().sendMessage("Error assigning role.").queue()
+                        error -> event.getHook().sendMessage(" Error assigning role.").queue()
                     );
                 }
                 return;
             } 
 
-            String threadName = "";
-            String welcomeMessage = "";
+            String threadName;
+            String welcomeMessage;
 
             if (componentId.equals("role_seller")) {
                 threadName = "🛒 Seller App - " + safeName;
@@ -3153,11 +3153,13 @@ public class CommandListener extends ListenerAdapter {
                 }
                 threadName = "💼 Staff App - " + safeName;
                 welcomeMessage = user.getAsMention() + " " + hrPing + "\n# ✦ AMORA POSITIONS APPLICATION ✦\nWelcome! Please state which position you are applying for, your timezone, and your past experience. An HR member will conduct your interview here.";
+            } else {
+                return;
             }
 
             appChannel.createThreadChannel(threadName, true).queue(thread -> {
                 thread.addThreadMember(user).queue();
-                thread.sendMessage(welcomeMessage).queue();
+                thread.sendMessage(welcomeMessage).queue(); 
                 event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + thread.getAsMention() + " to answer the questions.").queue();
                 sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + thread.getAsMention(), new Color(138, 43, 226));
             }, error -> {
