@@ -3256,7 +3256,7 @@ public class CommandListener extends ListenerAdapter {
             }
             
             event.getMessage().editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-            event.getChannel().sendMessage("✋ **Ticket Claimed!** " + event.getUser().getAsMention() + " will be assisting you shortly.").queue();
+            event.getChannel().sendMessage(" **Ticket Claimed!** " + event.getUser().getAsMention() + " will be assisting you shortly.").queue();
             return;
         }
 
@@ -3274,19 +3274,16 @@ public class CommandListener extends ListenerAdapter {
             event.editMessage(event.getMessage().getContentRaw())
                  .setEmbeds(event.getMessage().getEmbeds())
                  .setActionRow(
-                     Button.primary("ping_hr", "🔔 Ping HR Team"),
-                     Button.success("claim_ticket", "✋ Claim Ticket"),
+                     Button.primary("ping_hr", " Ping HR Team"),
+                     Button.success("claim_ticket", " Claim Ticket"),
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue();
-            
             TextChannel tc = event.getChannel().asTextChannel();
             
-            // Deny send permissions for everyone
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
@@ -3300,7 +3297,7 @@ public class CommandListener extends ListenerAdapter {
             }
 
             EmbedBuilder closedEmbed = new EmbedBuilder()
-                .setColor(Color.DARK_GRAY)
+                .setColor(Color.decode("#FF5FA2"))
                 .setTitle("🔒 Ticket Closed")
                 .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
                 
