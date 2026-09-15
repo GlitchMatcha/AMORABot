@@ -728,24 +728,31 @@ public class CommandListener extends ListenerAdapter {
             String q4 = event.getValue("app_rules").getAsString();
             String q5 = event.getValue("app_alt").getAsString();
             
-            String hrRoleId = System.getenv("HR_ROLE_ID");
             String categoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
             
             if (categoryId == null || categoryId.isBlank()) {
-                event.getHook().sendMessage("❌ System Error: `MEMBER_APP_CATEGORY_ID` is not configured in the .env file!").queue();
+                event.getHook().sendMessage(" System Error: `MEMBER_APP_CATEGORY_ID` is not configured in the .env file!").queue();
                 return;
             }
             
             net.dv8tion.jda.api.entities.channel.concrete.Category category = event.getGuild().getCategoryById(categoryId);
             if (category == null) {
-                event.getHook().sendMessage("❌ System Error: Member Application Category not found!").queue();
+                event.getHook().sendMessage(" System Error: Member Application Category not found!").queue();
                 return;
             }
             
-            String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            StringBuilder hrPingBuilder = new StringBuilder();
+            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (!id.trim().isEmpty()) hrPingBuilder.append("<@&").append(id.trim()).append("> ");
+                }
+            }
+            String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
+
             User user = event.getUser();
             String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
-            String channelName = "🎀・official-" + safeName; // Aesthetic Name!
+            String channelName = "🎀・official-" + safeName; 
             
             EmbedBuilder appEmbed = new EmbedBuilder()
                 .setColor(new Color(255, 182, 193))
@@ -762,10 +769,12 @@ public class CommandListener extends ListenerAdapter {
                 .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
                 .addPermissionOverride(event.getMember(), java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
 
-            if (hrRoleId != null && !hrRoleId.isBlank()) {
-                net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(hrRoleId);
-                if (hrRole != null) {
-                    action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(id.trim());
+                    if (hrRole != null) {
+                        action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+                    }
                 }
             }
 
@@ -775,23 +784,14 @@ public class CommandListener extends ListenerAdapter {
                        .addActionRow(Button.primary("ping_hr", " Ping HR Team")) 
                        .queue();
                 
-                event.getHook().sendMessage(" Matcha:-> Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
+                event.getHook().sendMessage("Matcha:-> Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
                 sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage(" Matcha:-> Failed to create application channel. Please check permissions!").queue();
+                event.getHook().sendMessage("Matcha:-> Failed to create application channel. Please check permissions!").queue();
             });
             return;
         }
 
-        if (componentId.equals("ping_hr")) {
-            String hrRoleId = System.getenv("HR_ROLE_ID");
-            String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
-            
-            event.reply(" Matcha:-> Matcha's Staff Team has been notified! They will be with you shortly.").setEphemeral(true).queue();
-            
-            event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
-            return;
-        }
 
         if (event.getModalId().startsWith("shop_modal_")) {
             String promptMsgId = event.getModalId().substring("shop_modal_".length());
@@ -3112,6 +3112,22 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+
+        if (componentId.equals("ping_hr")) {
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            StringBuilder hrPingBuilder = new StringBuilder();
+            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (!id.trim().isEmpty()) hrPingBuilder.append("<@&").append(id.trim()).append("> ");
+                }
+            }
+            String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
+            
+            event.reply(" Matcha's Staff Team has been notified! They will be with you shortly.").setEphemeral(true).queue();
+            
+            event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
+            return;
+
         if (componentId.startsWith("serverprofile_")) {
             String targetId = componentId.substring("serverprofile_".length());
             event.reply(" **Click the name below to open their Server Profile!**\n> <@" + targetId + ">")
@@ -3122,7 +3138,6 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("role_")) {
             String visitorRoleId = "1516061302701817986";
             String memberRoleId = "1516061152843665549";
-            String hrRoleId = System.getenv("HR_ROLE_ID");
             
             if (componentId.equals("role_member")) {
                 net.dv8tion.jda.api.interactions.components.text.TextInput typeInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_type", "Comp or General?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., Comp").setRequired(true).build();
@@ -3139,7 +3154,16 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.deferReply(true).queue(); 
-            String hrPing = (hrRoleId != null && !hrRoleId.isBlank()) ? "<@&" + hrRoleId + ">" : "**[HR Team]**";
+            
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            StringBuilder hrPingBuilder = new StringBuilder();
+            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (!id.trim().isEmpty()) hrPingBuilder.append("<@&").append(id.trim()).append("> ");
+                }
+            }
+            String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
+
             User user = event.getUser();
             String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
             
@@ -3191,20 +3215,24 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            // Create Private Channel
             net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
                 .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
                 .addPermissionOverride(event.getMember(), java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
 
-            if (hrRoleId != null && !hrRoleId.isBlank()) {
-                net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(hrRoleId);
-                if (hrRole != null) {
-                    action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(id.trim());
+                    if (hrRole != null) {
+                        action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+                    }
                 }
             }
 
             action.queue(channel -> {
-                channel.sendMessage(welcomeMessage).queue(); 
+                channel.sendMessage(welcomeMessage)
+                       .addActionRow(Button.primary("ping_hr", "🔔 Ping HR Team")) 
+                       .queue(); 
+                
                 event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
                 sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
