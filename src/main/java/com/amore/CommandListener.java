@@ -3282,32 +3282,34 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            TextChannel tc = event.getChannel().asTextChannel();
-            
-            tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
-            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
-                if (!override.getMember().getUser().isBot()) {
-                    tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
-                }
-            }
-            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
-                if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
-                    tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
-                }
-            }
-
             EmbedBuilder closedEmbed = new EmbedBuilder()
                 .setColor(Color.decode("#FF5FA2"))
                 .setTitle("🔒 Ticket Closed")
                 .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
                 
+            // 1. Acknowledge and update the message INSTANTLY to prevent timeouts
             event.editMessage(event.getMessage().getContentRaw())
                  .setEmbeds(closedEmbed.build())
                  .setActionRow(
                      Button.secondary("transcript_ticket", "📝 Save Transcript"),
                      Button.success("reopen_ticket", "🔓 Reopen Ticket"),
                      Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
-                 ).queue();
+                 ).queue(success -> {
+                     // 2. Run the permission overrides in the background safely
+                     TextChannel tc = event.getChannel().asTextChannel();
+                     
+                     tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
+                     for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                         if (!override.getMember().getUser().isBot()) {
+                             tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
+                         }
+                     }
+                     for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
+                         if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
+                             tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
+                         }
+                     }
+                 });
             return;
         }
 
