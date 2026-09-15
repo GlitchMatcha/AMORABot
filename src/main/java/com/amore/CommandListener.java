@@ -4501,7 +4501,7 @@ public class CommandListener extends ListenerAdapter {
                             + trade.targetId + "> for **" + trade.requestItem + "**.",
                     new Color(50, 205, 50));
         }
-
+    }
     private byte[] generateServerReportCard(long totalSparks, long totalPoints, int orders, int pulls, int gifts, int acWins, int injected, int messages, int commands, String mvpName, BufferedImage mvpAvatar) {
         try {
             int w = 1000, h = 680; // 🚨 Increased height to fit new stats!
@@ -4586,4 +4586,4 @@ public class CommandListener extends ListenerAdapter {
         } catch (Exception e) { return null; }
         }
     }
-}
+
