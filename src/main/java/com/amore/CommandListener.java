@@ -3208,7 +3208,7 @@ public class CommandListener extends ListenerAdapter {
             long now = System.currentTimeMillis();
             long lastPing = ticketPingCooldowns.getOrDefault(event.getChannel().getId(), 0L);
             if (now - lastPing < TimeUnit.MINUTES.toMillis(5)) {
-                event.reply("⏳ **Spam Protection:** Please wait 5 minutes before pinging HR again!").setEphemeral(true).queue();
+                event.reply(" **Spam Protection:** Please wait 5 minutes before pinging HR again!").setEphemeral(true).queue();
                 return;
             }
             ticketPingCooldowns.put(event.getChannel().getId(), now);
@@ -3223,7 +3223,6 @@ public class CommandListener extends ListenerAdapter {
             String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
             
             event.reply(" Matcha's Staff Team has been notified! They will be with you shortly.").setEphemeral(true).queue();
-            
             event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
             return;
         }
@@ -3239,7 +3238,7 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
             if (!isStaff) {
-                event.reply(" Only HR Staff can claim tickets!").setEphemeral(true).queue();
+                event.reply("❌ Only HR Staff can claim tickets!").setEphemeral(true).queue();
                 return;
             }
 
@@ -3248,33 +3247,44 @@ public class CommandListener extends ListenerAdapter {
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals("ping_hr")) {
-                    newButtons.add(b.asDisabled().withLabel("HR Pinged")); // Disable ping
+                    newButtons.add(b.asDisabled().withLabel("HR Pinged"));
                 } else if (b.getId() != null && b.getId().equals("claim_ticket")) {
-                    newButtons.add(b.asDisabled().withLabel("Claimed by " + event.getUser().getName())); // Update claim
+                    newButtons.add(b.asDisabled().withLabel("Claimed by " + event.getUser().getName()));
                 } else {
                     newButtons.add(b);
                 }
             }
             
             event.getMessage().editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
-            event.getChannel().sendMessage(" **Ticket Claimed!** " + event.getUser().getAsMention() + " will be assisting you shortly. You may begin or continue explaining your request!").queue();
+            event.getChannel().sendMessage("✋ **Ticket Claimed!** " + event.getUser().getAsMention() + " will be assisting you shortly.").queue();
             return;
         }
 
         if (componentId.equals("initiate_close_ticket") || componentId.equals("close_ticket")) {
-            event.reply("⚠️ **Are you sure you want to close this ticket?**")
-                 .addActionRow(
-                     Button.danger("confirm_close_ticket", "🔒 Confirm Close"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+            event.editMessage(event.getMessage().getContentRaw())
+                 .setEmbeds(event.getMessage().getEmbeds())
+                 .setActionRow(
+                     Button.danger("confirm_close_ticket", "🔒 YES, CLOSE TICKET"),
+                     Button.secondary("cancel_close_view", "❌ CANCEL")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("cancel_close_view") || componentId.equals("cancel_ticket_action")) {
+            event.editMessage(event.getMessage().getContentRaw())
+                 .setEmbeds(event.getMessage().getEmbeds())
+                 .setActionRow(
+                     Button.primary("ping_hr", "🔔 Ping HR Team"),
+                     Button.success("claim_ticket", "✋ Claim Ticket"),
+                     Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue();
-            event.getMessage().delete().queue(success -> {}, error -> {});
-
             TextChannel tc = event.getChannel().asTextChannel();
+            
+            // Deny send permissions for everyone
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
@@ -3292,8 +3302,9 @@ public class CommandListener extends ListenerAdapter {
                 .setTitle("🔒 Ticket Closed")
                 .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
                 
-            event.getChannel().sendMessageEmbeds(closedEmbed.build())
-                 .addActionRow(
+            event.editMessage(event.getMessage().getContentRaw())
+                 .setEmbeds(closedEmbed.build())
+                 .setActionRow(
                      Button.secondary("transcript_ticket", "📝 Save Transcript"),
                      Button.success("reopen_ticket", "🔓 Reopen Ticket"),
                      Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
@@ -3302,10 +3313,8 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
-            event.deferEdit().queue(); 
-            event.getMessage().delete().queue();
-            
             TextChannel tc = event.getChannel().asTextChannel();
+            
             // Restore send permissions
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
@@ -3319,8 +3328,11 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The channel has been unlocked and ticket controls have been restored below:*")
-                 .addActionRow(
+            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**").queue();
+            
+            event.editMessage(event.getMessage().getContentRaw())
+                 .setEmbeds(event.getMessage().getEmbeds())
+                 .setActionRow(
                      Button.primary("ping_hr", "🔔 Ping HR Team"),
                      Button.success("claim_ticket", "✋ Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
