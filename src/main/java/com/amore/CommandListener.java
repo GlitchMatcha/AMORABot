@@ -3271,6 +3271,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
+            event.deferEdit().queue();
             event.getMessage().delete().queue(success -> {}, error -> {});
 
             TextChannel tc = event.getChannel().asTextChannel();
@@ -3346,7 +3347,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
-            event.deferEdit().queue(); // 🚨 ACKNOWLEDGED!
+            event.deferEdit().queue(); 
             event.getMessage().delete().queue();
             return;
         }
