@@ -3261,7 +3261,7 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.equals("initiate_close_ticket")) {
+        if (componentId.equals("initiate_close_ticket") || componentId.equals("close_ticket")) {
             event.reply("⚠️ **Are you sure you want to close this ticket?**")
                  .addActionRow(
                      Button.danger("confirm_close_ticket", "🔒 Confirm Close"),
@@ -3271,10 +3271,11 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue(); 
+            event.deferEdit().queue(); // 🚨 ACKNOWLEDGED!
             event.getMessage().delete().queue();
             
             TextChannel tc = event.getChannel().asTextChannel();
+            // Deny send permissions for everyone
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
@@ -3302,7 +3303,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
-            event.deferEdit().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
+            event.deferEdit().queue(); 
             event.getMessage().delete().queue();
             
             TextChannel tc = event.getChannel().asTextChannel();
@@ -3319,17 +3320,16 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            
             event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The channel has been unlocked and ticket controls have been restored below:*")
                  .addActionRow(
-                     Button.primary("ping_hr", " Ping HR Team"),
-                     Button.success("claim_ticket", " Claim Ticket"), 
+                     Button.primary("ping_hr", "🔔 Ping HR Team"),
+                     Button.success("claim_ticket", "✋ Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
         }
 
-        if (componentId.equals("delete_ticket_prompt")) {
+        if (componentId.equals("delete_ticket_prompt") || componentId.equals("delete_ticket")) {
             event.reply("⚠️ **Are you sure you want to FORCE DELETE this ticket?**\nNo transcript will be saved. This action is permanent.")
                  .addActionRow(
                      Button.danger("confirm_delete_ticket", "🗑️ Confirm Delete"),
@@ -3348,20 +3348,20 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
-            event.deferEdit().queue(); 
+            event.deferEdit().queue(); // 🚨 ACKNOWLEDGED!
             event.getMessage().delete().queue();
             return;
         }
 
         if (componentId.equals("confirm_delete_ticket")) {
-            event.reply(" **Deleting channel...**").queue(hook -> {
-                event.getChannel().delete().queue(); // 🚨 ADDED ACKNOWLEDGMENT!
+            event.reply("🗑️ **Deleting channel...**").queue(hook -> {
+                event.getChannel().delete().queue(); // 🚨 ACKNOWLEDGED!
             });
             return;
         }
 
         if (componentId.equals("confirm_transcript_ticket")) {
-            event.deferEdit().queue();
+            event.deferEdit().queue(); 
             event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue(loadingMsg -> {
                 TextChannel ticketChannel = event.getChannel().asTextChannel();
                 String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
@@ -3422,7 +3422,7 @@ public class CommandListener extends ListenerAdapter {
 
                     if (logChannel != null) {
                         logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
-                            success -> loadingMsg.editMessage("✅ **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
+                            success -> loadingMsg.editMessage(" **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
                             error -> loadingMsg.editMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
                         );
                     } else {
