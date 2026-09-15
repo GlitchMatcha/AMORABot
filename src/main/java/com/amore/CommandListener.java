@@ -1403,13 +1403,17 @@ public class CommandListener extends ListenerAdapter {
                 "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
                 "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
 
-            event.getChannel().sendMessage(aestheticPanel)
+            EmbedBuilder panelEmbed = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193)) // Aesthetic Pink
+                .setDescription(aestheticPanel);
+
+            event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(
-                    Button.primary("role_member", "✨ Official Member"),
-                    Button.success("role_visitor", "🌸 AMORA Visitor")
+                    Button.primary("role_member", " Official Member"),
+                    Button.success("role_visitor", " AMORA Visitor")
                 )
                 .addActionRow(
-                    Button.secondary("role_seller", "🛒 Apply for Seller"),
+                    Button.secondary("role_seller", " Apply for Seller"),
                     Button.danger("role_positions", "💼 AMORA Positions")
                 ).queue();
                 
@@ -3295,6 +3299,18 @@ public class CommandListener extends ListenerAdapter {
             if (category == null) {
                 event.getHook().sendMessage(" System Error: Target application Category not found! Make sure the ID is correct in your .env file.").queue();
                 return;
+            }
+
+            if (category.getTextChannels().size() >= 50) {
+                event.getHook().sendMessage("❌ **Category Full!** The HR application center is currently full. Please wait for the staff to review older tickets!").queue();
+                return;
+            }
+
+            for (TextChannel tc : category.getTextChannels()) {
+                if (tc.getName().equals(channelName)) {
+                    event.getHook().sendMessage("⚠️ **Hold on!** You already have an open application ticket here: " + tc.getAsMention()).queue();
+                    return;
+                }
             }
 
             net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
