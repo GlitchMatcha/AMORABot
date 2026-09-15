@@ -783,15 +783,14 @@ public class CommandListener extends ListenerAdapter {
                        .addEmbeds(appEmbed.build())
                        .addActionRow(
                            Button.primary("ping_hr", " Ping HR Team"),
-                           Button.secondary("close_ticket", "🔒 Close & Save"),
-                           Button.danger("delete_ticket", "🗑️ Delete Ticket")
+                           Button.danger("initiate_close_ticket", "🔒 Close Ticket") // 🚨 ONLY SHOW CLOSE AT FIRST
                        )
                        .queue();
                 
-                event.getHook().sendMessage(" Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
+                event.getHook().sendMessage("✅ Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
                 sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage(" Failed to create application channel. Please check permissions!").queue();
+                event.getHook().sendMessage("❌ Failed to create application channel. Please check permissions!").queue();
             });
             return;
         }
@@ -3256,9 +3255,69 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
+        if (componentId.equals("initiate_close_ticket")) {
+            event.reply("⚠️ **Are you sure you want to close this ticket?**")
+                 .addActionRow(
+                     Button.danger("confirm_close_ticket", "🔒 Confirm Close"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+
         if (componentId.equals("confirm_close_ticket")) {
+            event.getMessage().delete().queue();
+            
+            EmbedBuilder closedEmbed = new EmbedBuilder()
+                .setColor(Color.DARK_GRAY)
+                .setTitle("🔒 Ticket Closed")
+                .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nWhat would you like to do next?");
+                
+            event.getChannel().sendMessageEmbeds(closedEmbed.build())
+                 .addActionRow(
+                     Button.secondary("transcript_ticket", "📝 Save Transcript"),
+                     Button.success("reopen_ticket", "🔓 Reopen Ticket"),
+                     Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("reopen_ticket")) {
+            event.getMessage().delete().queue();
+            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**").queue();
+            return;
+        }
+
+        if (componentId.equals("delete_ticket_prompt")) {
+            event.reply("⚠️ **Are you sure you want to FORCE DELETE this ticket?**\nNo transcript will be saved. This action is permanent.")
+                 .addActionRow(
+                     Button.danger("confirm_delete_ticket", "🗑️ Confirm Delete"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("transcript_ticket")) {
+            event.reply("⚠️ **Generate Transcript?**\nA full chat preview and `.txt` transcript will be saved to the HR logs. **This will NOT delete the ticket.**")
+                 .addActionRow(
+                     Button.success("confirm_transcript_ticket", "✅ Confirm Save"),
+                     Button.secondary("cancel_ticket_action", "❌ Cancel")
+                 ).queue();
+            return;
+        }
+
+        if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
+            event.getMessage().delete().queue();
+            return;
+        }
+
+        if (componentId.equals("confirm_delete_ticket")) {
+            event.getChannel().delete().queue();
+            return;
+        }
+
+        if (componentId.equals("confirm_transcript_ticket")) {
             event.deferEdit().queue();
-            event.getChannel().sendMessage("🔒 **Locking and archiving ticket... Please wait.**").queue();
+            event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue();
             
             TextChannel ticketChannel = event.getChannel().asTextChannel();
             String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
@@ -3276,7 +3335,7 @@ public class CommandListener extends ListenerAdapter {
                 sb.append("=========================================\n");
                 sb.append(" ✦ AMORA SECURE TICKET TRANSCRIPT ✦\n");
                 sb.append(" Ticket Name: ").append(ticketChannel.getName()).append("\n");
-                sb.append(" Closed By:   ").append(event.getUser().getName()).append("\n");
+                sb.append(" Saved By:    ").append(event.getUser().getName()).append("\n");
                 sb.append(" Date:        ").append(Instant.now().toString()).append("\n");
                 sb.append("=========================================\n\n");
 
@@ -3310,7 +3369,7 @@ public class CommandListener extends ListenerAdapter {
 
                 EmbedBuilder logEmbed = new EmbedBuilder()
                     .setColor(new Color(138, 43, 226))
-                    .setTitle(" TICKET ARCHIVED: " + ticketChannel.getName())
+                    .setTitle("🗄️ TICKET ARCHIVED: " + ticketChannel.getName())
                     .setDescription(embedSnippet.length() > 0 ? embedSnippet.toString() : "*No messages recorded.*")
                     .addField("Saved By", event.getUser().getAsMention(), true)
                     .addField("Ticket Name", "`" + ticketChannel.getName() + "`", true)
@@ -3448,15 +3507,14 @@ public class CommandListener extends ListenerAdapter {
                 channel.sendMessage(welcomeMessage)
                        .addActionRow(
                            Button.primary("ping_hr", " Ping HR Team"),
-                           Button.secondary("close_ticket", "🔒 Close & Save"),
-                           Button.danger("delete_ticket", "🗑️ Delete Ticket")
+                           Button.danger("initiate_close_ticket", "🔒 Close Ticket") // 🚨 ONLY SHOW CLOSE AT FIRST
                        )
                        .queue(); 
                 
-                event.getHook().sendMessage(" Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
+                event.getHook().sendMessage("✅ Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
                 sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + channel.getAsMention(), new Color(138, 43, 226));
             }, error -> {
-                event.getHook().sendMessage(" Failed to create application channel. Does the bot have permission to manage channels?").queue();
+                event.getHook().sendMessage("❌ Failed to create application channel. Does the bot have permission to manage channels?").queue();
             });
             return;
         }
