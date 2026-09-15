@@ -3127,7 +3127,7 @@ public class CommandListener extends ListenerAdapter {
             
             event.getChannel().sendMessage(hrPing + " 🔔 " + event.getUser().getAsMention() + " is requesting assistance in this ticket!").queue();
             return;
-
+        }
         if (componentId.startsWith("serverprofile_")) {
             String targetId = componentId.substring("serverprofile_".length());
             event.reply(" **Click the name below to open their Server Profile!**\n> <@" + targetId + ">")
@@ -4420,5 +4420,4 @@ public class CommandListener extends ListenerAdapter {
                     new Color(50, 205, 50));
         }
     }
-}
 }
