@@ -3218,43 +3218,6 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.equals("close_ticket")) {
-            event.reply(" **Are you sure you want to close this ticket?**\nA full chat preview and `.txt` transcript will be saved to the HR logs, and this channel will be permanently deleted.")
-                 .addActionRow(
-                     Button.success("confirm_close_ticket", "✅ Confirm Close & Save"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
-                 ).queue();
-            return;
-        }
-        
-        if (componentId.equals("transcript_ticket")) {
-            event.reply("⚠️ **Generate Transcript?**\nA full chat preview and `.txt` transcript will be saved to the HR logs. **This will NOT delete the ticket.**")
-                 .addActionRow(
-                     Button.success("confirm_transcript_ticket", "✅ Confirm Save"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
-                 ).queue();
-            return;
-        }
-
-        if (componentId.equals("delete_ticket")) {
-            event.reply("⚠️ **Are you sure you want to FORCE DELETE this ticket?**\nNo transcript will be saved. This action is permanent.")
-                 .addActionRow(
-                     Button.danger("confirm_delete_ticket", "🗑️ Confirm Delete"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
-                 ).queue();
-            return;
-        }
-
-        if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
-            event.getMessage().delete().queue();
-            return;
-        }
-        
-        if (componentId.equals("confirm_delete_ticket")) {
-            event.getChannel().delete().queue();
-            return;
-        }
-
         if (componentId.equals("initiate_close_ticket")) {
             event.reply("⚠️ **Are you sure you want to close this ticket?**")
                  .addActionRow(
@@ -3267,10 +3230,24 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.equals("confirm_close_ticket")) {
             event.getMessage().delete().queue();
             
+            TextChannel tc = event.getChannel().asTextChannel();
+            // Deny send permissions for everyone
+            tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                if (!override.getMember().getUser().isBot()) {
+                    tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
+                }
+            }
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
+                if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
+                    tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
+                }
+            }
+
             EmbedBuilder closedEmbed = new EmbedBuilder()
                 .setColor(Color.DARK_GRAY)
                 .setTitle("🔒 Ticket Closed")
-                .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nWhat would you like to do next?");
+                .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
                 
             event.getChannel().sendMessageEmbeds(closedEmbed.build())
                  .addActionRow(
@@ -3283,9 +3260,24 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("reopen_ticket")) {
             event.getMessage().delete().queue();
-            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The ticket controls have been restored below:*")
+            
+            TextChannel tc = event.getChannel().asTextChannel();
+            // Restore send permissions
+            tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                if (!override.getMember().getUser().isBot()) {
+                    tc.upsertPermissionOverride(override.getMember()).clear(Permission.MESSAGE_SEND).queue();
+                }
+            }
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
+                if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
+                    tc.upsertPermissionOverride(override.getRole()).clear(Permission.MESSAGE_SEND).queue();
+                }
+            }
+
+            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*The channel has been unlocked and ticket controls have been restored below:*")
                  .addActionRow(
-                     Button.primary("ping_hr", " Ping HR Team"),
+                     Button.primary("ping_hr", "🔔 Ping HR Team"),
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
@@ -3321,76 +3313,76 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("confirm_transcript_ticket")) {
             event.deferEdit().queue();
-            event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue();
-            
-            TextChannel ticketChannel = event.getChannel().asTextChannel();
-            String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
-            
-            if (logChannelId == null || logChannelId.isBlank()) {
-                event.getChannel().sendMessage("❌ Cannot archive: `ROLE_LOG_CHANNEL_ID` is not set in your .env file.").queue();
-                return;
-            }
-            TextChannel logChannel = event.getGuild().getTextChannelById(logChannelId);
-            
-            ticketChannel.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
-                StringBuilder sb = new StringBuilder();
-                StringBuilder embedSnippet = new StringBuilder();
+            event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue(loadingMsg -> {
+                TextChannel ticketChannel = event.getChannel().asTextChannel();
+                String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
                 
-                sb.append("=========================================\n");
-                sb.append(" ✦ AMORA SECURE TICKET TRANSCRIPT ✦\n");
-                sb.append(" Ticket Name: ").append(ticketChannel.getName()).append("\n");
-                sb.append(" Saved By:    ").append(event.getUser().getName()).append("\n");
-                sb.append(" Date:        ").append(Instant.now().toString()).append("\n");
-                sb.append("=========================================\n\n");
+                if (logChannelId == null || logChannelId.isBlank()) {
+                    loadingMsg.editMessage("❌ Cannot archive: `ROLE_LOG_CHANNEL_ID` is not set in your .env file.").queue();
+                    return;
+                }
+                TextChannel logChannel = event.getGuild().getTextChannelById(logChannelId);
+                
+                ticketChannel.getIterableHistory().takeAsync(1000).thenAccept(messages -> {
+                    StringBuilder sb = new StringBuilder();
+                    StringBuilder embedSnippet = new StringBuilder();
+                    
+                    sb.append("=========================================\n");
+                    sb.append(" ✦ AMORA SECURE TICKET TRANSCRIPT ✦\n");
+                    sb.append(" Ticket Name: ").append(ticketChannel.getName()).append("\n");
+                    sb.append(" Saved By:    ").append(event.getUser().getName()).append("\n");
+                    sb.append(" Date:        ").append(Instant.now().toString()).append("\n");
+                    sb.append("=========================================\n\n");
 
-                java.util.Collections.reverse(messages);
+                    java.util.Collections.reverse(messages);
 
-                for (net.dv8tion.jda.api.entities.Message msg : messages) {
-                    String time = msg.getTimeCreated().toLocalDateTime().toString().replace("T", " ");
-                    String author = msg.getAuthor().getName();
-                    String content = msg.getContentDisplay();
-                    
-                    sb.append("[").append(time).append("] ").append(author).append(": ").append(content).append("\n");
-                    
-                    String previewLine = "**" + author + "**: " + content + "\n";
-                    if (embedSnippet.length() + previewLine.length() < 3800) {
-                        embedSnippet.append(previewLine);
-                    }
-                    
-                    if (!msg.getAttachments().isEmpty()) {
-                        for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
-                            sb.append("   -> [Attachment]: ").append(attachment.getUrl()).append("\n");
+                    for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                        String time = msg.getTimeCreated().toLocalDateTime().toString().replace("T", " ");
+                        String author = msg.getAuthor().getName();
+                        String content = msg.getContentDisplay();
+                        
+                        sb.append("[").append(time).append("] ").append(author).append(": ").append(content).append("\n");
+                        
+                        String previewLine = "**" + author + "**: " + content + "\n";
+                        if (embedSnippet.length() + previewLine.length() < 3800) {
+                            embedSnippet.append(previewLine);
+                        }
+                        
+                        if (!msg.getAttachments().isEmpty()) {
+                            for (net.dv8tion.jda.api.entities.Message.Attachment attachment : msg.getAttachments()) {
+                                sb.append("   -> [Attachment]: ").append(attachment.getUrl()).append("\n");
+                            }
                         }
                     }
-                }
-                
-                if (embedSnippet.length() >= 3800) {
-                    embedSnippet.append("\n*... (Transcript truncated. Download the .txt file to read the rest!)*");
-                }
+                    
+                    if (embedSnippet.length() >= 3800) {
+                        embedSnippet.append("\n*... (Transcript truncated. Download the .txt file to read the rest!)*");
+                    }
 
-                byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
-                FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + ticketChannel.getName() + ".txt");
+                    byte[] fileBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+                    FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + ticketChannel.getName() + ".txt");
 
-                EmbedBuilder logEmbed = new EmbedBuilder()
-                    .setColor(new Color(138, 43, 226))
-                    .setTitle("🗄️ TICKET ARCHIVED: " + ticketChannel.getName())
-                    .setDescription(embedSnippet.length() > 0 ? embedSnippet.toString() : "*No messages recorded.*")
-                    .addField("Saved By", event.getUser().getAsMention(), true)
-                    .addField("Ticket Name", "`" + ticketChannel.getName() + "`", true)
-                    .setFooter("AMORA Secure HR Logging System", null)
-                    .setTimestamp(Instant.now());
+                    EmbedBuilder logEmbed = new EmbedBuilder()
+                        .setColor(new Color(138, 43, 226))
+                        .setTitle("🗄️ TICKET ARCHIVED: " + ticketChannel.getName())
+                        .setDescription(embedSnippet.length() > 0 ? embedSnippet.toString() : "*No messages recorded.*")
+                        .addField("Saved By", event.getUser().getAsMention(), true)
+                        .addField("Ticket Name", "`" + ticketChannel.getName() + "`", true)
+                        .setFooter("AMORA Secure HR Logging System", null)
+                        .setTimestamp(Instant.now());
 
-                if (logChannel != null) {
-                    logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
-                        success -> event.getChannel().sendMessage("✅ **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
-                        error -> event.getChannel().sendMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
-                    );
-                } else {
-                    event.getChannel().sendMessage("❌ `ROLE_LOG_CHANNEL_ID` channel not found!").queue();
-                }
-            }).exceptionally(e -> {
-                event.getChannel().sendMessage("❌ Failed to generate transcript: " + e.getMessage()).queue();
-                return null;
+                    if (logChannel != null) {
+                        logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
+                            success -> loadingMsg.editMessage("✅ **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
+                            error -> loadingMsg.editMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
+                        );
+                    } else {
+                        loadingMsg.editMessage("❌ `ROLE_LOG_CHANNEL_ID` channel not found!").queue();
+                    }
+                }).exceptionally(e -> {
+                    loadingMsg.editMessage("❌ Failed to generate transcript: " + e.getMessage()).queue();
+                    return null;
+                });
             });
             return;
         }
