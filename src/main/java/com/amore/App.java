@@ -74,6 +74,7 @@ public class App {
             jda.updateCommands()
                 .addCommands(
                     Commands.slash("help", "Displays a list of all available AMORA commands and how to use them!"),
+                    Commands.slash("serverreport", "Director Only: Generate the AMORA Monthly Global Performance Report"), // 🚨 ADD THIS LINE
                     Commands.slash("rolepanel", "Admin: Spawn the aesthetic Welcome & Role Selection Panel"),
                     Commands.slash("gift", "Send a comforting treat or gift to M.IKU to lower her stress level!")
                         .addOptions(new OptionData(OptionType.STRING, "item", "Choose what to gift M.IKU", true)
