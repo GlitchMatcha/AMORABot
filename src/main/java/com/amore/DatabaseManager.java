@@ -148,6 +148,12 @@ public class DatabaseManager {
             throw new IllegalStateException("Cannot initialize database because connection is null.");
         }
 
+        String createVerificationsTable = "CREATE TABLE IF NOT EXISTS user_verifications ("
+                + "user_id TEXT PRIMARY KEY, "
+                + "verified INTEGER DEFAULT 0, "
+                + "verified_at BIGINT"
+                + ");";
+
         String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
                 + "user_id TEXT PRIMARY KEY, "
                 + "sparks INTEGER DEFAULT 0, "
@@ -236,6 +242,7 @@ public class DatabaseManager {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
+            stmt.execute(createVerificationsTable);
             stmt.execute(createPendingTradeSetupsTable);
             stmt.execute(createActiveTradesTable);
             stmt.execute(createPendingForgesTable);
@@ -1291,6 +1298,35 @@ public class DatabaseManager {
             stmt.executeUpdate("DELETE FROM staff_stats;");
             stmt.executeUpdate("UPDATE bot_state SET state_value = '0' WHERE state_key IN ('global_gacha_pulls', 'global_items_forged', 'global_miku_gifts', 'global_points_injected', 'global_messages_sent', 'global_commands_used');");
         } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public boolean isUserVerified(String userId) {
+        ensureConnected();
+        String query = "SELECT verified FROM user_verifications WHERE user_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("verified") == 1;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public void markUserVerified(String userId) {
+        ensureConnected();
+        String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, 1, ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET verified = 1, verified_at = EXCLUDED.verified_at;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setLong(2, System.currentTimeMillis());
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
 }
