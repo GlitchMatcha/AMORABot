@@ -1134,6 +1134,17 @@ public class CommandListener extends ListenerAdapter {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
 
+        String adultChannelId = System.getenv("ADULT_CHANNEL_ID");
+        if (adultChannelId != null && !adultChannelId.isBlank() && event.getChannel().getId().equals(adultChannelId)) {
+            DatabaseManager db = DatabaseManager.getInstance();
+            boolean isVerified = db.isUserVerified(event.getAuthor().getId());
+            if (!isVerified) {
+                event.getMessage().delete().queue();
+                event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ❌ **Access Denied:** This channel requires verification. Use `/verify` to unlock it safely!").queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                return;
+            }
+        }
+        
         if (event.getMember() != null) {
             String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
             boolean isStaff = event.getMember().hasPermission(Permission.MESSAGE_MANAGE);
@@ -1184,6 +1195,7 @@ public class CommandListener extends ListenerAdapter {
                 }, error -> {});
             }
         }
+
 
         if (event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
@@ -1371,6 +1383,30 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         db.incrementGlobalStat("global_commands_used", 1);
         
+        if (event.getName().equals("verify")) {
+            User user = event.getUser();
+            
+            if (db.isUserVerified(user.getId())) {
+                event.reply(" You are already cryptographically verified as 18+!").setEphemeral(true).queue();
+                return;
+            }
+
+            String sessionId = UUID.randomUUID().toString();
+            
+            EmbedBuilder zkpEmbed = new EmbedBuilder()
+                .setColor(Color.decode("#FF5FA2"))
+                .setTitle("✦ ZERO-KNOWLEDGE AGE VERIFICATION ✦")
+                .setDescription("To protect your privacy, we do **not** accept ID uploads.\n\n" +
+                                "1. Click the secure portal link below.\n" +
+                                "2. Approve the cryptographic age check via your secure identity app.\n" +
+                                "3. Your zero-knowledge proof will automatically unlock your 18+ access.\n\n" +
+                                "🔗 **[Open Secure ZKP Portal](https://your-zkp-verification-domain.com/verify?session=" + sessionId + "&user=" + user.getId() + ")**")
+                .setFooter("AMORA Privacy Engine • Zero data stored", null);
+
+            event.replyEmbeds(zkpEmbed.build()).setEphemeral(true).queue();
+            return;
+        }
+
         if (event.getName().equals("serverreport")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply(" Needs administrator permissions.").setEphemeral(true).queue();
