@@ -1133,6 +1133,57 @@ public class CommandListener extends ListenerAdapter {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
 
+        if (event.getMember() != null) {
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            boolean isStaff = event.getMember().hasPermission(Permission.MESSAGE_MANAGE);
+            if (!isStaff && hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(id.trim()))) {
+                        isStaff = true; 
+                        break;
+                    }
+                }
+            }
+
+            if (isStaff) {
+                event.getChannel().getHistory().retrievePast(10).queue(messages -> {
+                    for (net.dv8tion.jda.api.entities.Message msg : messages) {
+                        if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && !msg.getButtons().isEmpty()) {
+                            boolean hasClaimButton = false;
+                            boolean isAlreadyClaimed = false;
+                            for (Button b : msg.getButtons()) {
+                                if (b.getId() != null && b.getId().equals("claim_ticket")) {
+                                    hasClaimButton = true;
+                                    if (b.isDisabled()) {
+                                        isAlreadyClaimed = true;
+                                    }
+                                    break;
+                                }
+                            }
+
+                            if (hasClaimButton && !isAlreadyClaimed) {
+                                // Auto-claim the ticket on behalf of the speaking staff member!
+                                List<Button> newButtons = new ArrayList<>();
+                                for (Button b : msg.getButtons()) {
+                                    if (b.getId() != null && b.getId().equals("ping_hr")) {
+                                        newButtons.add(b.asDisabled().withLabel("HR Pinged"));
+                                    } else if (b.getId() != null && b.getId().equals("claim_ticket")) {
+                                        newButtons.add(b.asDisabled().withLabel("Claimed by " + event.getAuthor().getName()));
+                                    } else {
+                                        newButtons.add(b);
+                                    }
+                                }
+
+                                msg.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(newButtons)).queue();
+                                event.getChannel().sendMessage(" **Ticket Claimed!** " + event.getAuthor().getAsMention() + " will be assisting you shortly.").queue();
+                                break;
+                            }
+                        }
+                    }
+                }, error -> {});
+            }
+        }
+        
         if (event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             
