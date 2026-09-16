@@ -3549,7 +3549,6 @@ public class CommandListener extends ListenerAdapter {
                 return;
             } 
         }
-    }
 
         if (componentId.startsWith("viewprofile_")) {
             String targetId = componentId.substring("viewprofile_".length());
@@ -4825,7 +4824,7 @@ public class CommandListener extends ListenerAdapter {
             return baos.toByteArray();
         } catch (Exception e) { return null; }
     }
-} 
+}
 
 
 
