@@ -3390,23 +3390,41 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("role_adult")) {
             User user = event.getUser();
+            Guild guild = event.getGuild();
             
-            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
-            
-            if (accountAgeDays < 365) {
-                event.reply("❌ **Verification Failed:** To protect the server from alt accounts, your Discord account must be at least **1 year old** to access the Adult Zone. Your account age: `" + accountAgeDays + " days`.").setEphemeral(true).queue();
+            boolean isVerified = db.isUserVerified(user.getId());
+
+            if (!isVerified) {
+                String sessionId = UUID.randomUUID().toString();
+                long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
+                db.createZkpSession(sessionId, user.getId(), expiresAt);
+
+                String zkpPortalUrl = "https://your-zkp-domain.com/verify?session=" + sessionId;
+
+                EmbedBuilder zkpEmbed = new EmbedBuilder()
+                    .setColor(Color.decode("#FF5FA2"))
+                    .setTitle("✦ 18+ ZONE: ZERO-KNOWLEDGE VERIFICATION REQUIRED ✦")
+                    .setDescription("To access the **Adult Zone**, you must verify your age using our **Zero-Knowledge Proof** portal.\n\n" +
+                                    " *No ID cards, birthdays, or personal data are ever shared, seen, or stored.*\n\n" +
+                                    "1. Click the secure link below.\n" +
+                                    "2. Approve the cryptographic age check on your device.\n" +
+                                    "3. Once verified, click the **18+ Adult Zone** button again to unlock your role!\n\n" +
+                                    " **[Open Secure ZKP Gateway](" + zkpPortalUrl + ")**")
+                    .setFooter("AMORA Privacy Engine • Cryptographically Secure", null);
+
+                event.replyEmbeds(zkpEmbed.build()).setEphemeral(true).queue();
                 return;
             }
 
             String adultRoleId = System.getenv("ADULT_ROLE_ID");
             String minorRoleId = System.getenv("MINOR_ROLE_ID");
+
             if (adultRoleId == null || adultRoleId.isBlank()) {
                 event.reply("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
                 return;
             }
 
             event.deferReply(true).queue();
-            Guild guild = event.getGuild();
             net.dv8tion.jda.api.entities.Role adultRole = guild.getRoleById(adultRoleId);
             net.dv8tion.jda.api.entities.Role minorRole = minorRoleId != null ? guild.getRoleById(minorRoleId) : null;
 
@@ -3417,10 +3435,10 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **Verification Successful!** Account requirements met (" + accountAgeDays + " days). **Adult Zone (18+)** unlocked!").queue();
-                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " passed the automated account-age check and claimed the 18+ role.", Color.decode("#FF5FA2"));
+                        event.getHook().sendMessage("🥂 **Cryptographic Proof Verified!** The **Adult Zone (18+)** has been successfully unlocked for you! ✨").queue();
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " verified via ZKP and claimed the 18+ role.", Color.decode("#FF5FA2"));
                     },
-                    error -> event.getHook().sendMessage(" Failed to assign role. Check bot permissions and role hierarchy.").queue()
+                    error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
             }
             return;
