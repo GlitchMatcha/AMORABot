@@ -1447,12 +1447,12 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(
-                    Button.primary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍᴇᴍʙᴇʀ  ִ   ۫  ⟰ ꒱ "),
-                    Button.success("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛᴏʀ  ִ   ۫  ᴥ  ꒱ ")
+                    Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍᴇᴍʙᴇʀ  ִ   ۫  ⟰ ꒱ "),
+                    Button.secondary("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛᴏʀ  ִ   ۫  ᴥ  ꒱ ")
                 )
                 .addActionRow(
-                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀᴘᴘʟʏ ꜰᴏʀ ꜱᴇʟʟᴇʀ  ִ   ۫  ര ꒱ "),
-                    Button.danger("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪᴏɴꜱ  ִ   ۫  ꧞ ꒱")
+                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀᴘᴘʟʏ ꜰᴏʀ ꜱᴇʟʟᴇʀ  ִ   ۫  ര ꒱ "),
+                    Button.secondary("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪᴏɴꜱ  ִ   ۫  ꧞ ꒱")
                 ).queue();
                 
             event.reply(" Beautiful Welcome Panel deployed!").setEphemeral(true).queue();
