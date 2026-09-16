@@ -1501,17 +1501,17 @@ public class CommandListener extends ListenerAdapter {
                 .addActionRow(
                     Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍ𝐞ᴍ𝐛𝐞𝐫  ִ   ۫  ⟰ ꒱ ")
                           .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_heart:1514920927178264626>")),
-                    Button.danger("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛ𝐨ʀ  ִ   ۫  ᴥ  ꒱ ") 
+                    Button.secondary("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛ𝐨ʀ  ִ   ۫  ᴥ  ꒱ ")
                           .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_music:1514920332006264953>"))
                 )
                 .addActionRow(
                     Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀ𝚙𝚙𝚕𝚢 ꜰᴏʀ ꜱᴇ𝚕𝚕𝚎𝚛  ִ   ۫  ര ꒱ ")
                           .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_sparkle:1514920890264059954>")),
-                    Button.danger("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪ0ɴꜱ  ִ   ۫  ꧞ ꒱") 
+                    Button.secondary("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪ0ɴꜱ  ִ   ۫  ꧞ ꒱") 
                           .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:5_flower:1514918368346636288>"))
                 ).queue();
 
-            event.reply(" Updated Gateway Role Panel ").setEphemeral(true).queue();
+            event.reply("Panel Created!").setEphemeral(true).queue();
             return;
         }
         if (event.getName().equals("eventsetup")) {
