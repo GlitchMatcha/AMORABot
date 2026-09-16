@@ -3395,24 +3395,34 @@ public class CommandListener extends ListenerAdapter {
             boolean isVerified = db.isUserVerified(user.getId());
 
             if (!isVerified) {
-                String sessionId = UUID.randomUUID().toString();
-                long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
-                db.createZkpSession(sessionId, user.getId(), expiresAt);
+                event.deferReply(true).queue();
 
-                String zkpPortalUrl = "https://amorabot-tyjw.onrender.com/verify?session=" + sessionId;
+                scheduler.execute(() -> {
+                    try {
+                        String stripeUrl = StripeService.createVerificationSession(user.getId());
 
-                EmbedBuilder zkpEmbed = new EmbedBuilder()
-                    .setColor(Color.decode("#FF5FA2"))
-                    .setTitle("✦ 18+ ZONE: ZERO-KNOWLEDGE VERIFICATION REQUIRED ✦")
-                    .setDescription("To access the **Adult Zone**, you must verify your age using our **Zero-Knowledge Proof** portal.\n\n" +
-                                    " *No ID cards, birthdays, or personal data are ever shared, seen, or stored.*\n\n" +
-                                    "1. Click the secure link below.\n" +
-                                    "2. Approve the cryptographic age check on your device.\n" +
-                                    "3. Once verified, click the **18+ Adult Zone** button again to unlock your role!\n\n" +
-                                    " **[Open Secure ZKP Gateway](" + zkpPortalUrl + ")**")
-                    .setFooter("AMORA Privacy Engine • Cryptographically Secure", null);
+                        EmbedBuilder stripeEmbed = new EmbedBuilder()
+                            .setColor(Color.decode("#FF5FA2"))
+                            .setTitle("✦ 18+ ZONE: SECURE AGE VERIFICATION REQUIRED ✦")
+                            .setDescription("To access the **Adult Zone**, you must verify that you are at least 18 years old via our automated verification gate.\n\n" +
+                                            " **Privacy & Data Protection:**\n" +
+                                            "• Verification is conducted directly by **Stripe Identity**.\n" +
+                                            "• No IDs, real names, or photos are ever viewed, stored, or accessible by AMORA.\n\n" +
+                                            "**Instructions:**\n" +
+                                            "1. Click the button below to open the secure Stripe portal.\n" +
+                                            "2. Scan your ID and complete the quick selfie check.\n" +
+                                            "3. Once Stripe approves you, return to Discord and click **🥂 18+ Adult Zone** to claim your role!")
+                            .setFooter("AMORA Safety Engine • Powered by Stripe Identity", null);
 
-                event.replyEmbeds(zkpEmbed.build()).setEphemeral(true).queue();
+                        event.getHook().sendMessageEmbeds(stripeEmbed.build())
+                             .addActionRow(Button.link(stripeUrl, "🛡️ Verify with Stripe Identity"))
+                             .queue();
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        event.getHook().sendMessage("❌ Failed to initiate verification session: " + e.getMessage()).queue();
+                    }
+                });
                 return;
             }
 
@@ -3435,8 +3445,8 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **Cryptographic Proof Verified!** The **Adult Zone (18+)** has been successfully unlocked for you! ✨").queue();
-                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " verified via ZKP and claimed the 18+ role.", Color.decode("#FF5FA2"));
+                        event.getHook().sendMessage("🥂 **Identity Confirmed!** The **Adult Zone (18+)** has been successfully unlocked for you! ✨").queue();
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " verified via Stripe Identity and claimed the 18+ role.", Color.decode("#FF5FA2"));
                     },
                     error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
