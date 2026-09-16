@@ -69,7 +69,7 @@ public class App {
             LoungeManager.start(jda);
             RoleManager.start(jda);
             int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
-            ZkpWebServer.startServer(webPort);
+            ZkpWebServer.startServer(webPort, jda);
             
             
             jda.updateCommands()
@@ -79,6 +79,7 @@ public class App {
                     Commands.slash("rolepanel", "Admin: Spawn the aesthetic Welcome & Role Selection Panel"),
                     Commands.slash("agepanel", "Admin: Deploy the secure 18+ and Minor age selection panel"),
                     Commands.slash("verify", "Securely verify your age using Zero-Knowledge Cryptography (No IDs required)"),
+                    Commands.slash("unverify", "Remove your verified age status"),
                     Commands.slash("gift", "Send a comforting treat or gift to M.IKU to lower her stress level!")
                         .addOptions(new OptionData(OptionType.STRING, "item", "Choose what to gift M.IKU", true)
                             .addChoice("🍵 Warm Matcha Latte (50 Sparks) [-1 Stress]", "matcha")
