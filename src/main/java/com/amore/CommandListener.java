@@ -67,7 +67,8 @@ public class CommandListener extends ListenerAdapter {
     private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
     private static final String MINOR_CHANNEL_ID = System.getenv("MINOR_CHANNEL_ID");
     private static final String ADULT_CHANNEL_ID = System.getenv("ADULT_CHANNEL_ID");
-
+    private static final String ADULT_ROLE_ID = System.getenv("ADULT_ROLE_ID");
+    
     public static final String MIKU_SAD = "<:1MikuSad:1511388491429449850>";
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
     public static final String CINNA_HIDE = "<a:009BCinnamoroll_Hide:1512617579154378833> ";
