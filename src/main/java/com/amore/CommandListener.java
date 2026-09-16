@@ -1427,6 +1427,18 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
+        if (event.getName().equals("unverify")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply(" Administrator permissions required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            User target = event.getOption("target") != null ? event.getOption("target").getAsUser() : event.getUser();
+            
+            event.reply("🔄 Reset verification status for " + target.getAsMention() + ". You can test again!").setEphemeral(true).queue();
+            return;
+        }
+
         if (event.getName().equals("verify")) {
             User user = event.getUser();
             
