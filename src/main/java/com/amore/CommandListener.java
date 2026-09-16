@@ -3397,33 +3397,38 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
-            event.deferEdit().queue(); 
+            event.deferEdit().queue(); // Acknowledge instantly
 
             scheduler.execute(() -> {
-                TextChannel tc = event.getChannel().asTextChannel();
-                tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).complete();
-                for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
-                    if (!override.getMember().getUser().isBot()) {
-                        tc.upsertPermissionOverride(override.getMember()).clear(Permission.MESSAGE_SEND).complete();
-                    }
-                }
-                for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
-                    if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
-                        tc.upsertPermissionOverride(override.getRole()).clear(Permission.MESSAGE_SEND).complete();
-                    }
-                }
+                try {
+                    TextChannel tc = event.getChannel().asTextChannel();
+                    
+                    tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).complete();
 
-                EmbedBuilder reopenedEmbed = new EmbedBuilder()
-                    .setColor(Color.decode("#FF5FA2"))
-                    .setTitle("🔓 Ticket Reopened")
-                    .setDescription("Ticket reopened by " + event.getUser().getAsMention() + "!\nTicket controls have been restored below:");
+                    for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                        try {
+                            if (override.getMember() != null && !override.getMember().getUser().isBot()) {
+                                override.getManager().clear(Permission.MESSAGE_SEND).complete();
+                            }
+                        } catch (Exception ignored) {}
+                    }
 
-                event.getHook().editOriginalEmbeds(reopenedEmbed.build())
-                     .setActionRow(
-                         Button.primary("ping_hr", " Ping HR Team"),
-                         Button.success("claim_ticket", " Claim Ticket"), 
-                         Button.danger("initiate_close_ticket", "🔒 Close Ticket")
-                     ).queue();
+                    EmbedBuilder reopenedEmbed = new EmbedBuilder()
+                        .setColor(Color.decode("#FF5FA2"))
+                        .setTitle("🔓 Ticket Reopened")
+                        .setDescription("Ticket reopened by " + event.getUser().getAsMention() + "!\nTicket controls have been restored below:");
+
+                    event.getHook().editOriginalEmbeds(reopenedEmbed.build())
+                         .setActionRow(
+                             Button.primary("ping_hr", " Ping HR Team"),
+                             Button.success("claim_ticket", " Claim Ticket"), 
+                             Button.danger("initiate_close_ticket", "🔒 Close Ticket")
+                         ).queue();
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    event.getHook().sendMessage(" Error reopening ticket: " + e.getMessage()).setEphemeral(true).queue();
+                }
             });
             return;
         }
