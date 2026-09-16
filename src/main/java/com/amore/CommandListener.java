@@ -1131,7 +1131,7 @@ public class CommandListener extends ListenerAdapter {
         bar.append("]`");
         return bar.toString();
     }
-    @Override
+    
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
