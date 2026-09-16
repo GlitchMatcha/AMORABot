@@ -64,6 +64,8 @@ public class CommandListener extends ListenerAdapter {
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
     private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
+    private static final String MINOR_CHANNEL_ID = System.getenv("MINOR_CHANNEL_ID");
+    private static final String ADULT_CHANNEL_ID = System.getenv("ADULT_CHANNEL_ID");
 
     public static final String MIKU_SAD = "<:1MikuSad:1511388491429449850>";
     public static final String XB_CUTE = "<a:1_xbcute:1514916160200507523>";
@@ -1130,21 +1132,35 @@ public class CommandListener extends ListenerAdapter {
         return bar.toString();
     }
     @Override
+    @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (!event.isFromGuild()) return;
         if (event.getAuthor().isBot()) return;
 
         String adultChannelId = System.getenv("ADULT_CHANNEL_ID");
+        String minorChannelId = System.getenv("MINOR_CHANNEL_ID");
+        String adultRoleId = System.getenv("ADULT_ROLE_ID");
+
         if (adultChannelId != null && !adultChannelId.isBlank() && event.getChannel().getId().equals(adultChannelId)) {
-            DatabaseManager db = DatabaseManager.getInstance();
-            boolean isVerified = db.isUserVerified(event.getAuthor().getId());
-            if (!isVerified) {
+            boolean isAdult = event.getMember() != null && adultRoleId != null && 
+                              event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(adultRoleId));
+            if (!isAdult) {
                 event.getMessage().delete().queue();
-                event.getChannel().sendMessage(event.getAuthor().getAsMention() + " ❌ **Access Denied:** This channel requires verification. Use `/verify` to unlock it safely!").queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                event.getChannel().sendMessage(event.getAuthor().getAsMention() + "  **Access Denied:** This channel requires 18+ verification. Use the age selection panel to unlock it safely!").queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
                 return;
             }
         }
-        
+
+        if (minorChannelId != null && !minorChannelId.isBlank() && event.getChannel().getId().equals(minorChannelId)) {
+            boolean isAdult = event.getMember() != null && adultRoleId != null && 
+                              event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(adultRoleId));
+            if (isAdult) {
+                event.getMessage().delete().queue();
+                event.getChannel().sendMessage(event.getAuthor().getAsMention() + "  **Access Denied:** Verified adults are not permitted to chat in the Minor Zone!").queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                return;
+            }
+        }
+
         if (event.getMember() != null) {
             String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
             boolean isStaff = event.getMember().hasPermission(Permission.MESSAGE_MANAGE);
@@ -1383,6 +1399,34 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         db.incrementGlobalStat("global_commands_used", 1);
         
+        if (event.getName().equals("agepanel")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Administrator permissionsrequired.").setEphemeral(true).queue();
+                return;
+            }
+
+            String agePanelDesc = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n\n" +
+                                  "  ୨ ꒰ **A𝑴𝟎𝑹𝑨 𝑨𝑮𝑬 𝑺𝑬𝑳𝑬𝑪𝑻𝑰𝑶𝑵** ꒱ ୧\n\n" +
+                                  "˚｡౨ *Choose your tier below to access your designated safe zone.* ৎ .﹡\n\n" +
+                                  "🧸 **Minor Zone (18-)** — *Safe, friendly public spaces.*\n" +
+                                  "🥂 **Adult Zone (18+)** — *Protected mature lounge (Automated account-age verification required).* \n\n" +
+                                  "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
+
+            EmbedBuilder embed = new EmbedBuilder()
+                .setColor(Color.decode("#FF5FA2"))
+                .setDescription(agePanelDesc);
+
+            event.getChannel().sendMessageEmbeds(embed.build())
+                 .addActionRow(
+                     Button.secondary("role_minor", "🧸 18- Minor Zone"),
+                     Button.secondary("role_adult", "🥂 18+ Adult Zone")
+                 )
+                 .queue();
+
+            event.reply(" Age Panel deployed successfully!").setEphemeral(true).queue();
+            return;
+        }
+
         if (event.getName().equals("verify")) {
             User user = event.getUser();
             
@@ -3316,6 +3360,71 @@ public class CommandListener extends ListenerAdapter {
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
+
+        if (componentId.equals("role_minor")) {
+            String minorRoleId = System.getenv("MINOR_ROLE_ID");
+            String adultRoleId = System.getenv("ADULT_ROLE_ID");
+            if (minorRoleId == null || minorRoleId.isBlank()) {
+                event.reply("⚠️ `MINOR_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+            Guild guild = event.getGuild();
+            net.dv8tion.jda.api.entities.Role minorRole = guild.getRoleById(minorRoleId);
+            net.dv8tion.jda.api.entities.Role adultRole = adultRoleId != null ? guild.getRoleById(adultRoleId) : null;
+
+            // Exclusivity Check: Strip adult role if they switch to minor
+            if (adultRole != null && event.getMember().getRoles().contains(adultRole)) {
+                guild.removeRoleFromMember(event.getUser(), adultRole).queue();
+            }
+
+            if (minorRole != null) {
+                guild.addRoleToMember(event.getUser(), minorRole).queue(
+                    success -> event.getHook().sendMessage("🧸 **Minor role assigned!** You have been granted access to the minor-safe channels.").queue(),
+                    error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions.").queue()
+                );
+            }
+            return;
+        }
+
+        if (componentId.equals("role_adult")) {
+            User user = event.getUser();
+            
+            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
+            
+            if (accountAgeDays < 365) {
+                event.reply("❌ **Verification Failed:** To protect the server from alt accounts, your Discord account must be at least **1 year old** to access the Adult Zone. Your account age: `" + accountAgeDays + " days`.").setEphemeral(true).queue();
+                return;
+            }
+
+            String adultRoleId = System.getenv("ADULT_ROLE_ID");
+            String minorRoleId = System.getenv("MINOR_ROLE_ID");
+            if (adultRoleId == null || adultRoleId.isBlank()) {
+                event.reply("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+            Guild guild = event.getGuild();
+            net.dv8tion.jda.api.entities.Role adultRole = guild.getRoleById(adultRoleId);
+            net.dv8tion.jda.api.entities.Role minorRole = minorRoleId != null ? guild.getRoleById(minorRoleId) : null;
+
+            if (minorRole != null && event.getMember().getRoles().contains(minorRole)) {
+                guild.removeRoleFromMember(user, minorRole).queue();
+            }
+
+            if (adultRole != null) {
+                guild.addRoleToMember(user, adultRole).queue(
+                    success -> {
+                        event.getHook().sendMessage("🥂 **Verification Successful!** Account requirements met (" + accountAgeDays + " days). **Adult Zone (18+)** unlocked!").queue();
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " passed the automated account-age check and claimed the 18+ role.", Color.decode("#FF5FA2"));
+                    },
+                    error -> event.getHook().sendMessage(" Failed to assign role. Check bot permissions and role hierarchy.").queue()
+                );
+            }
+            return;
+        }
 
         if (componentId.equals("wipe_server_stats")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
