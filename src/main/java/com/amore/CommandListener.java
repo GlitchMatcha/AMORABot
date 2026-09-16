@@ -3361,8 +3361,8 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*Ticket controls have been restored below:*")
                  .addActionRow(
-                     Button.primary("ping_hr", "🔔 Ping HR Team"),
-                     Button.success("claim_ticket", "✋ Claim Ticket"), 
+                     Button.primary("ping_hr", " Ping HR Team"),
+                     Button.success("claim_ticket", " Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
