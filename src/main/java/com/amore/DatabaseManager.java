@@ -1323,6 +1323,21 @@ public class DatabaseManager {
         return false;
     }
 
+    public void setVerified(String userId, boolean verified) {
+        ensureConnected();
+        String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET verified = EXCLUDED.verified, verified_at = EXCLUDED.verified_at;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setInt(2, verified ? 1 : 0);
+            pstmt.setLong(3, verified ? System.currentTimeMillis() : 0);
+            pstmt.executeUpdate();
+            System.out.println(" Set verification status for user " + userId + " to " + verified);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     public void markUserVerified(String userId) {
         ensureConnected();
         String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, 1, ?) "
