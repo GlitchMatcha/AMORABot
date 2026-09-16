@@ -1440,14 +1440,14 @@ public class CommandListener extends ListenerAdapter {
 
             db.setVerified(target.getId(), false);
 
-            String roleId = adultRoleId; 
-            Role adultRole = event.getGuild().getRoleById(roleId);
-            
-            if (adultRole != null) {
-                event.getGuild().removeRoleFromMember(Net.g, adultRole).queue(
-                    success -> {},
-                    failure -> System.out.println("Could not remove role: " + failure.getMessage())
-                );
+            if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && event.getGuild() != null) {
+                Role adultRole = event.getGuild().getRoleById(ADULT_ROLE_ID);
+                if (adultRole != null) {
+                    event.getGuild().removeRoleFromMember(target, adultRole).queue(
+                        success -> System.out.println("✦ Successfully stripped 18+ role from " + target.getName()),
+                        failure -> System.out.println("❌ Could not remove role: " + failure.getMessage())
+                    );
+                }
             }
 
             event.reply("🔄 **Verification Reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed!").setEphemeral(true).queue();
