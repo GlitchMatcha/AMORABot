@@ -3396,6 +3396,8 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
+            event.deferEdit().queue(); 
+
             TextChannel tc = event.getChannel().asTextChannel();
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
@@ -3414,10 +3416,10 @@ public class CommandListener extends ListenerAdapter {
                 .setTitle("🔓 Ticket Reopened")
                 .setDescription("Ticket reopened by " + event.getUser().getAsMention() + "!\nTicket controls have been restored below:");
 
-            event.editMessageEmbeds(reopenedEmbed.build())
+            event.getMessage().editMessageEmbeds(reopenedEmbed.build())
                  .setActionRow(
                      Button.primary("ping_hr", " Ping HR Team"),
-                     Button.success("claim_ticket", "✋ Claim Ticket"), 
+                     Button.success("claim_ticket", " Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
