@@ -74,6 +74,7 @@ public class CommandListener extends ListenerAdapter {
     private static final Set<String> processedInteractions = ConcurrentHashMap.newKeySet();
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> ticketPingCooldowns = new ConcurrentHashMap<>(); 
+    private static final Map<String, Long> transcriptCooldowns = new ConcurrentHashMap<>(); 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -3435,6 +3436,14 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("transcript_ticket")) {
+            long now = System.currentTimeMillis();
+            long lastTranscript = transcriptCooldowns.getOrDefault(event.getChannel().getId(), 0L);
+            if (now - lastTranscript < TimeUnit.SECONDS.toMillis(30)) {
+                event.reply(" A transcript was already generated recently for this ticket. Please wait 30 seconds before saving another one!").setEphemeral(true).queue();
+                return;
+            }
+            transcriptCooldowns.put(event.getChannel().getId(), now);
+
             event.reply("⚠️ **Generate Transcript?**\nA full chat preview and `.txt` transcript will be saved to the HR logs. **This will NOT delete the ticket.**")
                  .addActionRow(
                      Button.success("confirm_transcript_ticket", "✅ Confirm Save"),
