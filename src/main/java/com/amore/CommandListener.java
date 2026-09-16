@@ -1183,7 +1183,7 @@ public class CommandListener extends ListenerAdapter {
                 }, error -> {});
             }
         }
-        
+
         if (event.getChannelType() == ChannelType.GUILD_PUBLIC_THREAD) {
             ThreadChannel thread = event.getChannel().asThreadChannel();
             
@@ -1493,22 +1493,25 @@ public class CommandListener extends ListenerAdapter {
                 "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
 
             EmbedBuilder panelEmbed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2")) // 🎨 Aesthetic Pink
+                .setColor(Color.decode("#FF5FA2")) // 
                 .setDescription(aestheticPanel);
 
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(
-                    Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍᴇᴍʙᴇʀ  ִ   ۫  ⟰ ꒱ "),
+                    Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍᴇᴍʙᴇ𝐫  ִ   ۫  ⟰ ꒱ ")
+                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_heart:1514920927178264626>")),
                     Button.secondary("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛᴏʀ  ִ   ۫  ᴥ  ꒱ ")
+                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_music:1514920332006264953>"))
                 )
                 .addActionRow(
-                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀᴘᴘʟʏ ꜰᴏʀ ꜱᴇʟʟᴇʀ  ִ   ۫  ര ꒱ "),
+                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀ𝚙𝚙𝚕𝚢 ꜰᴏʀ ꜱᴇ𝚕𝚕𝚎𝚛  ִ   ۫  ര ꒱ ")
+                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_sparkle:1514920890264059954>")),
                     Button.secondary("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪᴏɴꜱ  ִ   ۫  ꧞ ꒱")
+                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:5_flower:1514918368346636288>"))
                 ).queue();
-                
-            event.reply(" Beautiful Welcome Panel deployed!").setEphemeral(true).queue();
+
+            event.reply(" Beautiful Welcome Panel deployed with Glam's custom emojis!").setEphemeral(true).queue();
             return;
-        }
 
         if (event.getName().equals("eventsetup")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
@@ -3393,9 +3396,6 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("reopen_ticket")) {
-            event.deferEdit().queue();
-            event.getMessage().delete().queue(); // Cleanly deletes the "Ticket Closed" panel message
-
             TextChannel tc = event.getChannel().asTextChannel();
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
@@ -3409,8 +3409,13 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*Ticket controls have been restored below:*")
-                 .addActionRow(
+            EmbedBuilder reopenedEmbed = new EmbedBuilder()
+                .setColor(Color.decode("#FF5FA2"))
+                .setTitle("🔓 Ticket Reopened")
+                .setDescription("Ticket reopened by " + event.getUser().getAsMention() + "!\nTicket controls have been restored below:");
+
+            event.editMessageEmbeds(reopenedEmbed.build())
+                 .setActionRow(
                      Button.primary("ping_hr", " Ping HR Team"),
                      Button.success("claim_ticket", "✋ Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
