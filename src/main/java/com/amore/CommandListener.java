@@ -3229,7 +3229,7 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.equals("wipe_server_stats")) {
             if (!event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply(" Needs administrator permissions.").setEphemeral(true).queue();
-                return;
+                return; 
             }
             db.wipeAllMonthlyStats();
             event.reply(" **All Monthly Trackers Wiped!** The server is now starting fresh for the new month.").queue();
@@ -3294,62 +3294,63 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("initiate_close_ticket") || componentId.equals("close_ticket")) {
-            event.editMessage(event.getMessage().getContentRaw())
-                 .setEmbeds(event.getMessage().getEmbeds())
-                 .setActionRow(
+            event.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
                      Button.danger("confirm_close_ticket", "🔒 YES, CLOSE TICKET"),
                      Button.secondary("cancel_close_view", "❌ CANCEL")
-                 ).queue();
+            )).queue();
             return;
         }
 
         if (componentId.equals("cancel_close_view") || componentId.equals("cancel_ticket_action")) {
-            event.editMessage(event.getMessage().getContentRaw())
-                 .setEmbeds(event.getMessage().getEmbeds())
-                 .setActionRow(
-                     Button.primary("ping_hr", " Ping HR Team"),
-                     Button.success("claim_ticket", " Claim Ticket"),
+            event.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
+                     Button.primary("ping_hr", "🔔 Ping HR Team"),
+                     Button.success("claim_ticket", "✋ Claim Ticket"),
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
-                 ).queue();
+            )).queue();
             return;
         }
 
         if (componentId.equals("confirm_close_ticket")) {
+            event.deferEdit().queue();
+            
+            event.getMessage().editMessageComponents(java.util.Collections.emptyList()).queue();
+
+            TextChannel tc = event.getChannel().asTextChannel();
+            tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                if (!override.getMember().getUser().isBot()) {
+                    tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
+                }
+            }
+            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
+                if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
+                    tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
+                }
+            }
+
+            // 3. Send the Admin Panel as a NEW message with Glammy's Hex Code
             EmbedBuilder closedEmbed = new EmbedBuilder()
                 .setColor(Color.decode("#FF5FA2"))
                 .setTitle("🔒 Ticket Closed")
                 .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
                 
-            // 1. Acknowledge and update the message INSTANTLY to prevent timeouts
-            event.editMessage(event.getMessage().getContentRaw())
-                 .setEmbeds(closedEmbed.build())
-                 .setActionRow(
+            event.getChannel().sendMessageEmbeds(closedEmbed.build())
+                 .addActionRow(
                      Button.secondary("transcript_ticket", "📝 Save Transcript"),
                      Button.success("reopen_ticket", "🔓 Reopen Ticket"),
                      Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
-                 ).queue(success -> {
-                     // 2. Run the permission overrides in the background safely
-                     TextChannel tc = event.getChannel().asTextChannel();
-                     
-                     tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
-                     for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
-                         if (!override.getMember().getUser().isBot()) {
-                             tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
-                         }
-                     }
-                     for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
-                         if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
-                             tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
-                         }
-                     }
-                 });
+                 ).queue();
             return;
         }
 
         if (componentId.equals("reopen_ticket")) {
-            TextChannel tc = event.getChannel().asTextChannel();
+            event.deferEdit().queue();
             
-            // Restore send permissions
+            // 1. Delete the Admin Panel message
+            event.getMessage().delete().queue();
+            
+            // 2. Restore permissions
+            TextChannel tc = event.getChannel().asTextChannel();
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
                 if (!override.getMember().getUser().isBot()) {
@@ -3362,11 +3363,8 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**").queue();
-            
-            event.editMessage(event.getMessage().getContentRaw())
-                 .setEmbeds(event.getMessage().getEmbeds())
-                 .setActionRow(
+            event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*Ticket controls have been restored below:*")
+                 .addActionRow(
                      Button.primary("ping_hr", "🔔 Ping HR Team"),
                      Button.success("claim_ticket", "✋ Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
@@ -3392,15 +3390,9 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.equals("cancel_ticket_action") || componentId.equals("cancel_close_ticket")) {
-            event.deferEdit().queue(); 
-            event.getMessage().delete().queue();
-            return;
-        }
-
         if (componentId.equals("confirm_delete_ticket")) {
             event.reply("🗑️ **Deleting channel...**").queue(hook -> {
-                event.getChannel().delete().queue(); // 🚨 ACKNOWLEDGED!
+                event.getChannel().delete().queue(); 
             });
             return;
         }
@@ -3457,7 +3449,7 @@ public class CommandListener extends ListenerAdapter {
                     FileUpload upload = FileUpload.fromData(fileBytes, "Transcript_" + ticketChannel.getName() + ".txt");
 
                     EmbedBuilder logEmbed = new EmbedBuilder()
-                        .setColor(new Color(138, 43, 226))
+                        .setColor(Color.decode("#FF5FA2"))
                         .setTitle("🗄️ TICKET ARCHIVED: " + ticketChannel.getName())
                         .setDescription(embedSnippet.length() > 0 ? embedSnippet.toString() : "*No messages recorded.*")
                         .addField("Saved By", event.getUser().getAsMention(), true)
@@ -3467,8 +3459,11 @@ public class CommandListener extends ListenerAdapter {
 
                     if (logChannel != null) {
                         logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
-                            success -> loadingMsg.editMessage(" **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue(),
-                            error -> loadingMsg.editMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
+                            success -> {
+                                loadingMsg.editMessage(" **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue();
+                                event.getMessage().delete().queue();
+                            },
+                            error -> loadingMsg.editMessage(" Failed to send transcript to logs! Check permissions.").queue()
                         );
                     } else {
                         loadingMsg.editMessage("❌ `ROLE_LOG_CHANNEL_ID` channel not found!").queue();
