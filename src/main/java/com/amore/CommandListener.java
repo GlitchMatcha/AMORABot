@@ -3488,14 +3488,16 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.startsWith("role_")) {
             String visitorRoleId = "1516061302701817986";
-            String memberRoleId = "1516061152843665549";
+            String traineeRoleId = "1516061152843665549";
+            String amoraRoleId = "1519498175352668371"; 
             
-            boolean isMember = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(memberRoleId));
+            boolean isTrainee = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(traineeRoleId));
+            boolean isAmora = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(amoraRoleId));
             boolean isVisitor = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(visitorRoleId));
 
             if (componentId.equals("role_member")) {
-                if (isMember) {
-                    event.reply("ʚ You are already an Official Member! If you have questions or need help, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
+                if (isTrainee || isAmora) {
+                    event.reply("ʚ You are already a Trainee or Official Member! If you have questions or need help, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
                     return;
                 }
                 
@@ -3514,7 +3516,6 @@ public class CommandListener extends ListenerAdapter {
             
             if (componentId.equals("role_seller")) {
                 net.dv8tion.jda.api.interactions.components.text.TextInput itemsInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_items", "What do you plan to sell?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., GFX, Outfits, Renders").setRequired(true).build();
-                
                 net.dv8tion.jda.api.interactions.components.text.TextInput portInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_portfolio", "Portfolio/Examples? (Type 'No' if none)", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Link to examples, or type 'No'").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput rulesInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_rules", "Agree to Seller Rules?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Yes").setRequired(true).build();
 
@@ -3526,8 +3527,12 @@ public class CommandListener extends ListenerAdapter {
             }
             
             if (componentId.equals("role_positions")) {
-                if (!isMember) {
-                    event.reply("ʚ Oh no! Only Official Members are authorized to apply for AMORA exclusive Positions! ɞ").setEphemeral(true).queue();
+                if (!isAmora) {
+                    if (isTrainee) {
+                        event.reply("ʚ Oh no! You are currently a Trainee. You must pass your audition and become an official Amora member before applying for Staff Positions! ɞ").setEphemeral(true).queue();
+                    } else {
+                        event.reply("ʚ Oh no! Only fully Official Members (Amora) are authorized to apply for exclusive Staff Positions! ɞ").setEphemeral(true).queue();
+                    }
                     return;
                 }
             
@@ -3543,12 +3548,12 @@ public class CommandListener extends ListenerAdapter {
             }
 
             if (componentId.equals("role_visitor")) {
-                if (isMember) {
-                    event.reply("ʚ You are already an Official Member! If you have questions, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
+                if (isAmora || isTrainee) {
+                    event.reply("ʚ You are already an active part of AMORA! If you have questions, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
                     return;
                 }
                 if (isVisitor) {
-                    event.reply("ʚ You already have the Guest role! <3 ɞ").setEphemeral(true).queue();
+                    event.reply("ʚ You already have the AMORA Visitor role! <3 ɞ").setEphemeral(true).queue();
                     return;
                 }
 
