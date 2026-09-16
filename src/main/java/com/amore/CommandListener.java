@@ -3515,7 +3515,7 @@ public class CommandListener extends ListenerAdapter {
             }
             
             if (componentId.equals("role_seller")) {
-                net.dv8tion.jda.api.interactions.components.text.TextInput itemsInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_items", "What do you plan to sell?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., GFX, Outfits, Renders").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput itemsInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_items", "What do you plan to sell?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., Fits Maker, Lyrics Maker, Builder, Face Maker,etc?").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput portInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_portfolio", "Portfolio/Examples? (Type 'No' if none)", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Link to examples, or type 'No'").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput rulesInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_rules", "Agree to Seller Rules?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Yes").setRequired(true).build();
 
