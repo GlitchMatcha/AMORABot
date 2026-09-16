@@ -3399,7 +3399,7 @@ public class CommandListener extends ListenerAdapter {
                 long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
                 db.createZkpSession(sessionId, user.getId(), expiresAt);
 
-                String zkpPortalUrl = "https://your-zkp-domain.com/verify?session=" + sessionId;
+                String zkpPortalUrl = "https://amorabot-tyjw.onrender.com/verify?session=" + sessionId;
 
                 EmbedBuilder zkpEmbed = new EmbedBuilder()
                     .setColor(Color.decode("#FF5FA2"))

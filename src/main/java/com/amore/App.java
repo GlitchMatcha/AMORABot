@@ -68,7 +68,8 @@ public class App {
             StatusRotator.start(jda);
             LoungeManager.start(jda);
             RoleManager.start(jda);
-            
+            int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
+            ZkpWebServer.startServer(webPort);
             
             
             jda.updateCommands()
