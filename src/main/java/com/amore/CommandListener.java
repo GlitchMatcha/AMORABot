@@ -3401,7 +3401,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("confirm_transcript_ticket")) {
             event.deferEdit().queue();
-            event.getHook().deleteOriginal().queue(); // Wipe the prompt from view
+            event.getHook().deleteOriginal().queue();
             
             event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue(loadingMsg -> {
                 TextChannel ticketChannel = event.getChannel().asTextChannel();
@@ -3464,7 +3464,7 @@ public class CommandListener extends ListenerAdapter {
                     if (logChannel != null) {
                         logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
                             success -> {
-                                loadingMsg.editMessage(" **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue();
+                                loadingMsg.editMessage("✅ **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue();
                             },
                             error -> loadingMsg.editMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
                         );
