@@ -3343,8 +3343,8 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("reopen_ticket")) {
             event.deferEdit().queue();
-            event.getHook().deleteOriginal().queue(); // Deletes the Admin Panel
-            
+            event.getMessage().delete().queue(); // Cleanly deletes the "Ticket Closed" panel message
+
             TextChannel tc = event.getChannel().asTextChannel();
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
@@ -3361,7 +3361,7 @@ public class CommandListener extends ListenerAdapter {
             event.getChannel().sendMessage("🔓 **Ticket reopened by " + event.getUser().getAsMention() + "!**\n*Ticket controls have been restored below:*")
                  .addActionRow(
                      Button.primary("ping_hr", " Ping HR Team"),
-                     Button.success("claim_ticket", " Claim Ticket"), 
+                     Button.success("claim_ticket", "✋ Claim Ticket"), 
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                  ).queue();
             return;
