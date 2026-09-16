@@ -3294,7 +3294,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("initiate_close_ticket") || componentId.equals("close_ticket")) {
-            event.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
+            event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
                      Button.danger("confirm_close_ticket", "🔒 YES, CLOSE TICKET"),
                      Button.secondary("cancel_close_view", "❌ CANCEL")
             )).queue();
@@ -3302,7 +3302,7 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("cancel_close_view") || componentId.equals("cancel_ticket_action")) {
-            event.editMessageComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
+            event.editComponents(net.dv8tion.jda.api.interactions.components.ActionRow.of(
                      Button.primary("ping_hr", "🔔 Ping HR Team"),
                      Button.success("claim_ticket", "✋ Claim Ticket"),
                      Button.danger("initiate_close_ticket", "🔒 Close Ticket")
@@ -3312,7 +3312,7 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("confirm_close_ticket")) {
             // Acknowledge INSTANTLY by stripping the buttons so it can't be clicked twice
-            event.editMessageComponents(java.util.Collections.emptyList()).queue(success -> {
+            event.editComponents(java.util.Collections.emptyList()).queue(success -> {
                 
                 TextChannel tc = event.getChannel().asTextChannel();
                 tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
