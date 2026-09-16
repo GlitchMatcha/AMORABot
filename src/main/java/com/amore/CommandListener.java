@@ -1510,9 +1510,9 @@ public class CommandListener extends ListenerAdapter {
                           .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:5_flower:1514918368346636288>"))
                 ).queue();
 
-            event.reply(" Beautiful Welcome Panel deployed with Glam's custom emojis!").setEphemeral(true).queue();
+            event.reply(" Beautiful Welcome Panel deployed!").setEphemeral(true).queue();
             return;
-
+        }
         if (event.getName().equals("eventsetup")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("  Director clearance required.").setEphemeral(true).queue();
