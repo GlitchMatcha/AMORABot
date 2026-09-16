@@ -1429,13 +1429,27 @@ public class CommandListener extends ListenerAdapter {
 
         if (event.getName().equals("unverify")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply(" Administrator permissions required.").setEphemeral(true).queue();
+                event.reply("❌ Administrator permissions required.").setEphemeral(true).queue();
                 return;
             }
+
+            User target = event.getOption("target") != null 
+                    ? event.getOption("target").getAsUser() 
+                    : event.getUser();
+
+            db.setVerified(target.getId(), false);
+
+            String roleId = adultRoleId; 
+            Role adultRole = event.getGuild().getRoleById(roleId);
             
-            User target = event.getOption("target") != null ? event.getOption("target").getAsUser() : event.getUser();
-            
-            event.reply("🔄 Reset verification status for " + target.getAsMention() + ". You can test again!").setEphemeral(true).queue();
+            if (adultRole != null) {
+                event.getGuild().removeRoleFromMember(Net.g, adultRole).queue(
+                    success -> {},
+                    failure -> System.out.println("Could not remove role: " + failure.getMessage())
+                );
+            }
+
+            event.reply("🔄 **Verification Reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed!").setEphemeral(true).queue();
             return;
         }
 
