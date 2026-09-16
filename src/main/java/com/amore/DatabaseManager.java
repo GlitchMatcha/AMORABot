@@ -154,6 +154,12 @@ public class DatabaseManager {
                 + "verified_at BIGINT"
                 + ");";
 
+        String createZkpSessionsTable = "CREATE TABLE IF NOT EXISTS zkp_sessions ("
+        + "session_id TEXT PRIMARY KEY, "
+        + "user_id TEXT NOT NULL, "
+        + "expires_at BIGINT NOT NULL"
+        + ");";
+
         String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
                 + "user_id TEXT PRIMARY KEY, "
                 + "sparks INTEGER DEFAULT 0, "
@@ -243,6 +249,7 @@ public class DatabaseManager {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
             stmt.execute(createVerificationsTable);
+            stmt.execute(createZkpSessionsTable);
             stmt.execute(createPendingTradeSetupsTable);
             stmt.execute(createActiveTradesTable);
             stmt.execute(createPendingForgesTable);
@@ -1329,4 +1336,37 @@ public class DatabaseManager {
         }
     }
 
+    public void createZkpSession(String sessionId, String userId, long expiresAt) {
+        ensureConnected();
+        String query = "INSERT INTO zkp_sessions (session_id, user_id, expires_at) VALUES (?, ?, ?) "
+                + "ON CONFLICT (session_id) DO UPDATE SET user_id = EXCLUDED.user_id, expires_at = EXCLUDED.expires_at;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, sessionId);
+            pstmt.setString(2, userId);
+            pstmt.setLong(3, expiresAt);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String verifyZkpSession(String sessionId) {
+        ensureConnected();
+        String query = "SELECT user_id, expires_at FROM zkp_sessions WHERE session_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, sessionId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    long expiresAt = rs.getLong("expires_at");
+                    if (expiresAt < System.currentTimeMillis()) {
+                        return null; // Expired
+                    }
+                    return rs.getString("user_id");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 }
