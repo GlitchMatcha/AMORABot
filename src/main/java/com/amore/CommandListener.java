@@ -720,28 +720,71 @@ public class CommandListener extends ListenerAdapter {
     @Override
     public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
 
-        if (event.getModalId().equals("member_app_modal")) {
+        if (event.getModalId().endsWith("_app_modal")) {
             event.deferReply(true).queue();
             
-            String q1 = event.getValue("app_type").getAsString();
-            String q2 = event.getValue("app_timezone").getAsString(); 
-            String q3 = event.getValue("app_why").getAsString();
-            String q4 = event.getValue("app_rules").getAsString();
-            String q5 = event.getValue("app_alt").getAsString();
+            String categoryId = null;
+            String channelPrefix = "";
+            String embedTitle = "";
+            EmbedBuilder appEmbed = new EmbedBuilder().setColor(Color.decode("#FF5FA2"));
+            User user = event.getUser();
             
-            String categoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
+            if (event.getModalId().equals("member_app_modal")) {
+                categoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
+                channelPrefix = "🎀・official-";
+                embedTitle = "✦ OFFICIAL MEMBER APPLICATION ✦";
+                
+                appEmbed.addField("1. Comp or General?", event.getValue("app_type").getAsString(), true)
+                        .addField("2. Timezone", event.getValue("app_timezone").getAsString(), true)
+                        .addField("3. Why do you want to join AMORA?", event.getValue("app_why").getAsString(), false)
+                        .addField("4. Agree to rules?", event.getValue("app_rules").getAsString(), true)
+                        .addField("5. Main Account / No Dual-Ent?", event.getValue("app_alt").getAsString(), true);
+                        
+            } else if (event.getModalId().equals("seller_app_modal")) {
+                categoryId = System.getenv("SELLER_APP_CATEGORY_ID");
+                channelPrefix = "🛍️・seller-";
+                embedTitle = "✦ SELLER APPLICATION ✦";
+                
+                appEmbed.addField("1. Items/Services to Sell", event.getValue("sell_items").getAsString(), false)
+                        .addField("2. Portfolio/Examples", event.getValue("sell_portfolio").getAsString(), false)
+                        .addField("3. Agree to Rules?", event.getValue("sell_rules").getAsString(), true);
+                        
+            } else if (event.getModalId().equals("staff_app_modal")) {
+                categoryId = System.getenv("MEMBER_APP_CATEGORY_ID"); 
+                channelPrefix = "💼・staff-";
+                embedTitle = "✦ AMORA POSITIONS APPLICATION ✦";
+                
+                appEmbed.addField("1. Position", event.getValue("staff_pos").getAsString(), true)
+                        .addField("2. Timezone", event.getValue("staff_tz").getAsString(), true)
+                        .addField("3. Experience", event.getValue("staff_exp").getAsString(), false);
+            }
             
             if (categoryId == null || categoryId.isBlank()) {
-                event.getHook().sendMessage(" System Error: `MEMBER_APP_CATEGORY_ID` is not configured in the .env file!").queue();
+                event.getHook().sendMessage("ʚ System Error: Application Category ID is not configured! ɞ").queue();
                 return;
             }
             
             net.dv8tion.jda.api.entities.channel.concrete.Category category = event.getGuild().getCategoryById(categoryId);
             if (category == null) {
-                event.getHook().sendMessage(" System Error: Member Application Category not found!").queue();
+                event.getHook().sendMessage("ʚ System Error: Application Category not found! ɞ").queue();
                 return;
             }
             
+            if (category.getTextChannels().size() >= 50) {
+                event.getHook().sendMessage("ʚ The application center is currently full! Please wait for the staff to review older tickets! ɞ").queue();
+                return;
+            }
+
+            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
+            String channelName = channelPrefix + safeName; 
+
+            for (TextChannel tc : category.getTextChannels()) {
+                if (tc.getName().equals(channelName)) {
+                    event.getHook().sendMessage("ʚ Hold on! You already have an open application ticket here: " + tc.getAsMention() + " ɞ").queue();
+                    return;
+                }
+            }
+
             String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
             StringBuilder hrPingBuilder = new StringBuilder();
             if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
@@ -751,20 +794,10 @@ public class CommandListener extends ListenerAdapter {
             }
             String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
 
-            User user = event.getUser();
-            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
-            String channelName = "🎀・official-" + safeName; 
-            
-            EmbedBuilder appEmbed = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193))
-                .setTitle("✦ OFFICIAL MEMBER APPLICATION ✦")
-                .setThumbnail(user.getEffectiveAvatarUrl())
-                .addField("1. Comp or General?", q1, true)
-                .addField("2. Timezone", q2, true)
-                .addField("3. Why do you want to join AMORA?", q3, false)
-                .addField("4. Agree to rules?", q4, true)
-                .addField("5. Main Account / No Dual-Ent?", q5, true)
-                .setFooter("Applicant ID: " + user.getId(), null);
+            // 4. Finalize Embed
+            appEmbed.setTitle(embedTitle)
+                    .setThumbnail(user.getEffectiveAvatarUrl())
+                    .setFooter("Applicant ID: " + user.getId(), null);
 
             net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
                 .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
@@ -784,15 +817,15 @@ public class CommandListener extends ListenerAdapter {
                        .addEmbeds(appEmbed.build())
                        .addActionRow(
                            Button.primary("ping_hr", " Ping HR Team"),
-                           Button.success("claim_ticket", " Claim Ticket"), 
+                           Button.success("claim_ticket", "✋ Claim Ticket"), 
                            Button.danger("initiate_close_ticket", "🔒 Close Ticket")
                        )
                        .queue();
                 
-                event.getHook().sendMessage("✅ Your application has been submitted! Head over to " + channel.getAsMention() + " to wait for an HR member.").queue();
-                sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an Official Member application via Modal: " + channel.getAsMention(), new Color(138, 43, 226));
+                event.getHook().sendMessage("ʚ Your application has been successfully submitted! Please head over to " + channel.getAsMention() + " to wait for an HR member. <3 ɞ").queue();
+                sendRoleLog(event.getGuild(), "Application Submitted", user.getAsMention() + " submitted an application: " + channel.getAsMention(), Color.decode("#FF5FA2"));
             }, error -> {
-                event.getHook().sendMessage("❌ Failed to create application channel. Please check permissions!").queue();
+                event.getHook().sendMessage("ʚ Oh no! Failed to create application channel. Please check permissions! ɞ").queue();
             });
             return;
         }
@@ -1399,7 +1432,7 @@ public class CommandListener extends ListenerAdapter {
                 "<a:pink_flowerrr:1514920298472800286> ﹕<@&1516061302701817986>﹕<a:pink_flowerrr:1514920298472800286>\n" +
                 "-# ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐕𝐢𝐬𝐢𝐭𝐨𝐫 — 𝑺𝒕𝒂𝒚 𝒂𝒔 𝒂 𝑮𝒖𝒆𝒔𝒕 ꒱\n\n\n" +
                 "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
-                "           ˚｡౨ 𝘈𝘱𝘱𝘭𝘪𝘤𝘢𝘵𝘪𝘰𝘯 𝘈𝘤𝘤𝘦𝘴𝘴 ৎ .﹡\n" +
+                "           ˚｡౨ 𝘈𝘱plicat𝘪𝘰𝘯 𝘈𝘤𝘤𝘦𝘴𝘴 ৎ .﹡\n" +
                 "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
                 "♡ ﹕ <@&1529651281105387631>\n" +
                 "-# ꒰ 𝐒𝐞𝐥𝐥𝐞𝐫 — 𝑶𝒑𝒆𝒏 𝒕𝒐 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝒂𝒏𝒅 𝑽𝒊𝒔𝒊𝒕𝒐𝒓𝒔 ꒱\n\n" +
@@ -1409,17 +1442,17 @@ public class CommandListener extends ListenerAdapter {
                 "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
 
             EmbedBuilder panelEmbed = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193)) // Aesthetic Pink
+                .setColor(Color.decode("#FF5FA2")) // 🎨 Aesthetic Pink
                 .setDescription(aestheticPanel);
 
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(
-                    Button.primary("role_member", " Official Member"),
-                    Button.success("role_visitor", " AMORA Visitor")
+                    Button.primary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍᴇᴍʙᴇʀ  ִ   ۫  ⟰ ꒱ "),
+                    Button.success("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛᴏʀ  ִ   ۫  ᴥ  ꒱ ")
                 )
                 .addActionRow(
-                    Button.secondary("role_seller", " Apply for Seller"),
-                    Button.danger("role_positions", "💼 AMORA Positions")
+                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀᴘᴘʟʏ ꜰᴏʀ ꜱᴇʟʟᴇʀ  ִ   ۫  ര ꒱ "),
+                    Button.danger("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪᴏɴꜱ  ִ   ۫  ꧞ ꒱")
                 ).queue();
                 
             event.reply(" Beautiful Welcome Panel deployed!").setEphemeral(true).queue();
@@ -3472,34 +3505,52 @@ public class CommandListener extends ListenerAdapter {
                 event.replyModal(modal).queue();
                 return; 
             }
-
-            event.deferReply(true).queue(); 
             
-            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
-            StringBuilder hrPingBuilder = new StringBuilder();
-            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
-                for (String id : hrRoleIdRaw.split(",")) {
-                    if (!id.trim().isEmpty()) hrPingBuilder.append("<@&").append(id.trim()).append("> ");
-                }
+            if (componentId.equals("role_seller")) {
+                net.dv8tion.jda.api.interactions.components.text.TextInput itemsInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_items", "What do you plan to sell?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., GFX, Outfits, Renders").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput portInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_portfolio", "Link to portfolio/examples?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., Twitter, DeviantArt, etc.").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput rulesInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("sell_rules", "Agree to Seller Rules?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Yes").setRequired(true).build();
+
+                net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("seller_app_modal", "Seller Application")
+                    .addActionRow(itemsInput).addActionRow(portInput).addActionRow(rulesInput).build();
+
+                event.replyModal(modal).queue();
+                return; 
             }
-            String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
-
-            User user = event.getUser();
-            String safeName = user.getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
             
+            if (componentId.equals("role_positions")) {
+                boolean isMember = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(memberRoleId));
+                if (!isMember) {
+                    event.reply("ʚ Oh no! Only Official Members are authorized to apply for AMORA exclusive Positions! ɞ").setEphemeral(true).queue();
+                    return;
+                }
+            
+                net.dv8tion.jda.api.interactions.components.text.TextInput posInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("staff_pos", "What position are you applying for?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., HR, Event Manager").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput tzInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("staff_tz", "What is your timezone?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., EST, GMT+7").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput expInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("staff_exp", "Past Experience?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setPlaceholder("Briefly describe your past experience.").setRequired(true).build();
+
+                net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("staff_app_modal", "Staff Application")
+                    .addActionRow(posInput).addActionRow(tzInput).addActionRow(expInput).build();
+
+                event.replyModal(modal).queue();
+                return; 
+            }
+
             if (componentId.equals("role_visitor")) {
+                event.deferReply(true).queue();
                 net.dv8tion.jda.api.entities.Role role = event.getGuild().getRoleById(visitorRoleId);
                 if (role != null) {
-                    event.getGuild().addRoleToMember(user, role).queue(
+                    event.getGuild().addRoleToMember(event.getUser(), role).queue(
                         success -> {
-                            event.getHook().sendMessage(" You are now an **AMORA Visitor**! Enjoy your stay 🌸").queue();
-                            sendRoleLog(event.getGuild(), "Role Acquired", user.getAsMention() + " clicked the welcome panel and instantly acquired the **Visitor** role.", Color.PINK);
+                            event.getHook().sendMessage("ʚ Thank you for joining AMORA! You've successfully chosen the Guest role. We hope you enjoy your stay and have fun! <3 ɞ").queue();
+                            sendRoleLog(event.getGuild(), "Role Acquired", event.getUser().getAsMention() + " instantly acquired the **Visitor** role.", Color.decode("#FF5FA2"));
                         },
-                        error -> event.getHook().sendMessage(" Error assigning role.").queue()
+                        error -> event.getHook().sendMessage("ʚ Oh no! An error occurred assigning the role. ɞ").queue()
                     );
                 }
                 return;
             } 
+        }
 
             String channelName;
             String welcomeMessage;
