@@ -3311,45 +3311,41 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("confirm_close_ticket")) {
-            event.deferEdit().queue();
-            
-            event.getMessage().editMessageComponents(java.util.Collections.emptyList()).queue();
-
-            TextChannel tc = event.getChannel().asTextChannel();
-            tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
-            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
-                if (!override.getMember().getUser().isBot()) {
-                    tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
-                }
-            }
-            for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
-                if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
-                    tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
-                }
-            }
-
-            // 3. Send the Admin Panel as a NEW message with Glammy's Hex Code
-            EmbedBuilder closedEmbed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2"))
-                .setTitle("🔒 Ticket Closed")
-                .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
+            // Acknowledge INSTANTLY by stripping the buttons so it can't be clicked twice
+            event.editMessageComponents(java.util.Collections.emptyList()).queue(success -> {
                 
-            event.getChannel().sendMessageEmbeds(closedEmbed.build())
-                 .addActionRow(
-                     Button.secondary("transcript_ticket", "📝 Save Transcript"),
-                     Button.success("reopen_ticket", "🔓 Reopen Ticket"),
-                     Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
-                 ).queue();
+                TextChannel tc = event.getChannel().asTextChannel();
+                tc.upsertPermissionOverride(event.getGuild().getPublicRole()).deny(Permission.MESSAGE_SEND).queue();
+                for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
+                    if (!override.getMember().getUser().isBot()) {
+                        tc.upsertPermissionOverride(override.getMember()).deny(Permission.MESSAGE_SEND).queue();
+                    }
+                }
+                for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getRolePermissionOverrides()) {
+                    if (!override.getRole().hasPermission(Permission.ADMINISTRATOR) && !override.getRole().isPublicRole()) {
+                        tc.upsertPermissionOverride(override.getRole()).deny(Permission.MESSAGE_SEND).queue();
+                    }
+                }
+
+                EmbedBuilder closedEmbed = new EmbedBuilder()
+                    .setColor(Color.decode("#FF5FA2"))
+                    .setTitle("🔒 Ticket Closed")
+                    .setDescription("This ticket was closed by " + event.getUser().getAsMention() + ".\nNobody can send messages here anymore.\n\nWhat would you like to do next?");
+                    
+                event.getChannel().sendMessageEmbeds(closedEmbed.build())
+                     .addActionRow(
+                         Button.secondary("transcript_ticket", "📝 Save Transcript"),
+                         Button.success("reopen_ticket", "🔓 Reopen Ticket"),
+                         Button.danger("delete_ticket_prompt", "🗑️ Delete Ticket")
+                     ).queue();
+            });
             return;
         }
 
         if (componentId.equals("reopen_ticket")) {
             event.deferEdit().queue();
+            event.getHook().deleteOriginal().queue(); // Deletes the Admin Panel
             
-            // 1. Delete the Admin Panel message
-            event.getMessage().delete().queue();
-            
-            // 2. Restore permissions
             TextChannel tc = event.getChannel().asTextChannel();
             tc.upsertPermissionOverride(event.getGuild().getPublicRole()).clear(Permission.MESSAGE_SEND).queue();
             for (net.dv8tion.jda.api.entities.PermissionOverride override : tc.getMemberPermissionOverrides()) {
@@ -3376,8 +3372,8 @@ public class CommandListener extends ListenerAdapter {
             event.reply("⚠️ **Are you sure you want to FORCE DELETE this ticket?**\nNo transcript will be saved. This action is permanent.")
                  .addActionRow(
                      Button.danger("confirm_delete_ticket", "🗑️ Confirm Delete"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
-                 ).queue();
+                     Button.secondary("cancel_ephemeral_prompt", "❌ Cancel")
+                 ).setEphemeral(true).queue();
             return;
         }
 
@@ -3385,20 +3381,28 @@ public class CommandListener extends ListenerAdapter {
             event.reply("⚠️ **Generate Transcript?**\nA full chat preview and `.txt` transcript will be saved to the HR logs. **This will NOT delete the ticket.**")
                  .addActionRow(
                      Button.success("confirm_transcript_ticket", "✅ Confirm Save"),
-                     Button.secondary("cancel_ticket_action", "❌ Cancel")
-                 ).queue();
+                     Button.secondary("cancel_ephemeral_prompt", "❌ Cancel")
+                 ).setEphemeral(true).queue();
+            return;
+        }
+
+        if (componentId.equals("cancel_ephemeral_prompt")) {
+            event.deferEdit().queue();
+            event.getHook().deleteOriginal().queue();
             return;
         }
 
         if (componentId.equals("confirm_delete_ticket")) {
-            event.reply("🗑️ **Deleting channel...**").queue(hook -> {
-                event.getChannel().delete().queue(); 
+            event.reply("🗑️ **Deleting channel...**").setEphemeral(true).queue(hook -> {
+                event.getChannel().delete().queue();
             });
             return;
         }
 
         if (componentId.equals("confirm_transcript_ticket")) {
-            event.deferEdit().queue(); 
+            event.deferEdit().queue();
+            event.getHook().deleteOriginal().queue(); // Wipe the prompt from view
+            
             event.getChannel().sendMessage("📝 **Generating and archiving transcript... Please wait.**").queue(loadingMsg -> {
                 TextChannel ticketChannel = event.getChannel().asTextChannel();
                 String logChannelId = System.getenv("ROLE_LOG_CHANNEL_ID");
@@ -3461,9 +3465,8 @@ public class CommandListener extends ListenerAdapter {
                         logChannel.sendMessageEmbeds(logEmbed.build()).addFiles(upload).queue(
                             success -> {
                                 loadingMsg.editMessage(" **Transcript successfully saved to the HR Logs!** This ticket will remain open.").queue();
-                                event.getMessage().delete().queue();
                             },
-                            error -> loadingMsg.editMessage(" Failed to send transcript to logs! Check permissions.").queue()
+                            error -> loadingMsg.editMessage("❌ Failed to send transcript to logs! Check permissions.").queue()
                         );
                     } else {
                         loadingMsg.editMessage("❌ `ROLE_LOG_CHANNEL_ID` channel not found!").queue();
@@ -3546,82 +3549,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             } 
         }
-
-            String channelName;
-            String welcomeMessage;
-            String targetCategoryId;
-
-            if (componentId.equals("role_seller")) {
-                targetCategoryId = System.getenv("SELLER_APP_CATEGORY_ID");
-                channelName = "🛍️・seller-" + safeName;
-                welcomeMessage = user.getAsMention() + " " + hrPing + "\n# ✦ SELLER APPLICATION ✦\nWelcome! To acquire the Seller role, please answer the following:\n\n**1.** What kind of items/services do you plan to sell?\n**2.** Please provide 2-3 visual examples of your work below.\n\n*An HR member will review your portfolio soon!*";
-            }
-            else if (componentId.equals("role_positions")) {
-                boolean isMember = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(memberRoleId));
-                if (!isMember) {
-                    event.getHook().sendMessage(" **Access Denied:** Only Official Members (<@&" + memberRoleId + ">) are authorized to apply for AMORA Positions!").queue();
-                    sendRoleLog(event.getGuild(), "Application Blocked", user.getAsMention() + " attempted to apply for a Staff Position without the Official Member role.", Color.RED);
-                    return;
-                }
-                targetCategoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
-                channelName = "💼・staff-" + safeName;
-                welcomeMessage = user.getAsMention() + " " + hrPing + "\n# ✦ AMORA POSITIONS APPLICATION ✦\nWelcome! Please state which position you are applying for, your timezone, and your past experience. An HR member will conduct your interview here.";
-            } else {
-                return;
-            }
-
-            if (targetCategoryId == null || targetCategoryId.isBlank()) {
-                event.getHook().sendMessage(" System Error: The application Category ID is not configured in the .env file!").queue();
-                return;
-            }
-            
-            net.dv8tion.jda.api.entities.channel.concrete.Category category = event.getGuild().getCategoryById(targetCategoryId);
-            if (category == null) {
-                event.getHook().sendMessage(" System Error: Target application Category not found! Make sure the ID is correct in your .env file.").queue();
-                return;
-            }
-
-            if (category.getTextChannels().size() >= 50) {
-                event.getHook().sendMessage("❌ **Category Full!** The HR application center is currently full. Please wait for the staff to review older tickets!").queue();
-                return;
-            }
-
-            for (TextChannel tc : category.getTextChannels()) {
-                if (tc.getName().equals(channelName)) {
-                    event.getHook().sendMessage("⚠️ **Hold on!** You already have an open application ticket here: " + tc.getAsMention()).queue();
-                    return;
-                }
-            }
-
-            net.dv8tion.jda.api.requests.restaction.ChannelAction<TextChannel> action = category.createTextChannel(channelName)
-                .addPermissionOverride(event.getGuild().getPublicRole(), null, java.util.EnumSet.of(Permission.VIEW_CHANNEL))
-                .addPermissionOverride(event.getMember(), java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
-
-            if (hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
-                for (String id : hrRoleIdRaw.split(",")) {
-                    net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(id.trim());
-                    if (hrRole != null) {
-                        action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
-                    }
-                }
-            }
-
-            action.queue(channel -> {
-                channel.sendMessage(welcomeMessage)
-                       .addActionRow(
-                           Button.primary("ping_hr", " Ping HR Team"),
-                           Button.success("claim_ticket", " Claim Ticket"), // 🚨 ADDED CLAIM
-                           Button.danger("initiate_close_ticket", "🔒 Close Ticket")
-                       )
-                       .queue(); 
-                
-                event.getHook().sendMessage("✅ Your application ticket has been created! Please head over to " + channel.getAsMention() + " to answer the questions.").queue();
-                sendRoleLog(event.getGuild(), "Application Ticket Opened", user.getAsMention() + " clicked the welcome panel and opened an application ticket: " + channel.getAsMention(), new Color(138, 43, 226));
-            }, error -> {
-                event.getHook().sendMessage("❌ Failed to create application channel. Does the bot have permission to manage channels?").queue();
-            });
-            return;
-        }
+    }
 
         if (componentId.startsWith("viewprofile_")) {
             String targetId = componentId.substring("viewprofile_".length());
