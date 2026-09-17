@@ -1017,7 +1017,7 @@ public class CommandListener extends ListenerAdapter {
                 EmbedBuilder orderEmbed = new EmbedBuilder()
                         .setColor(new Color(255, 182, 193))
                         .setTitle("✦ NEW COMMISSION ORDER ✦")
-                        .setDescription(template + "\n\n*(Creator: Accept this order below to begin the transaction!)*")
+                        .setDescription(template + "\n\n*(Both parties can now chat and coordinate this transaction!)*")
                         .setThumbnail(buyer.getEffectiveAvatarUrl())
                         .setFooter("AMORA Designated Order System", null);
 
@@ -1037,7 +1037,7 @@ public class CommandListener extends ListenerAdapter {
 
                 orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
                     String shortId = UUID.randomUUID().toString().substring(0, 4);
-                    orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
+                    orderChannel.createThreadChannel("🔒 " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
                          
                          String readyUI = generatingUI.replace("⏳ *Weaving the digital threads...*", "🔒 *Transaction Room Secured!*\n\n<a:Saur_Heart:1525689248391368796>   _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n_ _   " + thread.getAsMention());
                          
@@ -1048,9 +1048,19 @@ public class CommandListener extends ListenerAdapter {
 
                          thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                                .addEmbeds(orderEmbed.build())
+                               .queue();
+
+                         EmbedBuilder miniCart = new EmbedBuilder()
+                                 .setColor(new Color(255, 165, 0))
+                                 .setDescription("🛒 **CART SIZE: 1**\n_Both parties must confirm to log this sale!_");
+
+                         thread.sendMessageEmbeds(miniCart.build())
                                .addActionRow(
-                                   Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Accept Order"),
-                                   Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "  Decline")
+                                   Button.primary("buyerconfirm_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Buyer Confirm (After Payment!)"),
+                                   Button.primary("sellerconfirm_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Seller (After Payment!)"),
+                                   Button.secondary("additem_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "➕ Add Item"),
+                                   Button.secondary("remitem_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "➖ Remove"),
+                                   Button.danger("ordercancel_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Cancel Order")
                                ).queue();
                     });
                 });
@@ -1061,65 +1071,32 @@ public class CommandListener extends ListenerAdapter {
     
     private boolean isValidTransactionCode(String word) {
         if (word == null) return false;
-        word = word.trim().toUpperCase();
+        
+        word = word.replaceAll("[`*|_~]", "").trim().toUpperCase();
         
         int length = word.length();
         
-       
-        if (Pattern.compile("^([A-Z0-9]{4,5}-)+[A-Z0-9]{4,5}$").matcher(word).matches()) return true;
-        if (word.matches("\\d{10,}")) return true;
+        if (Pattern.compile("^([A-Z0-9]{3,6}-)+[A-Z0-9]{3,6}$").matcher(word).matches()) return true;
+        if (word.matches("\\d{5,}")) return true; // Accept 5+ digit codes (2FA, game pins)
         
-       
-        if (length != 4 && length != 6 && length != 8 && length < 10) {
-            return false;
-        }
+        if (length < 4) return false;
         
-        int letters = 0;
-        int digits = 0;
-        int vowels = 0;
-        Map<Character, Integer> charCounts = new HashMap<>();
-        int maxFrequency = 0;
-        int maxLetterStreak = 0;
-        int currentLetterStreak = 0;
-        
+        boolean hasLetter = false;
+        boolean hasDigit = false;
         for (char c : word.toCharArray()) {
-            if (Character.isLetter(c)) {
-                letters++;
-                currentLetterStreak++;
-                if (currentLetterStreak > maxLetterStreak) maxLetterStreak = currentLetterStreak;
-            } else if (Character.isDigit(c)) {
-                digits++;
-                currentLetterStreak = 0; 
-            } else {
-                return false;
-            }
-            
+            if (Character.isLetter(c)) hasLetter = true;
+            if (Character.isDigit(c)) hasDigit = true;
+        }
+        
+        if (hasLetter && hasDigit && length >= 5) {
+            return true; 
+        }
+        
+        int vowels = 0;
+        for (char c : word.toCharArray()) {
             if ("AEIOU".indexOf(c) != -1) vowels++;
-            
-            int count = charCounts.getOrDefault(c, 0) + 1;
-            charCounts.put(c, count);
-            if (count > maxFrequency) maxFrequency = count;
         }
-        
-        if (maxFrequency > (length / 2)) return false;
-        
-        
-        if (length >= 10) {
-            if (digits < 2) return false;
-        
-            if (maxLetterStreak > 6) return false;
-            
-            return true;
-        } 
-     
-        else {
-            if (digits > 0) {
-                if (vowels > 1) return false;
-                return true;
-            } else {
-                if (vowels == 0) return true;
-            }
-        }
+        if (vowels <= 1 && length >= 4) return true; // Allow max 1 vowel for things like "XKAM"
         
         return false;
     }
@@ -1246,116 +1223,119 @@ public class CommandListener extends ListenerAdapter {
             
             if (ORDER_CHANNEL_ID != null && thread.getParentChannel().getId().equals(ORDER_CHANNEL_ID)) {
                 
-                if (thread.getName().startsWith("⏳")) {
-                    event.getMessage().delete().queue();
+                // if (thread.getName().startsWith("⏳")) {
+                //     event.getMessage().delete().queue();
                     
-                    event.getChannel().sendMessage(event.getAuthor().getAsMention() + " " + MIKU_SAD + " **Hold on!** The creator must click **Accept Order** before you can start chatting.")
-                         .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
-                    return;
-                }
+                //     event.getChannel().sendMessage(event.getAuthor().getAsMention() + " " + MIKU_SAD + " **Hold on!** The creator must click **Accept Order** before you can start chatting.")
+                //          .queue(msg -> msg.delete().queueAfter(5, TimeUnit.SECONDS));
+                //     return;
+                // }
 
-                if (!thread.getName().startsWith("⏳")) {
+                // if (!thread.getName().startsWith("⏳")) {
                     
-                    String content = event.getMessage().getContentRaw();
+                String content = event.getMessage().getContentRaw();
+                
+                Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");                    
+                Matcher matcher = sensitivePattern.matcher(content);
+
+                boolean shouldIntercept = false;
+                StringBuffer censoredBuffer = new StringBuffer();
+
+                while (matcher.find()) {
+                    String matchText = matcher.group();
                     
-                    Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");                    
-                    Matcher matcher = sensitivePattern.matcher(content);
+                    if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
+                        matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                        continue;
+                    }
 
-                    boolean shouldIntercept = false;
-                    StringBuffer censoredBuffer = new StringBuffer();
-
-                    while (matcher.find()) {
-                        String matchText = matcher.group();
-                        
-                        if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
-                            matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
-                            continue;
-                        }
-
-                        boolean isUrl = matchText.matches("(?iU)^https?://.*");
-                        
-                        String codeToTest = matchText;
-                        if (matchText.toLowerCase().matches("^(code|link|id|key|pass|password|file|asset)\\s*[:=].*")) {
-                            int splitIndex = Math.max(matchText.indexOf(':'), matchText.indexOf('='));
-                            if (splitIndex != -1) {
-                                codeToTest = matchText.substring(splitIndex + 1).trim();
-                            }
-                        }
-                        
-                        codeToTest = codeToTest.replace("|", "").trim();
-                        
-                        if (isUrl || isValidTransactionCode(codeToTest)) {
-                            shouldIntercept = true;
-                            matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
-                        } else {
-                            matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                    boolean isUrl = matchText.matches("(?iU)^https?://.*");
+                    
+                    String codeToTest = matchText;
+                    boolean hasExplicitPrefix = false;
+                    
+                    if (matchText.toLowerCase().matches("^(code|link|id|key|pass|password|file|asset)\\s*[:=].*")) {
+                        int splitIndex = Math.max(matchText.indexOf(':'), matchText.indexOf('='));
+                        if (splitIndex != -1) {
+                            codeToTest = matchText.substring(splitIndex + 1).trim();
+                            hasExplicitPrefix = true; // Flag it for guaranteed censorship
                         }
                     }
-                    matcher.appendTail(censoredBuffer);
-                    if (shouldIntercept) {
-                        String censoredContent = censoredBuffer.toString();
-                        boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
+                    
+                    codeToTest = codeToTest.replaceAll("[`*|_~]", "").trim();
+                    
+                    if (isUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
+                        shouldIntercept = true;
+                        matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
+                    } else {
+                        matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                    }
+                }
+                matcher.appendTail(censoredBuffer);
+                if (shouldIntercept) {
+                    String censoredContent = censoredBuffer.toString();
+                    boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
 
-                        thread.getHistoryFromBeginning(20).queue(history -> {
-                            String foundCreatorId = null;
-                            String foundBuyerId = null;
-                            for (net.dv8tion.jda.api.entities.Message m : history.getRetrievedHistory()) {
-                                if (!m.getButtons().isEmpty()) {
-                                    Button btn = m.getButtons().get(0);
-                                    if (btn.getId() != null && btn.getId().startsWith("buyerconfirm_")) {
-                                        String[] parts = btn.getId().split("_");
-                                        if (parts.length >= 3) {
-                                            foundCreatorId = parts[1];
-                                            foundBuyerId = parts[2];
-                                        }
-                                        break;
+                    thread.getHistoryFromBeginning(20).queue(history -> {
+                        String foundCreatorId = null;
+                        String foundBuyerId = null;
+                        for (net.dv8tion.jda.api.entities.Message m : history.getRetrievedHistory()) {
+                            if (!m.getButtons().isEmpty()) {
+                                Button btn = m.getButtons().get(0);
+                                if (btn.getId() != null && btn.getId().startsWith("buyerconfirm_")) {
+                                    String[] parts = btn.getId().split("_");
+                                    if (parts.length >= 3) {
+                                        foundCreatorId = parts[1];
+                                        foundBuyerId = parts[2];
                                     }
+                                    break;
                                 }
                             }
+                        }
 
-                            if (foundCreatorId != null && foundBuyerId != null && (event.getAuthor().getId().equals(foundCreatorId) || event.getAuthor().getId().equals(foundBuyerId))) {
-                                
-                                final String targetId = event.getAuthor().getId().equals(foundCreatorId) ? foundBuyerId : foundCreatorId;
-                                
-                                
-                                
-                                event.getMessage().delete().queue();
+                        if (foundCreatorId != null && foundBuyerId != null && (event.getAuthor().getId().equals(foundCreatorId) || event.getAuthor().getId().equals(foundBuyerId))) {
+                            
+                            final String targetId = event.getAuthor().getId().equals(foundCreatorId) ? foundBuyerId : foundCreatorId;
+                            
+                            
+                            
+                            event.getMessage().delete().queue();
 
-                                event.getJDA().retrieveUserById(targetId).queue(targetUser -> {
-                                    targetUser.openPrivateChannel().flatMap(pc -> {
-                                        EmbedBuilder dmEmbed = new EmbedBuilder()
-                                                .setColor(new Color(138, 43, 226))
-                                                .setTitle("💌 SECURE TRANSACTION DATA")
-                                                .setDescription("Hihi! I safely intercepted some sensitive data from " + event.getAuthor().getAsMention() + " just for you!\n\n" +
-                                                                " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
-                                                                content + "\n\n" +
-                                                                " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
-                                                                "*Please keep this strictly confidential! >p<*")
-                                                .setFooter("AMORA Auto-Intercept System", null);
-                                        return pc.sendMessageEmbeds(dmEmbed.build());
-                                    }).queue(success -> {
-                                        
-                                        String attachmentWarning = hasAttachments ? "\n*(Note: Any image attachments were safely removed to protect the data! Please resend any safe previews separately!)*" : "";
-                                        
-                                        String threadNotification = "🐾 *Sneaks in and snatches the sensitive data...*\n" +
-                                                                    "<@" + targetId + ">, I just safely handed over the secret info to your DMs! 💌\n" +
-                                                                    "*(Don't panic, the message was perfectly intercepted! Here is the safe public version for the records:)*";
+                            event.getJDA().retrieveUserById(targetId).queue(targetUser -> {
+                                targetUser.openPrivateChannel().flatMap(pc -> {
+                                    EmbedBuilder dmEmbed = new EmbedBuilder()
+                                            .setColor(new Color(138, 43, 226))
+                                            .setTitle("💌 SECURE TRANSACTION DATA")
+                                            .setDescription("Hihi! I safely intercepted some sensitive data from " + event.getAuthor().getAsMention() + " just for you!\n\n" +
+                                                            " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                                            content + "\n\n" +
+                                                            " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                                                            "*Please keep this strictly confidential! >p<*")
+                                            .setFooter("AMORA Auto-Intercept System", null);
+                                    return pc.sendMessageEmbeds(dmEmbed.build());
+                                }).queue(success -> {
+                                    
+                                    String attachmentWarning = hasAttachments ? "\n*(Note: Any image attachments were safely removed to protect the data! Please resend any safe previews separately!)*" : "";
+                                    
+                                    String threadNotification = "🐾 *Sneaks in and snatches the sensitive data...*\n" +
+                                                                "<@" + targetId + ">, I just safely handed over the secret info to your DMs! 💌\n" +
+                                                                "*(Don't panic, the message was perfectly intercepted! Here is the safe public version for the records:)*";
 
-                                        EmbedBuilder censoredEmbed = new EmbedBuilder()
-                                                .setColor(new Color(255, 182, 193))
-                                                .setAuthor(event.getAuthor().getName() + "'s Message (Secured)", null, event.getAuthor().getEffectiveAvatarUrl())
-                                                .setDescription(censoredContent + attachmentWarning);
-                                        
-                                        thread.sendMessage(threadNotification).setEmbeds(censoredEmbed.build()).queue();
+                                    EmbedBuilder censoredEmbed = new EmbedBuilder()
+                                            .setColor(new Color(255, 182, 193))
+                                            .setAuthor(event.getAuthor().getName() + "'s Message (Secured)", null, event.getAuthor().getEffectiveAvatarUrl())
+                                            .setDescription(censoredContent + attachmentWarning);
+                                    
+                                    thread.sendMessage(threadNotification).setEmbeds(censoredEmbed.build()).queue();
 
-                                    }, error -> {
-                                        event.getChannel().sendMessage("❌ " + event.getAuthor().getAsMention() + " I tried to safely intercept your data, but <@" + targetId + ">'s DMs are closed! Please ask them to temporarily open DMs and paste your message again.").queue();
-                                    });
+                                }, error -> {
+                                    event.getChannel().sendMessage("❌ " + event.getAuthor().getAsMention() + " I tried to safely intercept your data, but <@" + targetId + ">'s DMs are closed! Please ask them to temporarily open DMs and paste your message again.").queue();
                                 });
-                                return; 
-                            }
-                        });
-                    }
+                            });
+                            return; 
+                        }
+                    });
+                    
 
                     if (movingCarts.contains(thread.getId())) return;
                     
@@ -4115,7 +4095,7 @@ public class CommandListener extends ListenerAdapter {
                                     CINNA_HIDE + " **Item Requested:**\n" +
                                     "> " + itemDescription.replace("\n", "\n> ") + "\n\n" +
                                     "🔗 [**Click here to view the original shop post**](" + messageLink + ")\n\n" +
-                                    "*(Creator: Accept this order below to log your sale!)*"
+                                    "*(Both parties can now chat and coordinate this transaction!)*"
                             )
                             .setThumbnail(buyer.getEffectiveAvatarUrl())
                             .setFooter("AMORA Smart UI Order System", null);
@@ -4145,7 +4125,7 @@ public class CommandListener extends ListenerAdapter {
 
                     orderChannel.sendMessage(generatingUI).queue(mainMessage -> {
                         String shortId = UUID.randomUUID().toString().substring(0, 4);
-                        orderChannel.createThreadChannel("⏳ " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
+                        orderChannel.createThreadChannel("🔒 " + buyerName + " ➔ " + creatorName + " [" + shortId + "]", true).queue(thread -> {
                              
                              String readyUI = generatingUI.replace("⏳ *Weaving the digital threads...*", "🔒 *Transaction Room Secured!*\n\n<a:Saur_Heart:1525689248391368796>  _ _  ᨳ   𓏼    ׅ    ۟ 𐐂 Enter your Private Thread here: 𐐚 ೃ⁀➷\n_ _   " + thread.getAsMention());
                              
@@ -4154,11 +4134,23 @@ public class CommandListener extends ListenerAdapter {
                              thread.addThreadMember(creator).queue();
                              thread.addThreadMember(buyer).queue();
 
+                             // Send the Order Details
                              thread.sendMessage(creator.getAsMention() + " ✦ " + buyer.getAsMention() + "\nHere is your private transaction room 🔒! Please share all details and payment proofs here.")
                                    .addEmbeds(orderEmbed.build())
+                                   .queue();
+
+                             // Immediately send the Cart Buttons
+                             EmbedBuilder miniCart = new EmbedBuilder()
+                                     .setColor(new Color(255, 165, 0))
+                                     .setDescription("🛒 **CART SIZE: 1**\n_Both parties must confirm to log this sale!_");
+
+                             thread.sendMessageEmbeds(miniCart.build())
                                    .addActionRow(
-                                       Button.success("orderaccept_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Accept Order"),
-                                       Button.danger("orderdecline_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "  Decline")
+                                       Button.primary("buyerconfirm_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Buyer Confirm (After Payment!)"),
+                                       Button.primary("sellerconfirm_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Seller (After Payment!)"),
+                                       Button.secondary("additem_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "➕ Add Item"),
+                                       Button.secondary("remitem_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), "➖ Remove"),
+                                       Button.danger("ordercancel_" + creator.getId() + "_" + buyer.getId() + "_" + mainMessage.getId(), " Cancel Order")
                                    ).queue();
                         });
                     });
@@ -4317,46 +4309,46 @@ public class CommandListener extends ListenerAdapter {
             return;
         }
 
-        if (componentId.startsWith("orderaccept_")) {
-            String[] parts = componentId.split("_");
-            String creatorId = parts[1];
-            String buyerId = parts[2];
-            String mainMsgId = parts.length > 3 ? parts[3] : ""; 
+        // if (componentId.startsWith("orderaccept_")) {
+        //     String[] parts = componentId.split("_");
+        //     String creatorId = parts[1];
+        //     String buyerId = parts[2];
+        //     String mainMsgId = parts.length > 3 ? parts[3] : ""; 
             
-            if (!event.getUser().getId().equals(creatorId)) {
-                event.reply("  Only the requested creator can accept this order!").setEphemeral(true).queue();
-                return;
-            }
+        //     if (!event.getUser().getId().equals(creatorId)) {
+        //         event.reply("  Only the requested creator can accept this order!").setEphemeral(true).queue();
+        //         return;
+        //     }
 
-            EmbedBuilder originalEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
-            originalEmbed.setColor(new Color(255, 165, 0)); 
-            originalEmbed.addField("⏳ STATUS: ACCEPTED", "The creator accepted this request! See the active cart below to finish the transaction.", false);
+        //     EmbedBuilder originalEmbed = new EmbedBuilder(event.getMessage().getEmbeds().get(0));
+        //     originalEmbed.setColor(new Color(255, 165, 0)); 
+        //     originalEmbed.addField("⏳ STATUS: ACCEPTED", "The creator accepted this request! See the active cart below to finish the transaction.", false);
             
-            event.editMessageEmbeds(originalEmbed.build())
-                 .setComponents(java.util.Collections.emptyList()) 
-                 .queue(); 
+        //     event.editMessageEmbeds(originalEmbed.build())
+        //          .setComponents(java.util.Collections.emptyList()) 
+        //          .queue(); 
                  
-            event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
-                                           "🛍️ **Want to add more items to this order?**\n" +
-                                           "Nub Matcha says: You don't need a new ticket! Just drop the other items here and click the `➕ Add Item` button on the cart to update your total! >p<").queue();
+        //     event.getChannel().sendMessage("🎉 <@" + buyerId + "> Your order was accepted by " + event.getUser().getAsMention() + "!\n\n" +
+        //                                    "🛍️ **Want to add more items to this order?**\n" +
+        //                                    "Nub Matcha says: You don't need a new ticket! Just drop the other items here and click the `➕ Add Item` button on the cart to update your total! >p<").queue();
             
-            event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
+        //     event.getChannel().asThreadChannel().getManager().setName(event.getChannel().getName().replace("⏳", "🔒")).queue();
 
-            EmbedBuilder miniCart = new EmbedBuilder()
-                    .setColor(new Color(255, 165, 0))
-                    .setDescription("🛒 **CART SIZE: 1**\n_Both parties must confirm to log this sale!_");
+        //     EmbedBuilder miniCart = new EmbedBuilder()
+        //             .setColor(new Color(255, 165, 0))
+        //             .setDescription("🛒 **CART SIZE: 1**\n_Both parties must confirm to log this sale!_");
 
-            event.getChannel().sendMessageEmbeds(miniCart.build())
-                 .addActionRow(
-                     Button.primary("buyerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Buyer Confirm (After Payment!)"),
-                     Button.primary("sellerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Seller (After Payment!)"),
-                     Button.secondary("additem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➕ Add Item"),
-                     Button.secondary("remitem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➖ Remove"),
-                     Button.danger("ordercancel_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Cancel Order")
-                 ).queue();
+        //     event.getChannel().sendMessageEmbeds(miniCart.build())
+        //          .addActionRow(
+        //              Button.primary("buyerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Buyer Confirm (After Payment!)"),
+        //              Button.primary("sellerconfirm_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Seller (After Payment!)"),
+        //              Button.secondary("additem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➕ Add Item"),
+        //              Button.secondary("remitem_" + creatorId + "_" + buyerId + "_" + mainMsgId, "➖ Remove"),
+        //              Button.danger("ordercancel_" + creatorId + "_" + buyerId + "_" + mainMsgId, " Cancel Order")
+        //          ).queue();
 
-            return;
-        }
+        //     return;
+        // }
 
         if (componentId.startsWith("additem_") || componentId.startsWith("remitem_")) {
             String[] parts = componentId.split("_");
