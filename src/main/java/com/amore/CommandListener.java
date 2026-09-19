@@ -799,7 +799,6 @@ public class CommandListener extends ListenerAdapter {
             }
             String hrPing = hrPingBuilder.length() > 0 ? hrPingBuilder.toString().trim() : "**[HR Team]**";
 
-            // 4. Finalize Embed
             appEmbed.setTitle(embedTitle)
                     .setThumbnail(user.getEffectiveAvatarUrl())
                     .setFooter("Applicant ID: " + user.getId(), null);
@@ -813,6 +812,16 @@ public class CommandListener extends ListenerAdapter {
                     net.dv8tion.jda.api.entities.Role hrRole = event.getGuild().getRoleById(id.trim());
                     if (hrRole != null) {
                         action = action.addPermissionOverride(hrRole, java.util.EnumSet.of(Permission.VIEW_CHANNEL), null);
+                    }
+                }
+            }
+
+            String traineeRoleIdRaw = System.getenv("TRAINEE_ROLE_IDS");
+            if (traineeRoleIdRaw != null && !traineeRoleIdRaw.isBlank()) {
+                for (String id : traineeRoleIdRaw.split(",")) {
+                    net.dv8tion.jda.api.entities.Role traineeRole = event.getGuild().getRoleById(id.trim());
+                    if (traineeRole != null) {
+                        action = action.addPermissionOverride(traineeRole, null, java.util.EnumSet.of(Permission.VIEW_CHANNEL));
                     }
                 }
             }
