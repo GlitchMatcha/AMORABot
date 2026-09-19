@@ -1632,6 +1632,7 @@ public class CommandListener extends ListenerAdapter {
                 .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("🌍 Dance Party (Everyone)", "dance_party:everyone:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Schedules")
@@ -1639,6 +1640,7 @@ public class CommandListener extends ListenerAdapter {
                 .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Schedules")
+                .addOption("👑 Dance Party (Members)", "dance_party:member:standard", "Posts in Bounties, Pings Schedules")
                 .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent, Pings Schedules")
                 .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent, Pings Schedules")
                 .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent, Pings Schedules")
@@ -1646,8 +1648,9 @@ public class CommandListener extends ListenerAdapter {
                 .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent, Pings Schedules")
                 .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent, Pings Schedules")
                 .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent, Pings Schedules")
+                .addOption("🚨 URGENT: Dance Party (Members)", "dance_party:member:urgent", "Posts in Urgent, Pings Schedules")
                 .build();
-
+                
             event.getChannel().sendMessageEmbeds(panelEmbed.build())
                 .addActionRow(menu)
                 .queue();
