@@ -68,12 +68,19 @@ public class App {
             StatusRotator.start(jda);
             LoungeManager.start(jda);
             RoleManager.start(jda);
+            ActivityMonitor.start(jda);
             int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
             ZkpWebServer.startServer(webPort, jda);
             
             
             jda.updateCommands()
                 .addCommands(
+                    Commands.slash("syncschedule", "HR: Scan a manually posted schedule message and set up daily reminders")
+                        .addOption(OptionType.STRING, "message_id", "The ID of the message containing the schedule", true),
+                    Commands.slash("taskbank", "Director Only: Add a new task to the randomized monthly pool")
+                        .addOption(OptionType.STRING, "rank", "Which rank? (Flare, Spark, Neon, Pulse, Prism, Supernova)", true),
+                    Commands.slash("toggleapps", "HR Only: Open or close Official Member applications"),
+                    Commands.slash("amorahub", "Admin: Spawn the interactive AMORA Member Dashboard"),
                     Commands.slash("help", "Displays a list of all available AMORA commands and how to use them!"),
                     Commands.slash("serverreport", "Director Only: Generate the AMORA Monthly Global Performance Report"), 
                     Commands.slash("rolepanel", "Admin: Spawn the aesthetic Welcome & Role Selection Panel"),

@@ -106,9 +106,7 @@ public class DatabaseManager {
         return instance;
     }
 
-    // ==========================================
-    // 🚀 REPLACE the old connect() method with this:
-    // ==========================================
+   
     private synchronized void connect() {
         try {
             if (connection != null && !connection.isClosed()) {
@@ -127,10 +125,7 @@ public class DatabaseManager {
         }
     }
 
-    /**
-     * Ensures an active, valid connection before any query runs.
-     * Wakes up Neon if it has suspended!
-     */
+   
     public synchronized Connection ensureConnected() {
         try {
             if (connection == null || connection.isClosed() || !connection.isValid(2)) {
@@ -210,7 +205,7 @@ public class DatabaseManager {
                 + "created_at BIGINT NOT NULL, "
                 + "last_featured_at BIGINT NOT NULL DEFAULT 0"
                 + ");";
-
+        
         String createBotStateTable = "CREATE TABLE IF NOT EXISTS bot_state ("
                 + "state_key TEXT PRIMARY KEY, "
                 + "state_value TEXT NOT NULL"
@@ -265,6 +260,11 @@ public class DatabaseManager {
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_stars INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_prompts ADD COLUMN original_msg_id TEXT;"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS task_bank (id SERIAL PRIMARY KEY, rank_target TEXT, content TEXT);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS staff_schedule (day_of_week INTEGER, task_name TEXT, user_id TEXT, PRIMARY KEY (day_of_week, task_name));"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE users ADD COLUMN activity_strikes INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE users ADD COLUMN is_comp INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE users ADD COLUMN last_task_date BIGINT DEFAULT 0;"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -496,6 +496,40 @@ public class DatabaseManager {
             e.printStackTrace();
             return 0;
         }
+    }
+
+    public long getLastTaskDate(String userId) {
+        ensureConnected();
+        String query = "SELECT last_task_date FROM users WHERE user_id = ?;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getLong("last_task_date");
+            }
+        } catch (java.sql.SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public int getActivityStrikes(String userId) {
+        ensureConnected();
+        String query = "SELECT activity_strikes FROM users WHERE user_id = ?;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, userId);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt("activity_strikes");
+            }
+        } catch (java.sql.SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public void setActivityStrikes(String userId, int strikes) {
+        ensureConnected();
+        String query = "UPDATE users SET activity_strikes = ? WHERE user_id = ?;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, strikes);
+            pstmt.setString(2, userId);
+            pstmt.executeUpdate();
+        } catch (java.sql.SQLException e) { e.printStackTrace(); }
     }
 
     public void updateSparks(String userId, int newAmount) {
@@ -1383,5 +1417,51 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return null;
+    }
+   public void addTaskToBank(String rankTarget, String content) {
+        ensureConnected();
+        String query = "INSERT INTO task_bank (rank_target, content) VALUES (?, ?);";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, rankTarget);
+            pstmt.setString(2, content);
+            pstmt.executeUpdate();
+        } catch (java.sql.SQLException e) { e.printStackTrace(); }
+    }
+
+    public String getRandomTaskForRank(String rankTarget) {
+        ensureConnected();
+        String query = "SELECT content FROM task_bank WHERE LOWER(rank_target) = LOWER(?) ORDER BY RANDOM() LIMIT 1;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, rankTarget);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getString("content");
+            }
+        } catch (java.sql.SQLException e) { e.printStackTrace(); }
+        return null; 
+    }
+    public void saveScheduleTask(int dayOfWeek, String taskName, String userId) {
+        ensureConnected();
+        String query = "INSERT INTO staff_schedule (day_of_week, task_name, user_id) VALUES (?, ?, ?) ON CONFLICT (day_of_week, task_name) DO UPDATE SET user_id = EXCLUDED.user_id;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, dayOfWeek);
+            pstmt.setString(2, taskName);
+            pstmt.setString(3, userId);
+            pstmt.executeUpdate();
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    public List<String[]> getDailySchedule(int dayOfWeek) {
+        ensureConnected();
+        List<String[]> tasks = new ArrayList<>();
+        String query = "SELECT task_name, user_id FROM staff_schedule WHERE day_of_week = ?;";
+        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setInt(1, dayOfWeek);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    tasks.add(new String[]{rs.getString("task_name"), rs.getString("user_id")});
+                }
+            }
+        } catch (Exception e) { e.printStackTrace(); }
+        return tasks;
     }
 }
