@@ -258,10 +258,39 @@ public class AnnouncementListener extends ListenerAdapter {
                     payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
                     continue;
                 }
+                
+                double multiplier = 1.0;
+                boolean isComp = false;
+                
+                net.dv8tion.jda.api.entities.Member member = event.getGuild().getMemberById(uid);
+                if (member != null) {
+                    if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Spark"))) multiplier = 1.10;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Neon"))) multiplier = 1.25;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Pulse"))) multiplier = 1.50;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Prism"))) multiplier = 1.75;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Supernova"))) multiplier = 2.0;
+                    
+                    if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Competition Team"))) {
+                        multiplier += 0.50;
+                        isComp = true;
+                    }
+                }
+                
+                int finalReward = (int) Math.round(rewardAmount * multiplier);
+                
                 int currentPoints = db.getPoints(uid);
-                db.updatePoints(uid, currentPoints + rewardAmount);
+                db.updatePoints(uid, currentPoints + finalReward);
                 db.incrementBountyStats(uid, isUrgent);
-                payoutLog.append("• <@").append(uid).append("> received `").append(rewardAmount).append(" PTS`\n");
+                
+                db.ensureConnected();
+                try (java.sql.PreparedStatement pstmt = db.ensureConnected().prepareStatement("UPDATE users SET last_task_date = ? WHERE user_id = ?")) {
+                    pstmt.setLong(1, System.currentTimeMillis());
+                    pstmt.setString(2, uid);
+                    pstmt.executeUpdate();
+                } catch (Exception ignored) {}
+
+                String bonusText = (multiplier > 1.0) ? " *(x" + multiplier + " Rank Bonus!)*" : "";
+                payoutLog.append("• <@").append(uid).append("> received `").append(finalReward).append(" PTS`").append(bonusText).append("\n");
             }
             
             EmbedBuilder completedEmbed = new EmbedBuilder(embed);
@@ -537,6 +566,24 @@ public class AnnouncementListener extends ListenerAdapter {
             return;
         }
         
+        if (event.getComponentId().equals("hub_comp")) {
+            boolean isEligible = event.getMember().getRoles().stream()
+                .anyMatch(r -> java.util.Arrays.asList("Neon", "Pulse", "Prism", "Supernova").contains(r.getName()));
+            
+            if (!isEligible) {
+                event.reply(" **Access Denied:** You must be at least **Neon** rank to apply for the Competition Team! Keep working hard and ranking up!").setEphemeral(true).queue();
+                return;
+            }
+            
+            net.dv8tion.jda.api.interactions.components.text.TextInput whyComp = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comp_why", "Why do you want to join Comp?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput compExp = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comp_exp", "Past Comp/Dance Experience?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("modal_comp", "Competition Team Audition")
+                .addActionRow(whyComp).addActionRow(compExp).build();
+                
+            event.replyModal(modal).queue();
+            return;
+        }
         if (buttonId.equals("event_add")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
                 event.reply("Director clearance required to manually add members!").setEphemeral(true).queue();
@@ -1175,10 +1222,39 @@ public class AnnouncementListener extends ListenerAdapter {
                     payoutLog.append("• <@").append(uid).append("> was excluded from the payout.\n");
                     continue;
                 }
+                
+                double multiplier = 1.0;
+                boolean isComp = false;
+                
+                net.dv8tion.jda.api.entities.Member member = startMsg.getGuild().getMemberById(uid);
+                if (member != null) {
+                    if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Spark"))) multiplier = 1.10;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Neon"))) multiplier = 1.25;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Pulse"))) multiplier = 1.50;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Prism"))) multiplier = 1.75;
+                    else if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("Supernova"))) multiplier = 2.0;
+                    
+                    if (member.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("AM0RIX"))) {
+                        multiplier += 0.50;
+                        isComp = true;
+                    }
+                }
+                
+                int finalReward = (int) Math.round(rewardAmount * multiplier);
+                
                 int currentPoints = db.getPoints(uid);
-                db.updatePoints(uid, currentPoints + rewardAmount);
+                db.updatePoints(uid, currentPoints + finalReward);
                 db.incrementBountyStats(uid, isUrgent);
-                payoutLog.append("• <@").append(uid).append("> received `").append(rewardAmount).append(" PTS`\n");
+                
+                db.ensureConnected();
+                try (java.sql.PreparedStatement pstmt = db.ensureConnected().prepareStatement("UPDATE users SET last_task_date = ? WHERE user_id = ?")) {
+                    pstmt.setLong(1, System.currentTimeMillis());
+                    pstmt.setString(2, uid);
+                    pstmt.executeUpdate();
+                } catch (Exception ignored) {}
+
+                String bonusText = (multiplier > 1.0) ? " *(x" + multiplier + " Rank Bonus!)*" : "";
+                payoutLog.append("• <@").append(uid).append("> received `").append(finalReward).append(" PTS`").append(bonusText).append("\n");
             }
 
             EmbedBuilder completedEmbed = new EmbedBuilder(embed);
