@@ -37,14 +37,19 @@ public class ActivityMonitor {
                     if (!currentTaskKey.equals(db.getBotState("last_task_drop"))) {
                         db.setBotState("last_task_drop", currentTaskKey);
                         
-                        if (taskChannel != null) {
-                            taskChannel.sendMessage("# 📢 ✦ AMORA MONTHLY TASKS HAVE ARRIVED ✦\n" +
-                                    "A new month means new challenges! The AMORA system has randomly selected this month's official tasks from the database. Please check your rank's assignment below!").queue();
-                            
-                            for (String rank : officialRanks) {
-                                String randomTask = db.getRandomTaskForRank(rank);
-                                if (randomTask != null) {
-                                    taskChannel.sendMessage(randomTask).queue();
+                        List<String> ranks = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
+                        
+                        for (String rank : ranks) {
+                            String randomTask = db.getRandomTaskForRank(rank);
+                            if (randomTask != null) {
+                                String channelEnvName = rank.toUpperCase() + "_CHANNEL_ID";
+                                String targetChannelId = System.getenv(channelEnvName);
+                                
+                                if (targetChannelId != null && !targetChannelId.isBlank()) {
+                                    TextChannel rankChannel = jda.getTextChannelById(targetChannelId);
+                                    if (rankChannel != null) {
+                                        rankChannel.sendMessage("#  ✦ MONTHLY RANK TASK HAS ARRIVED ✦\n" + randomTask).queue();
+                                    }
                                 }
                             }
                         }
@@ -117,7 +122,7 @@ public class ActivityMonitor {
                     if (!reminderKey.equals(db.getBotState("last_reminder_2"))) {
                         db.setBotState("last_reminder_2", reminderKey);
                         if (taskChannel != null) {
-                            taskChannel.sendMessage("🚨 **FINAL WARNING:** There are only a few days left to submit your monthly rank tasks! Remember, failing to submit your task will result in an activity strike and potential rank decay. Please reach out to your Rank Leaders immediately if you need an extension or hiatus!").queue();
+                            taskChannel.sendMessage(" **FINAL WARNING:** There are only a few days left to submit your monthly rank tasks! Remember, failing to submit your task will result in an activity strike and potential rank decay. Please reach out to your Rank Leaders immediately if you need an extension or hiatus!").queue();
                         }
                     }
                 }
