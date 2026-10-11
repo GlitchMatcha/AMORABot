@@ -75,6 +75,8 @@ public class App {
             
             jda.updateCommands()
                 .addCommands(
+                    Commands.slash("forcesweep", "Admin Only: Manually trigger task drops or activity sweeps for testing")
+                        .addOption(OptionType.STRING, "type", "Choose what to test: 'tasks' or 'sweep'", true),
                     Commands.slash("syncschedule", "HR: Scan a manually posted schedule message and set up daily reminders")
                         .addOption(OptionType.STRING, "message_id", "The ID of the message containing the schedule", true),
                     Commands.slash("taskbank", "Director Only: Add a new task to the randomized monthly pool")

@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message.Attachment;
@@ -1465,6 +1466,87 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         db.incrementGlobalStat("global_commands_used", 1);
         
+        if (event.getName().equals("forcesweep")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Administrator clearance required.").setEphemeral(true).queue();
+                return;
+            }
+
+            String type = event.getOption("type").getAsString().toLowerCase();
+            event.deferReply(true).queue();
+
+            // 🚨 FIX: Removed duplicate 'db' declaration here!
+            JDA jda = event.getJDA();
+            List<String> officialRanks = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
+
+            if (type.equals("tasks")) {
+                int droppedCount = 0;
+                for (String rank : officialRanks) {
+                    String randomTask = db.getRandomTaskForRank(rank);
+                    if (randomTask != null) {
+                        String channelEnvName = rank.toUpperCase() + "_CHANNEL_ID";
+                        String targetChannelId = System.getenv(channelEnvName);
+                        
+                        if (targetChannelId != null && !targetChannelId.isBlank()) {
+                            TextChannel rankChannel = jda.getTextChannelById(targetChannelId);
+                            if (rankChannel != null) {
+                                rankChannel.sendMessage("# 🔥 [TEST DROP] ✦ MONTHLY RANK TASK ✦\n" + randomTask).queue();
+                                droppedCount++;
+                            }
+                        }
+                    }
+                }
+                event.getHook().sendMessage(" **Live Fire Task Test Complete!** Successfully dropped random tasks into **" + droppedCount + "** rank channels.").queue();
+                return;
+            } 
+            
+            else if (type.equals("sweep")) {
+                StringBuilder log = new StringBuilder(" **Live Fire Activity Sweep Simulation (Dry Run)**\nScanning server members...\n");
+                
+                Guild guild = event.getGuild();
+                if (guild != null) {
+                    String hiatusRoleId = System.getenv("HIATUS_ROLE_ID");
+                    Role hiatusRole = hiatusRoleId != null ? guild.getRoleById(hiatusRoleId) : null;
+
+                    guild.loadMembers().onSuccess(members -> {
+                        int checked = 0;
+                        int flagged = 0;
+
+                        for (net.dv8tion.jda.api.entities.Member member : members) {
+                            if (member.getUser().isBot()) continue;
+
+                            boolean isOfficial = member.getRoles().stream()
+                                    .anyMatch(r -> officialRanks.contains(r.getName()));
+
+                            if (!isOfficial) continue;
+                            checked++;
+
+                            if (hiatusRole != null && member.getRoles().contains(hiatusRole)) {
+                                continue; 
+                            }
+
+                            long lastTask = db.getLastTaskDate(member.getId());
+                            long thirtyDaysAgo = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30);
+
+                            if (lastTask < thirtyDaysAgo) {
+                                flagged++;
+                            }
+                        }
+                        
+                        System.out.println(" Live Fire Sweep Finished: Checked " + checked + " official members. Flagged " + flagged + " for inactivity.");
+                    });
+                }
+                
+                event.getHook().sendMessage("✅ **Activity Sweep Simulation Executed!** Check your bot's console terminal for the detailed scan results and flagged member counts.").queue();
+                return;
+            } 
+            
+            else {
+                event.getHook().sendMessage("❌ Invalid type! Please choose either `tasks` or `sweep`.").queue();
+                return;
+            }
+        }
+
         if (event.getName().equals("syncschedule")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply(" Director clearance required.").setEphemeral(true).queue(); return;
