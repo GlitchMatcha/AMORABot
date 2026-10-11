@@ -725,6 +725,16 @@ public class CommandListener extends ListenerAdapter {
     @Override
     public void onModalInteraction(net.dv8tion.jda.api.events.interaction.ModalInteractionEvent event) {
 
+        if (event.getModalId().startsWith("modal_taskbank_")) {
+            String rank = event.getModalId().substring("modal_taskbank_".length());
+            String content = event.getValue("task_content").getAsString();
+            
+            DatabaseManager.getInstance().addTaskToBank(rank, content);
+            
+            event.reply(" **Task successfully added to the " + rank + " Task Bank!** The bot will now include this in its random monthly selections.").setEphemeral(true).queue();
+            return;
+        }
+
         if (event.getModalId().endsWith("_app_modal")) {
             event.deferReply(true).queue();
             
@@ -734,6 +744,71 @@ public class CommandListener extends ListenerAdapter {
             EmbedBuilder appEmbed = new EmbedBuilder().setColor(Color.decode("#FF5FA2"));
             User user = event.getUser();
             
+            // --- 💸 ROBUX CASHOUT PROCESSOR ---
+        if (event.getModalId().equals("modal_cashout")) {
+            String amountStr = event.getValue("cashout_amount").getAsString();
+            String robloxName = event.getValue("cashout_roblox").getAsString();
+            
+            int amountToCashout;
+            try { amountToCashout = Integer.parseInt(amountStr); } catch (Exception e) {
+                event.reply("❌ Invalid amount entered.").setEphemeral(true).queue(); return;
+            }
+
+            DatabaseManager db = DatabaseManager.getInstance();
+            int currentPoints = db.getPoints(event.getUser().getId());
+
+            if (amountToCashout < 500 || amountToCashout > currentPoints) {
+                event.reply("❌ You either entered less than 500, or you don't have enough Points!").setEphemeral(true).queue(); return;
+            }
+
+            db.updatePoints(event.getUser().getId(), currentPoints - amountToCashout);
+
+            int robuxEquivalent = amountToCashout / 10; 
+
+            String orderId = System.getenv("ORDER_CHANNEL_ID");
+            if (orderId != null) {
+                TextChannel ordersChannel = event.getGuild().getTextChannelById(orderId);
+                if (ordersChannel != null) {
+                    EmbedBuilder ticket = new EmbedBuilder()
+                        .setColor(new Color(50, 205, 50))
+                        .setTitle("💸 ROBUX CASHOUT REQUEST 💸")
+                        .setDescription(event.getUser().getAsMention() + " has requested a cashout!")
+                        .addField("Points Deducted", "`" + amountToCashout + " Points`", true)
+                        .addField("Robux Owed", "`" + robuxEquivalent + " R$`", true)
+                        .addField("Roblox Username", "`" + robloxName + "`", false)
+                        .setFooter("Directors: Process via Group Payout", null);
+                    ordersChannel.sendMessageEmbeds(ticket.build()).queue();
+                }
+            }
+            event.reply(" **Cashout Request Sent!** `" + amountToCashout + " Points` have been deducted from your balance. The Directors will process your Robux payout shortly!").setEphemeral(true).queue();
+            return;
+        }
+
+        if (event.getModalId().equals("modal_comp")) {
+            String whyJoin = event.getValue("comp_why").getAsString();
+            String pastExp = event.getValue("comp_exp").getAsString();
+            
+            String hrLogId = System.getenv("MEMBER_APP_CATEGORY_ID"); 
+            if (hrLogId != null) {
+                net.dv8tion.jda.api.entities.channel.concrete.Category hrCategory = event.getGuild().getCategoryById(hrLogId);
+                if (hrCategory != null && !hrCategory.getTextChannels().isEmpty()) {
+                    TextChannel hrChannel = hrCategory.getTextChannels().get(0); 
+                    
+                    EmbedBuilder compEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 215, 0))
+                        .setTitle(" NEW AM0RIX AUDITION")
+                        .setDescription(event.getUser().getAsMention() + " has applied for the Comp Team!")
+                        .addField("Why do you want to join?", whyJoin, false)
+                        .addField("Past Experience:", pastExp, false)
+                        .setThumbnail(event.getUser().getEffectiveAvatarUrl());
+                        
+                    hrChannel.sendMessageEmbeds(compEmbed.build()).queue();
+                }
+            }
+            event.reply("✅ **Audition Submitted!** The Head Staff will review your application and contact you soon!").setEphemeral(true).queue();
+            return;
+        }
+
             if (event.getModalId().equals("member_app_modal")) {
                 categoryId = System.getenv("MEMBER_APP_CATEGORY_ID");
                 channelPrefix = "🎀・official-";
@@ -1390,6 +1465,133 @@ public class CommandListener extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         db.incrementGlobalStat("global_commands_used", 1);
         
+        if (event.getName().equals("syncschedule")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply(" Director clearance required.").setEphemeral(true).queue(); return;
+            }
+            
+            String msgId = event.getOption("message_id").getAsString();
+            event.deferReply(true).queue();
+
+            event.getChannel().retrieveMessageById(msgId).queue(msg -> {
+                String content = msg.getContentRaw();
+                String[] daysOfWeek = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+                int tasksFound = 0;
+
+                for (int i = 0; i < 7; i++) {
+                    String day = daysOfWeek[i];
+                    int dayIndex = i + 1; // 1 = Mon, 7 = Sun
+                    
+                    int startIdx = content.indexOf("〈 " + day + " 〉");
+                    if (startIdx == -1) continue;
+                    
+                    int endIdx = content.length();
+                    if (i < 6) {
+                        int nextIdx = content.indexOf("〈 " + daysOfWeek[i+1] + " 〉");
+                        if (nextIdx != -1) endIdx = nextIdx;
+                    }
+
+                    String dayBlock = content.substring(startIdx, endIdx);
+                    
+                    Matcher m = Pattern.compile("\\*\\*(.*?):\\*\\*\\s*<@!?(\\d+)>").matcher(dayBlock);
+                    while (m.find()) {
+                        String taskName = m.group(1).trim();
+                        String taskUserId = m.group(2).trim();
+                        DatabaseManager.getInstance().saveScheduleTask(dayIndex, taskName, taskUserId);
+                        tasksFound++;
+                    }
+                }
+
+                event.getHook().sendMessage(" **Schedule Synced Successfully!**\nI scanned the message and memorized **" + tasksFound + "** assigned tasks. I will now automatically drop daily reminders for the staff!").queue();
+            }, error -> {
+                event.getHook().sendMessage(" Could not find that message. Make sure you run this command in the exact same channel where the schedule was posted!").queue();
+            });
+            return;
+        }
+
+        if (event.getName().equals("taskbank")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+            
+            String rank = event.getOption("rank").getAsString();
+            
+            net.dv8tion.jda.api.interactions.components.text.TextInput taskContent = net.dv8tion.jda.api.interactions.components.text.TextInput.create("task_content", "Paste the full Task Format here:", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH)
+                .setPlaceholder("e.g. # ⋱ ଘ FLARE TASK ഒ ⋰\nHello Flare lovelies...")
+                .setRequired(true)
+                .build();
+                
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("modal_taskbank_" + rank, "Add " + rank + " Task to Bank")
+                .addActionRow(taskContent).build();
+                
+            event.replyModal(modal).queue();
+            return;
+        }
+
+        if (event.getName().equals("toggleapps")) {
+            String hrRoleIdRaw = System.getenv("HR_ROLE_ID");
+            boolean isHR = event.getMember().hasPermission(Permission.ADMINISTRATOR);
+            if (!isHR && hrRoleIdRaw != null && !hrRoleIdRaw.isBlank()) {
+                for (String id : hrRoleIdRaw.split(",")) {
+                    if (event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(id.trim()))) {
+                        isHR = true; 
+                        break;
+                    }
+                }
+            }
+            
+            if (!isHR) {
+                event.reply(" **Access Denied:** Only HR and Directors can toggle applications!").setEphemeral(true).queue();
+                return;
+            }
+
+            String currentState = db.getBotState("member_apps_open");
+            boolean isCurrentlyOpen = (currentState == null || currentState.equals("true"));
+            
+            if (isCurrentlyOpen) {
+                db.setBotState("member_apps_open", "false");
+                event.reply(" **AM0RA Applications are now CLOSED.**\nAnyone clicking the Official Member button will receive a closed notice.").queue();
+            } else {
+                db.setBotState("member_apps_open", "true");
+                event.reply(" **AM0RA Applications are now OPEN.**\nUsers can submit applications normally again!").queue();
+            }
+            return;
+        }
+
+        if (event.getName().equals("amorahub")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Director clearance required.").setEphemeral(true).queue();
+                return;
+            }
+
+            String hubText = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n" +
+                             "  ୨ ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐌𝐄𝐌𝐁𝐄𝐑 𝐇𝐔𝐁 ꒱ ୧\n" +
+                             "˚｡౨ *Manage your career and earnings below.* ৎ .﹡\n\n" +
+                             " **Cashout Robux:** Convert your Points into real Robux.\n" +
+                             " **Comp Team:** Apply for the Elite Competition Team.\n" +
+                             " **Hiatus / LOA:** Request an official break to avoid inactivity strikes.\n" +
+                             " **My Status:** Check your Rank Multiplier and Activity Strikes.\n\n" +
+                             "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
+
+            EmbedBuilder hubEmbed = new EmbedBuilder()
+                .setColor(Color.decode("#FF5FA2"))
+                .setDescription(hubText);
+
+            event.getChannel().sendMessageEmbeds(hubEmbed.build())
+                .addActionRow(
+                    Button.success("hub_cashout", " Cashout Robux"),
+                    Button.primary("hub_comp", " Apply for Comp Team")
+                )
+                .addActionRow(
+                    Button.secondary("hub_hiatus", " Request Hiatus"),
+                    Button.secondary("hub_status", " Check My Status")
+                ).queue();
+
+            event.reply(" Hub deployed!").setEphemeral(true).queue();
+            return;
+        }
+
         if (event.getName().equals("agepanel")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
                 event.reply("❌ Administrator permissionsrequired.").setEphemeral(true).queue();
@@ -3381,14 +3583,54 @@ public class CommandListener extends ListenerAdapter {
         String componentId = event.getComponentId();
         DatabaseManager db = DatabaseManager.getInstance();
 
+        if (componentId.equals("hub_status")) {
+            int points = db.getPoints(event.getUser().getId());
+            
+            int strikes = 0;
+            try (java.sql.PreparedStatement pstmt = db.ensureConnected().prepareStatement("SELECT activity_strikes FROM users WHERE user_id = ?")) {
+                pstmt.setString(1, event.getUser().getId());
+                java.sql.ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) strikes = rs.getInt("activity_strikes");
+            } catch (Exception ignored) {}
+
+            event.reply("📊 **YOUR AMORA STATUS:**\n\n" +
+                        "💰 **Balance:** `" + points + " Points`\n" +
+                        "⚠️ **Activity Strikes:** `" + strikes + "/3` (3 Strikes = Demotion)\n\n" +
+                        "*Remember to attend at least 2 trainings a month to avoid strikes!*")
+                 .setEphemeral(true).queue();
+            return;
+        }
+
+        if (componentId.equals("hub_cashout")) {
+            int points = DatabaseManager.getInstance().getPoints(event.getUser().getId());
+            if (points < 500) {
+                event.reply("❌ You need a minimum of **500 Points** to cash out! Keep attending trainings!").setEphemeral(true).queue();
+                return;
+            }
+
+            net.dv8tion.jda.api.interactions.components.text.TextInput amountInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("cashout_amount", "Points to Cashout (Min 500)", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g. 500").setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput robloxUser = net.dv8tion.jda.api.interactions.components.text.TextInput.create("cashout_roblox", "Your Exact Roblox Username", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("For group payout").setRequired(true).build();
+
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("modal_cashout", "Robux Exchange")
+                .addActionRow(amountInput).addActionRow(robloxUser).build();
+
+            event.replyModal(modal).queue();
+            return;
+        }
+
+        if (componentId.equals("hub_hiatus")) {
+            event.reply(" **Hiatus Requests:** Please use the official Hiatus bot in <#YOUR_HIATUS_CHANNEL_ID> to log your leave of absence. AMORA will automatically detect your hiatus role and freeze your activity strikes!")
+                 .setEphemeral(true).queue();
+            return;
+        }
         if (componentId.equals("role_minor")) {
             String minorRoleId = System.getenv("MINOR_ROLE_ID");
             String adultRoleId = System.getenv("ADULT_ROLE_ID");
             if (minorRoleId == null || minorRoleId.isBlank()) {
-                event.reply("⚠️ `MINOR_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                event.reply(" `MINOR_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
                 return;
             }
-
+            
             event.deferReply(true).queue();
             Guild guild = event.getGuild();
             net.dv8tion.jda.api.entities.Role minorRole = guild.getRoleById(minorRoleId);
@@ -3407,6 +3649,25 @@ public class CommandListener extends ListenerAdapter {
             }
             return;
         }
+        if (componentId.equals("hub_comp")) {
+            boolean isEligible = event.getMember().getRoles().stream()
+                .anyMatch(r -> java.util.Arrays.asList("Neon", "Pulse", "Prism", "Supernova", "AM0RIX").contains(r.getName()));
+            
+            if (!isEligible) {
+                event.reply(" **Access Denied:** You must be at least **Neon** rank to apply for **AM0RIX** (The Competitive Team)! Keep working hard and ranking up!").setEphemeral(true).queue();
+                return;
+            }
+            
+            net.dv8tion.jda.api.interactions.components.text.TextInput whyComp = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comp_why", "Why do you want to join AM0RIX?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            net.dv8tion.jda.api.interactions.components.text.TextInput compExp = net.dv8tion.jda.api.interactions.components.text.TextInput.create("comp_exp", "Past Comp/Dance Experience?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setRequired(true).build();
+            
+            net.dv8tion.jda.api.interactions.modals.Modal modal = net.dv8tion.jda.api.interactions.modals.Modal.create("modal_comp", "AM0RIX Team Audition")
+                .addActionRow(whyComp).addActionRow(compExp).build();
+                
+            event.replyModal(modal).queue();
+            return;
+        }
+            
 
         if (componentId.equals("role_adult")) {
             User user = event.getUser();
@@ -3767,9 +4028,15 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
                 
-                net.dv8tion.jda.api.interactions.components.text.TextInput typeInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_type", "Comp or General?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., Comp").setRequired(true).build();
+                String appsState = db.getBotState("member_apps_open");
+                if ("false".equals(appsState)) {
+                    event.reply(" **Applications are currently CLOSED!**\nWe are not accepting new Official Member applications at this time. Please choose the Visitor role for now and keep an eye on announcements! 🎀").setEphemeral(true).queue();
+                    return;
+                }
+                
+                net.dv8tion.jda.api.interactions.components.text.TextInput typeInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_type", "Comp or General?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., AM0RIX (Comp) or AM0RA (General)").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput tzInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_timezone", "What is your timezone?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("e.g., EST, GMT+7, PST").setRequired(true).build();
-                net.dv8tion.jda.api.interactions.components.text.TextInput whyInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_why", "Why do you want to join AMORA?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setPlaceholder("Tell us a little bit about yourself!").setRequired(true).build();
+                net.dv8tion.jda.api.interactions.components.text.TextInput whyInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_why", "Why do you want to join AM0RA?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.PARAGRAPH).setPlaceholder("Tell us a little bit about yourself!").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput rulesInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_rules", "Agree to server rules?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Yes").setRequired(true).build();
                 net.dv8tion.jda.api.interactions.components.text.TextInput altInput = net.dv8tion.jda.api.interactions.components.text.TextInput.create("app_alt", "Main Account & No Dual-Ent?", net.dv8tion.jda.api.interactions.components.text.TextInputStyle.SHORT).setPlaceholder("Yes. Main account, not official elsewhere.").setRequired(true).build();
 
@@ -3893,6 +4160,15 @@ public class CommandListener extends ListenerAdapter {
         if (componentId.startsWith("smartbuy_")) {
             String[] parts = componentId.split("_", 4);
             int price = Integer.parseInt(parts[1]);
+            
+            int originalPrice = price;
+            boolean hasDiscount = event.getMember().getRoles().stream()
+                .anyMatch(r -> java.util.Arrays.asList("Prism", "Supernova", "AM0RIX").contains(r.getName()));
+                
+            if (hasDiscount) {
+                price = (int) Math.round(originalPrice * 0.80);
+            }
+
             String stockData = parts[2];
             String itemName = decodeItem(parts[3]);
             String clickerId = event.getUser().getId();
@@ -3929,7 +4205,8 @@ public class CommandListener extends ListenerAdapter {
                     currentStock--;
                     
                     String newStockData = String.valueOf(currentStock);
-                    String newBuyId = "smartbuy_" + price + "_" + newStockData + "_" + parts[3];
+                    // CRITICAL: We use originalPrice here so the button doesn't permanently discount itself!
+                    String newBuyId = "smartbuy_" + originalPrice + "_" + newStockData + "_" + parts[3]; 
                     
                     MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
                     EmbedBuilder updatedEmbed = new EmbedBuilder(oldEmbed);
@@ -3943,7 +4220,7 @@ public class CommandListener extends ListenerAdapter {
                     } else {
                         updatedEmbed.setDescription(oldEmbed.getDescription().replaceAll("Only \\d+ Left!", "Only " + currentStock + " Left!"));
                         event.getMessage().editMessageEmbeds(updatedEmbed.build())
-                             .setActionRow(Button.success(newBuyId, "🛒 Purchase • " + price + " PTS (" + currentStock + " Left)"))
+                             .setActionRow(Button.success(newBuyId, "🛒 Purchase • " + originalPrice + " PTS (" + currentStock + " Left)"))
                              .queue();
                     }
                 } else {
@@ -3952,6 +4229,7 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
+            // 🚨 CONSTRUCT THE CHECKOUT EMBED WITH THE DISCOUNT RECEIPT
             EmbedBuilder checkoutEmbed = new EmbedBuilder()
                     .setColor(new Color(255, 182, 193)) 
                     .setTitle("✦ SECURE CHECKOUT COMPLETE ✦")
@@ -3962,6 +4240,11 @@ public class CommandListener extends ListenerAdapter {
                                     "> " + secretDelivery + "\n\n" +
                                     "*(Please copy this data now! A backup receipt will also be sent to your DMs if they are open.)*")
                     .setFooter("AM0RA Secure Commerce System", null);
+
+            // Show the VIP receipt!
+            if (hasDiscount) {
+                checkoutEmbed.addField("👑 VIP Discount Applied!", "Original: `" + originalPrice + " PTS` ➔ Paid: `" + price + " PTS` (20% Off)", false);
+            }
 
             event.getHook().sendMessageEmbeds(checkoutEmbed.build()).queue();
 
