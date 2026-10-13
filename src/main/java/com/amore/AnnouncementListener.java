@@ -110,7 +110,6 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
                 
-                if (thread != null) thread.addThreadMember(jda.getUserById(userId)).queue(null, err->{});
             } else {
                 if (!partyField.contains(userId)) return;
                 String[] users = partyField.split("\n");
@@ -125,7 +124,6 @@ public class AnnouncementListener extends ListenerAdapter {
                 if (partyField.isEmpty()) partyField = "None";
                 currentSlots--;
                 
-                if (thread != null) thread.removeThreadMember(jda.getUserById(userId)).queue(null, err->{});
             }
 
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
@@ -532,7 +530,8 @@ public class AnnouncementListener extends ListenerAdapter {
         builder.addActionRow(
                 Button.success("qjoin_" + audience, "✋ Join"),
                 Button.danger("qleave_button", "⭕ Leave"),
-                Button.secondary("alert_party", " Alert the Current Team ")
+                Button.secondary("alert_party", " Alert the Current Team "),
+                Button.primary("view_board", "📋 Event Board") // 🚨 NEW BUTTON ADDED HERE
         );
         builder.addActionRow(
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, " Edit Details"),
@@ -595,6 +594,47 @@ public class AnnouncementListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+
+        if (buttonId.equals("view_board")) {
+            event.deferReply(true).queue(hook -> {
+                event.getChannel().getIterableHistory().takeAsync(50).thenAccept(messages -> {
+                    EmbedBuilder boardEmbed = new EmbedBuilder()
+                        .setTitle(" AMORA LIST OF ACTIVE EVENTS BOARD")
+                        .setColor(new Color(255, 182, 193));
+                    
+                    StringBuilder desc = new StringBuilder("Here is a summary of all active events currently open for you to join & check!:\n\n");
+                    int count = 0;
+                    
+                    for (Message msg : messages) {
+                        if (msg.getEmbeds().isEmpty()) continue;
+                        MessageEmbed em = msg.getEmbeds().get(0);
+                        String title = em.getTitle();
+                        
+                        if (title != null && !title.startsWith("✅") && !title.startsWith("🔒") && em.getFooter() != null && em.getFooter().getText().contains("Time:")) {
+                            
+                            String host = "Unknown";
+                            Matcher mHost = Pattern.compile("(?i)(?:𝐓𝐫𝐚𝐢𝐧𝐞𝐫|𝐇𝐨𝐬𝐭)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(msg.getContentRaw());
+                            if (mHost.find()) host = mHost.group(1).trim();
+
+                            String time = "Unknown Time";
+                            Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(em.getFooter().getText());
+                            if (mTime.find()) time = mTime.group(1).trim();
+                            
+                            desc.append("🔹 **[").append(title).append("](").append(msg.getJumpUrl()).append(")**\n");
+                            desc.append("👤 **Host:** ").append(host).append(" | 🕒 **Time:** ").append(time).append("\n\n");
+                            count++;
+                        }
+                    }
+                    
+                    if (count == 0) desc.append("_There are no active events at the moment!_");
+                    
+                    boardEmbed.setDescription(desc.toString());
+                    hook.sendMessageEmbeds(boardEmbed.build()).queue();
+                });
+            });
+            return;
+        }
+
         if (buttonId.startsWith("event_complete:")) {
             if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR)) {
                 event.reply(" Director clearance required to authorize payouts!").setEphemeral(true).queue();
@@ -821,10 +861,12 @@ public class AnnouncementListener extends ListenerAdapter {
             }
             
             event.editMessageEmbeds(closedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
+            
+            message.delete().queueAfter(2, TimeUnit.HOURS);
 
             ThreadChannel thread = event.getGuild().getThreadChannelById(message.getId());
             if (thread != null) {
-                thread.sendMessage("🔒 **Event Concluded/Cancelled:** This quest thread has been officially closed by Staff without payouts.").queue(
+                thread.sendMessage("🔒 **Event Concluded/Cancelled:** This quest thread has been officially closed by Staff without payouts.\n\n*(🗑️ **WARNING:** This ticket and thread will auto-delete in exactly 2 hours to keep the schedules channel clean!)*").queue(
                     success -> thread.getManager().setLocked(true).setArchived(true).queue()
                 );
             }
@@ -972,8 +1014,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
                 
-                ThreadChannel thread = event.getMessage().getStartedThread();
-                if (thread != null) thread.addThreadMember(event.getUser()).queue(null, err -> {});
+                
                 
             } else {
                 if (!partyField.contains(userId)) {
@@ -991,9 +1032,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = newParty.toString();
                 if (partyField.isEmpty()) partyField = "None";
                 currentSlots--;
-                
-                ThreadChannel thread = event.getMessage().getStartedThread();
-                if (thread != null) thread.removeThreadMember(event.getUser()).queue(null, err -> {});
+            
             }
 
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
@@ -1359,7 +1398,9 @@ public class AnnouncementListener extends ListenerAdapter {
             }
             completedEmbed.addField(" EVENT FINISHED!", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
 
-            startMsg.editMessageEmbeds(completedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
+            startMsg.editMessageEmbeds(completedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
+                msg.delete().queueAfter(2, TimeUnit.HOURS);
+            });
 
             ThreadChannel thread = startMsg.getStartedThread();
             if (thread != null) {
@@ -1368,7 +1409,7 @@ public class AnnouncementListener extends ListenerAdapter {
                     success -> thread.getManager().setLocked(true).setArchived(true).queue()
                 );
             } else {
-                hook.sendMessage("✅ Payout processing complete!").queue();
+                hook.sendMessage(" Payout processing complete!").queue();
             }
         }, error -> hook.sendMessage("❌ Error fetching the event message.").queue());
     }
