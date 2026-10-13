@@ -1160,20 +1160,21 @@ public class AnnouncementListener extends ListenerAdapter {
                                   String defaultHost, String defaultTime, String defaultExtra, String defaultSlots, String defaultReward) {
         
         TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. @Matcha or Username").setRequired(true);
+                .setPlaceholder("Example: @Matcha or Username").setRequired(true);
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
         if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
-        TextInput.Builder timeBuilder = TextInput.create("input_time", "Time (Date Time Timezone)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 2026-10-15 20:00 GMT+7 or 8:00 PM GMT+5:30").setRequired(true);
+        TextInput.Builder timeBuilder = TextInput.create("input_time", "Date & Time (Include Timezone!) Follow The Format: yyyy-mm-dd hh:mm timezone", TextInputStyle.SHORT)
+                .setPlaceholder("Example: 2026-10-15 20:00 GMT+7 (or 8:00 PM EST)").setRequired(true);
         if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
 
         TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Capacity (Min / Max)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 2 / 10 (Min 2, Max 10) or 2 / Unlimited").setRequired(true);
+                .setPlaceholder("Example: Min 2 Max 10 (or just 2 / Unlimited)").setRequired(true);
         if (!defaultSlots.isBlank()) slotsBuilder.setValue(defaultSlots);
 
+        // Ghi chú rõ chỉ cần nhập số
         TextInput.Builder rewardBuilder = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 50").setRequired(true);
+                .setPlaceholder("Example: 50 (Just type the number)").setRequired(true);
         if (!defaultReward.isBlank()) rewardBuilder.setValue(defaultReward);
 
         Modal.Builder modal = Modal.create(idPrefix + type + ":" + audience + ":" + urgency, title);
@@ -1181,19 +1182,23 @@ public class AnnouncementListener extends ListenerAdapter {
         modal.addActionRow(timeBuilder.build());
 
         if (type.equals("game")) {
-            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true);
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Games", TextInputStyle.SHORT).setRequired(true)
+                .setPlaceholder("Example: Roblox Uno, Gartic Phone, etc.");
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
             modal.addActionRow(extraBuilder.build());
         } else if (type.equals("fashion") || type.equals("training_comp")) {
-            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true);
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Theme", TextInputStyle.SHORT).setRequired(true)
+                .setPlaceholder("Example: Cyberpunk, Y2K, Fairycore...");
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
             modal.addActionRow(extraBuilder.build());
         } else if (type.equals("training")) {
-            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server & Type (e.g. VIP - Lyrics)", TextInputStyle.SHORT).setRequired(true);
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server & Type", TextInputStyle.SHORT).setRequired(true)
+                .setPlaceholder("Example: VIP Server - Basic Lyrics");
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
             modal.addActionRow(extraBuilder.build());
         } else if (!type.equals("movie")) {
-            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true);
+            TextInput.Builder extraBuilder = TextInput.create("input_extra", "Server", TextInputStyle.SHORT).setRequired(true)
+                .setPlaceholder("Example: VIP Server link or name");
             if (!defaultExtra.isBlank()) extraBuilder.setValue(defaultExtra);
             modal.addActionRow(extraBuilder.build());
         }
