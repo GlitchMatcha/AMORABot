@@ -596,11 +596,11 @@ public class AnnouncementListener extends ListenerAdapter {
 
                         String notificationMessage = aestheticHeader + 
                             "\n\n🔗 **>> [CLICK HERE TO VIEW QUEST DETAILS](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n" +
-                            "*(React below or click Instant RSVP to join the party directly!)*\n\n" +
+                            "*(React below or click the Raising Hand Emoji to join the party directly!)*\n\n" +
                             pingMention + " . 00 . > Amora < . <3.";
 
                         net.dv8tion.jda.api.interactions.components.buttons.Button joinBtn = 
-                            Button.success("sjoin_" + forumPost.getThreadChannel().getId() + ":" + audience, "✋ Instant RSVP");
+                            Button.success("sjoin_" + forumPost.getThreadChannel().getId() + ":" + audience, "✋ Join");
                         net.dv8tion.jda.api.interactions.components.buttons.Button leaveBtn = 
                             Button.danger("sleave_" + forumPost.getThreadChannel().getId(), "⭕ Leave");
 
@@ -951,7 +951,6 @@ public class AnnouncementListener extends ListenerAdapter {
             event.replyModal(buildEventModal("modal_edit:", "Edit Event", type, audience, urgency, host, timeStr, extra, slots, rewardStr)).queue();
             return;
         }
-        // --- ⚡ INSTANT RSVP BUTTONS DIRECTLY FROM SCHEDULES CHANNEL ---
         if (buttonId.startsWith("sjoin_") || buttonId.startsWith("sleave_")) {
             boolean isJoining = buttonId.startsWith("sjoin_");
             String payload = buttonId.replace(isJoining ? "sjoin_" : "sleave_", "");
