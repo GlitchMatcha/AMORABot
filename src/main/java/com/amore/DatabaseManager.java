@@ -261,6 +261,7 @@ public class DatabaseManager {
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN total_ratings INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_prompts ADD COLUMN original_msg_id TEXT;"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS task_bank (id SERIAL PRIMARY KEY, rank_target TEXT, content TEXT);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS event_sync (schedule_msg_id TEXT PRIMARY KEY, thread_id TEXT, rsvp_emoji TEXT, audience TEXT);"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS staff_schedule (day_of_week INTEGER, task_name TEXT, user_id TEXT, PRIMARY KEY (day_of_week, task_name));"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE users ADD COLUMN activity_strikes INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE users ADD COLUMN is_comp INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
@@ -1463,5 +1464,39 @@ public class DatabaseManager {
             }
         } catch (Exception e) { e.printStackTrace(); }
         return tasks;
+    }
+    public void saveEventSync(String scheduleMsgId, String threadId, String rsvpEmoji, String audience) {
+        ensureConnected();
+        String query = "INSERT INTO event_sync (schedule_msg_id, thread_id, rsvp_emoji, audience) VALUES (?, ?, ?, ?) ON CONFLICT (schedule_msg_id) DO UPDATE SET thread_id = EXCLUDED.thread_id, rsvp_emoji = EXCLUDED.rsvp_emoji, audience = EXCLUDED.audience;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, scheduleMsgId);
+            pstmt.setString(2, threadId);
+            pstmt.setString(3, rsvpEmoji);
+            pstmt.setString(4, audience);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public String[] getEventSync(String scheduleMsgId) {
+        ensureConnected();
+        String query = "SELECT thread_id, rsvp_emoji, audience FROM event_sync WHERE schedule_msg_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, scheduleMsgId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new String[]{rs.getString("thread_id"), rs.getString("rsvp_emoji"), rs.getString("audience")};
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return null;
+    }
+
+    public void deleteEventSync(String scheduleMsgId) {
+        ensureConnected();
+        String query = "DELETE FROM event_sync WHERE schedule_msg_id = ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            pstmt.setString(1, scheduleMsgId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
     }
 }

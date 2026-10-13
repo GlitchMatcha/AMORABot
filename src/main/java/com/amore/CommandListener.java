@@ -1475,7 +1475,6 @@ public class CommandListener extends ListenerAdapter {
             String type = event.getOption("type").getAsString().toLowerCase();
             event.deferReply(true).queue();
 
-            // 🚨 FIX: Removed duplicate 'db' declaration here!
             JDA jda = event.getJDA();
             List<String> officialRanks = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
 

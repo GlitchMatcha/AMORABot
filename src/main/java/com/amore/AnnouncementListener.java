@@ -3,6 +3,7 @@ package com.amore;
 import java.awt.Color;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -38,6 +39,100 @@ public class AnnouncementListener extends ListenerAdapter {
 
     private static final ScheduledExecutorService EVENT_SCHEDULER = Executors.newScheduledThreadPool(5);
     private static final Map<String, List<ScheduledFuture<?>>> activeTimers = new ConcurrentHashMap<>();
+
+    @Override
+    public void onMessageReactionAdd(net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent event) {
+        handleScheduleReaction(event.getJDA(), event.getMessageId(), event.getUserId(), event.getMember(), event.getReaction(), true);
+    }
+
+    @Override
+    public void onMessageReactionRemove(net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent event) {
+        handleScheduleReaction(event.getJDA(), event.getMessageId(), event.getUserId(), null, null, false);
+    }
+
+    private void handleScheduleReaction(net.dv8tion.jda.api.JDA jda, String messageId, String userId, net.dv8tion.jda.api.entities.Member member, net.dv8tion.jda.api.entities.MessageReaction reaction, boolean isAdding) {
+        if (userId == null || userId.equals(jda.getSelfUser().getId())) return;
+
+        DatabaseManager db = DatabaseManager.getInstance();
+        String[] syncData = db.getEventSync(messageId);
+        if (syncData == null) return;
+
+        String threadId = syncData[0];
+        String audience = syncData[2];
+
+        ThreadChannel thread = jda.getThreadChannelById(threadId);
+        if (thread == null) return;
+
+        if (isAdding && audience.equals("member")) {
+            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+            if (memberRoleId != null && !memberRoleId.isBlank()) {
+                if (member == null || member.getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
+                    if (reaction != null) reaction.removeReaction(jda.getUserById(userId)).queue();
+                    return;
+                }
+            }
+        }
+
+        thread.retrieveStartMessage().queue(startMsg -> {
+            MessageEmbed embed = startMsg.getEmbeds().get(0);
+            String partyField = "";
+            int currentSlots = 0;
+            int fieldIndex = -1;
+
+            for (int i = 0; i < embed.getFields().size(); i++) {
+                MessageEmbed.Field field = embed.getFields().get(i);
+                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                    partyField = field.getValue();
+                    fieldIndex = i;
+                    break;
+                }
+            }
+
+            if (fieldIndex == -1) return;
+            
+            int minSlots = 0;
+            int maxSlots = 0;
+            if (embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mMin.find()) minSlots = Integer.parseInt(mMin.group(1));
+                Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mMax.find()) maxSlots = Integer.parseInt(mMax.group(1));
+            }
+            
+            if (partyField != null && !partyField.equals("None")) {
+                currentSlots = partyField.split("\n").length;
+            }
+
+            String userMention = "<@" + userId + ">";
+
+            if (isAdding) {
+                if (partyField.contains(userId)) return;
+                if (maxSlots > 0 && currentSlots >= maxSlots) {
+                    if (reaction != null) reaction.removeReaction(jda.getUserById(userId)).queue();
+                    return;
+                }
+                partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
+                currentSlots++;
+            } else {
+                if (!partyField.contains(userId)) return;
+                String[] users = partyField.split("\n");
+                StringBuilder newParty = new StringBuilder();
+                for (String u : users) {
+                    if (!u.contains(userId) && !u.isBlank()) {
+                        if (newParty.length() > 0) newParty.append("\n");
+                        newParty.append(u);
+                    }
+                }
+                partyField = newParty.toString();
+                if (partyField.isEmpty()) partyField = "None";
+                currentSlots--;
+            }
+
+            EmbedBuilder newEmbed = new EmbedBuilder(embed);
+            newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field(buildPartyFieldTitle(currentSlots, minSlots, maxSlots), partyField, false));
+            startMsg.editMessageEmbeds(newEmbed.build()).queue();
+        });
+    }
 
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
@@ -208,6 +303,8 @@ public class AnnouncementListener extends ListenerAdapter {
             return;
         }
     }
+
+
     @Override
     public void onModalInteraction(ModalInteractionEvent event) {
         
@@ -350,25 +447,18 @@ public class AnnouncementListener extends ListenerAdapter {
         String slots = event.getValue("input_slots").getAsString();
         String rawTime = event.getValue("input_time").getAsString().trim();
         
-        String displayTime = rawTime;
-        long unixEpoch = 0;
-        try {
-            String smartTime = rawTime.toUpperCase();
-            smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00");
-            smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00");
-            smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00");
-            smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
+        long unixEpoch = parseEventEpoch(rawTime);
+        String displayTime;
+        long currentEpoch = System.currentTimeMillis() / 1000;
 
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
-            ZonedDateTime zdt = ZonedDateTime.parse(smartTime, formatter);
-            unixEpoch = zdt.toEpochSecond();
+        if (unixEpoch > 0) {
+            if (unixEpoch < currentEpoch - 60) {
+                event.reply("⚠️ **Invalid Time:** The time you entered (`" + rawTime + "`) is in the past! Please enter a future time for this event.").setEphemeral(true).queue();
+                return;
+            }
             displayTime = "<t:" + unixEpoch + ":F>\n` ~ ୨୧ · ` <t:" + unixEpoch + ":R>";
-        } catch (Exception e) {
-            long currentEpoch = System.currentTimeMillis() / 1000;
-        if (unixEpoch > 0 && unixEpoch < currentEpoch - 60) {
-            event.reply(" **Invalid Time:** The time you entered (`" + rawTime + "`) is in the past! Please enter a future time for this event.").setEphemeral(true).queue();
-            return;
-        }
+        } else {
+            // Fallback display if an unparseable text format was entered
             displayTime = "` " + rawTime + " `"; 
         }
         
@@ -376,12 +466,15 @@ public class AnnouncementListener extends ListenerAdapter {
         try { tempReward = Integer.parseInt(event.getValue("input_reward").getAsString().trim()); } catch (Exception ignored) {}
         final int reward = tempReward;
 
-        String extra = event.getValue("input_extra") != null ? event.getValue("input_extra").getAsString() : "";
-        String aestheticHeader = buildTemplateHeader(type, host, displayTime, extra, slots);
+        int[] slotConfig = parseSlotConfig(slots);
+        int minSlots = slotConfig[0];
+        int maxSlots = slotConfig[1];
 
-        int maxSlots = 0;
-        try { maxSlots = Integer.parseInt(slots.trim()); } catch (Exception ignored) {}
-        String slotDisplay = maxSlots <= 0 ? "Unlimited" : String.valueOf(maxSlots);
+        String minHeaderDisplay = (minSlots > 0 ? String.valueOf(minSlots) : "1") + 
+                                  (maxSlots > 0 ? " (Max: " + maxSlots + ")" : " or more");
+
+        String extra = event.getValue("input_extra") != null ? event.getValue("input_extra").getAsString() : "";
+        String aestheticHeader = buildTemplateHeader(type, host, displayTime, extra, minHeaderDisplay);
 
         String partyField = "None";
         int currentSlots = 0;
@@ -403,14 +496,16 @@ public class AnnouncementListener extends ListenerAdapter {
         Color embedColor = urgency.equals("urgent") ? new Color(220, 20, 60) : 
                            audience.equals("member") ? new Color(255, 215, 0) : new Color(255, 69, 0);
 
+        String partyFieldTitle = buildPartyFieldTitle(currentSlots, minSlots, maxSlots);
+
         EmbedBuilder questEmbed = new EmbedBuilder()
                 .setColor(embedColor)
                 .setTitle(displayTitle)
                 .setDescription("💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n" +
                                 (audience.equals("member") ? "\n⚠️ **Role Requirement:** Official Members Only!\n" : "") +
                                 "\n_Click **Join** below to claim your spot in the party!_")
-                .addField("👥 Party [" + currentSlots + "/" + slotDisplay + "]", partyField, false)
-                .setFooter("AMORA Event Directive • Reward embedded: " + reward + " • Time: " + rawTime, null);
+                .addField(partyFieldTitle, partyField, false)
+                .setFooter("AMORA Event Directive • Reward embedded: " + reward + " • Min: " + minSlots + " • Max: " + maxSlots + " • Time: " + rawTime, null);
 
         MessageCreateBuilder builder = new MessageCreateBuilder();
         builder.setContent(aestheticHeader);
@@ -497,18 +592,33 @@ public class AnnouncementListener extends ListenerAdapter {
                         if (textChannel != null || newsChannel != null) {
                             String memberRoleId = System.getenv("MEMBER_ROLE_ID");
                             String pingMention = audience.equals("member") ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") : "@everyone";
-                            
-                            String notificationMessage = aestheticHeader + 
-                                "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n\n" +
-                                pingMention + " . 00 . > Amora < . <3.";
+                            String defaultEmoji = "✋";
 
-                            if (textChannel != null) {
-                                textChannel.sendMessage(notificationMessage).queue();
-                            } else {
-                                newsChannel.sendMessage(notificationMessage).queue();
-                            }
-                            
-                            event.getHook().sendMessage("✅ Event successfully routed!").queue();
+                        String notificationMessage = aestheticHeader + 
+                            "\n\n🔗 **>> [CLICK HERE TO VIEW QUEST DETAILS](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n" +
+                            "*(React below or click Instant RSVP to join the party directly!)*\n\n" +
+                            pingMention + " . 00 . > Amora < . <3.";
+
+                        net.dv8tion.jda.api.interactions.components.buttons.Button joinBtn = 
+                            Button.success("sjoin_" + forumPost.getThreadChannel().getId() + ":" + audience, "✋ Instant RSVP");
+                        net.dv8tion.jda.api.interactions.components.buttons.Button leaveBtn = 
+                            Button.danger("sleave_" + forumPost.getThreadChannel().getId(), "⭕ Leave");
+
+                        java.util.function.Consumer<Message> onScheduleSent = sentMsg -> {
+                            sentMsg.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(defaultEmoji)).queue();
+                            DatabaseManager.getInstance().saveEventSync(sentMsg.getId(), forumPost.getThreadChannel().getId(), defaultEmoji, audience);
+                        };
+
+                        if (textChannel != null) {
+                            textChannel.sendMessage(notificationMessage)
+                                       .addActionRow(joinBtn, leaveBtn)
+                                       .queue(onScheduleSent);
+                        } else {
+                            newsChannel.sendMessage(notificationMessage)
+                                       .addActionRow(joinBtn, leaveBtn)
+                                       .queue(onScheduleSent);
+                        }
+                        event.getHook().sendMessage("✅ Event successfully routed!").queue();
                         } else {
                             event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the target schedules channel!** Check permissions and ID.").queue();
                         }
@@ -530,16 +640,16 @@ public class AnnouncementListener extends ListenerAdapter {
                 return;
             }
             MessageEmbed embed = event.getMessage().getEmbeds().isEmpty() ? null : event.getMessage().getEmbeds().get(0);
+            int minRequired = 0;
+            
             if (embed != null && embed.getFooter() != null && embed.getFooter().getText() != null) {
-                Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(embed.getFooter().getText());
+                String footerText = embed.getFooter().getText();
+                Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(footerText);
                 if (mTime.find()) {
                     try {
                         String rawTime = mTime.group(1).trim();
                         String smartTime = rawTime.toUpperCase();
-                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00");
-                        smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00");
-                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00");
-                        smartTime = smartTime.replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
+                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00").replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00").replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00").replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
                         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
                         long eventEpoch = ZonedDateTime.parse(smartTime, formatter).toEpochSecond();
                         
@@ -549,7 +659,27 @@ public class AnnouncementListener extends ListenerAdapter {
                         }
                     } catch (Exception ignored) {}
                 }
+                // 🚨 Extract Minimum requirement
+                Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(footerText);
+                if (mMin.find()) minRequired = Integer.parseInt(mMin.group(1));
             }
+
+            String quotaWarning = "";
+            if (minRequired > 0 && embed != null) {
+                int currentPartySize = 0;
+                for (MessageEmbed.Field f : embed.getFields()) {
+                    if (f.getName() != null && f.getName().startsWith("👥 Party")) {
+                        if (f.getValue() != null && !f.getValue().equals("None")) {
+                            currentPartySize = f.getValue().split("\n").length;
+                        }
+                        break;
+                    }
+                }
+                if (currentPartySize < minRequired) {
+                    quotaWarning = " **NOTICE:** This event had a minimum requirement of **" + minRequired + "** members, but only **" + currentPartySize + "** attended.\n\n";
+                }
+            }
+
             String[] parts = buttonId.split(":");
             String audience = parts.length > 1 ? parts[1] : "everyone";
             String urgency = parts.length > 2 ? parts[2] : "standard";
@@ -559,7 +689,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setPlaceholder("Select user(s) to EXCLUDE (Optional)...")
                 .setMinValues(1).setMaxValues(25).build();
 
-            event.reply(" **Ready to Complete & Payout!**\nIf you need to exclude anyone (AFK, troll, left early), select them in the dropdown below. If everyone did a great job, just click **Payout Everyone**!")
+            event.reply(quotaWarning + " **Ready to Complete & Payout!**\nIf you need to exclude anyone (AFK, troll, left early), select them in the dropdown below. If everyone did a great job, just click **Payout Everyone**!")
                 .addActionRow(excludeMenu)
                 .addActionRow(Button.success("payout_all_" + event.getMessageId() + ":" + audience + ":" + urgency, "✅ Payout Everyone!"))
                 .setEphemeral(true).queue();
@@ -784,17 +914,24 @@ public class AnnouncementListener extends ListenerAdapter {
             Matcher mExtra = Pattern.compile("(?i)(?:𝐒𝐞𝐫𝐯𝐞𝐫(?: / 𝐓𝐲𝐩𝐞)?|𝐓𝐡𝐞𝐦𝐞|𝐆𝐚𝐦𝐞𝐬)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
             if (mExtra.find()) extra = mExtra.group(1).trim();
 
-            String slots = "";
-            Matcher mSlots = Pattern.compile("(?i)𝐌𝐢𝐧𝐢𝐦𝐮𝐦 𝐀𝐦𝐨𝐮𝐧𝐭 𝐨𝐟 𝐌𝐞𝐦𝐛𝐞𝐫𝐬 𝐍𝐞𝐞𝐝𝐞𝐝\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(content);
-            if (mSlots.find()) slots = mSlots.group(1).trim();
-
             String rewardStr = "0";
             String timeStr = "";
+            String slots = "";
+
             if (embed != null && embed.getFooter() != null && embed.getFooter().getText() != null) {
                 String footerText = embed.getFooter().getText();
                 Matcher mReward = Pattern.compile("Reward embedded:\\s*(\\d+)").matcher(footerText);
                 if (mReward.find()) rewardStr = mReward.group(1);
                 
+                // 🚨 Read saved Min/Max configuration
+                Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(footerText);
+                Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(footerText);
+                int savedMin = mMin.find() ? Integer.parseInt(mMin.group(1)) : 0;
+                int savedMax = mMax.find() ? Integer.parseInt(mMax.group(1)) : 0;
+                if (savedMin > 0 || savedMax > 0) {
+                    slots = savedMin + " / " + (savedMax <= 0 ? "Unlimited" : savedMax);
+                }
+
                 Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(footerText);
                 if (mTime.find()) timeStr = mTime.group(1).trim();
             }
@@ -811,16 +948,112 @@ public class AnnouncementListener extends ListenerAdapter {
                 }
             }
 
-            event.replyModal(buildEventModal("modal_edit:", "Edit Hybrid Event", type, audience, urgency, host, timeStr, extra, slots, rewardStr)).queue();
+            event.replyModal(buildEventModal("modal_edit:", "Edit Event", type, audience, urgency, host, timeStr, extra, slots, rewardStr)).queue();
             return;
         }
+        // --- ⚡ INSTANT RSVP BUTTONS DIRECTLY FROM SCHEDULES CHANNEL ---
+        if (buttonId.startsWith("sjoin_") || buttonId.startsWith("sleave_")) {
+            boolean isJoining = buttonId.startsWith("sjoin_");
+            String payload = buttonId.replace(isJoining ? "sjoin_" : "sleave_", "");
+            String[] parts = payload.split(":");
+            String threadId = parts[0];
+            String audience = parts.length > 1 ? parts[1] : "everyone";
 
+            if (isJoining && audience.equals("member")) {
+                String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                if (memberRoleId != null && !memberRoleId.isBlank()) {
+                    if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
+                        event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
+                        return;
+                    }
+                }
+            }
+
+            ThreadChannel thread = event.getJDA().getThreadChannelById(threadId);
+            if (thread == null) {
+                event.reply(" Could not locate the Quest Board. It may have been closed.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue(hook -> {
+                thread.retrieveStartMessage().queue(startMsg -> {
+                    MessageEmbed embed = startMsg.getEmbeds().get(0);
+                    String partyField = "";
+                    int currentSlots = 0;
+                    int fieldIndex = -1;
+
+                    for (int i = 0; i < embed.getFields().size(); i++) {
+                        MessageEmbed.Field field = embed.getFields().get(i);
+                        if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                            partyField = field.getValue();
+                            fieldIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (fieldIndex == -1) {
+                        hook.sendMessage(" Error: Team data could not be parsed.").queue();
+                        return;
+                    }
+
+                    int minSlots = 0;
+                    int maxSlots = 0;
+                    if (embed.getFooter() != null && embed.getFooter().getText() != null) {
+                        Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                        if (mMin.find()) minSlots = Integer.parseInt(mMin.group(1));
+                        Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                        if (mMax.find()) maxSlots = Integer.parseInt(mMax.group(1));
+                    }
+                    
+                    if (partyField != null && !partyField.equals("None")) {
+                        currentSlots = partyField.split("\n").length;
+                    }
+
+                    String userId = event.getUser().getId();
+                    String userMention = "<@" + userId + ">";
+
+                    if (isJoining) {
+                        if (partyField.contains(userId)) {
+                            hook.sendMessage(" You are already in the team!").queue();
+                            return;
+                        }
+                        if (maxSlots > 0 && currentSlots >= maxSlots) {
+                            hook.sendMessage(" **Team Full:** There are no open slots remaining!").queue();
+                            return;
+                        }
+                        partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
+                        currentSlots++;
+                    } else {
+                        if (!partyField.contains(userId)) {
+                            hook.sendMessage(" You are not in the team!").queue();
+                            return;
+                        }
+                        String[] users = partyField.split("\n");
+                        StringBuilder newParty = new StringBuilder();
+                        for (String u : users) {
+                            if (!u.contains(userId) && !u.isBlank()) {
+                                if (newParty.length() > 0) newParty.append("\n");
+                                newParty.append(u);
+                            }
+                        }
+                        partyField = newParty.toString();
+                        if (partyField.isEmpty()) partyField = "None";
+                        currentSlots--;
+                    }
+
+                    EmbedBuilder newEmbed = new EmbedBuilder(embed);
+                    newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field(buildPartyFieldTitle(currentSlots, minSlots, maxSlots), partyField, false));
+                    startMsg.editMessageEmbeds(newEmbed.build()).queue();
+
+                    hook.sendMessage(isJoining ? " **Matcha confirmed!** You have been added to the team." : " **Matcha canceled!** You have left the team.").queue();
+                }, err -> hook.sendMessage(" Error syncing with the Quest Board.").queue());
+            });
+            return;
+        }
         if (buttonId.startsWith("qjoin_") || buttonId.equals("qleave_button") || buttonId.equals("alert_party")) {
             
             MessageEmbed embed = event.getMessage().getEmbeds().get(0);
             String partyField = "";
-            String slotDisplay = "Unlimited";
-            int maxSlots = 0;
             int currentSlots = 0;
             int fieldIndex = -1;
 
@@ -829,20 +1062,26 @@ public class AnnouncementListener extends ListenerAdapter {
                 if (field.getName() != null && field.getName().startsWith("👥 Party")) {
                     partyField = field.getValue();
                     fieldIndex = i;
-                    
-                    Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
-                    if (m.find()) {
-                        currentSlots = Integer.parseInt(m.group(1));
-                        slotDisplay = m.group(2);
-                        if (!slotDisplay.equals("Unlimited")) maxSlots = Integer.parseInt(slotDisplay);
-                    }
                     break;
                 }
             }
 
             if (fieldIndex == -1) {
-                event.reply("⚠️ Error: Could not read party data.").setEphemeral(true).queue();
+                event.reply(" Error: Could not read party data.").setEphemeral(true).queue();
                 return;
+            }
+
+            int minSlots = 0;
+            int maxSlots = 0;
+            if (embed.getFooter() != null && embed.getFooter().getText() != null) {
+                Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mMin.find()) minSlots = Integer.parseInt(mMin.group(1));
+                Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(embed.getFooter().getText());
+                if (mMax.find()) maxSlots = Integer.parseInt(mMax.group(1));
+            }
+            
+            if (partyField != null && !partyField.equals("None")) {
+                currentSlots = partyField.split("\n").length;
             }
 
             String userId = event.getUser().getId();
@@ -850,11 +1089,11 @@ public class AnnouncementListener extends ListenerAdapter {
 
             if (buttonId.equals("alert_party")) {
                 if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                    event.reply("⚠️ **Access Denied:** Only Staff can manually alert the party!").setEphemeral(true).queue();
+                    event.reply(" **Access Denied:** Only Staff can manually alert the team!").setEphemeral(true).queue();
                     return;
                 }
                 if (partyField.equals("None") || partyField.isEmpty()) {
-                    event.reply("❌ The party is currently empty!").setEphemeral(true).queue();
+                    event.reply(" The team is currently empty!").setEphemeral(true).queue();
                     return;
                 }
                 
@@ -863,40 +1102,38 @@ public class AnnouncementListener extends ListenerAdapter {
                 while (m.find()) pings.append("<@").append(m.group(1)).append("> ");
                 
                 event.getMessage().getChannel().sendMessage(pings.toString()).queue();
-                event.reply(" The party has been successfully alerted!").setEphemeral(true).queue();
+                event.reply(" The team has been successfully alerted!").setEphemeral(true).queue();
                 return;
             }
 
-            if (buttonId.startsWith("qjoin_")) {
-                if (buttonId.equals("qjoin_member")) {
-                    String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                    if (memberRoleId != null && !memberRoleId.isBlank()) {
-                        if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
-                            event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
-                            return;
-                        }
+            boolean isJoining = buttonId.startsWith("qjoin_");
+
+            if (isJoining && buttonId.equals("qjoin_member")) {
+                String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                if (memberRoleId != null && !memberRoleId.isBlank()) {
+                    if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
+                        event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
+                        return;
                     }
                 }
+            }
 
+            if (isJoining) {
                 if (partyField.contains(userId)) {
-                    event.reply("❌ You are already in the party!").setEphemeral(true).queue();
+                    event.reply(" You are already in the team!").setEphemeral(true).queue();
                     return;
                 }
-
                 if (maxSlots > 0 && currentSlots >= maxSlots) {
-                    event.reply(" **Party Full:** There are no slots remaining for this event.").setEphemeral(true).queue();
+                    event.reply(" **Team Full:** There are no slots remaining for this event!").setEphemeral(true).queue();
                     return;
                 }
-
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
-                
-            } else if (buttonId.equals("qleave_button")) {
+            } else {
                 if (!partyField.contains(userId)) {
-                    event.reply("❌ You aren't in the party!").setEphemeral(true).queue();
+                    event.reply(" You aren't in the team!").setEphemeral(true).queue();
                     return;
                 }
-
                 String[] users = partyField.split("\n");
                 StringBuilder newParty = new StringBuilder();
                 for (String u : users) {
@@ -911,28 +1148,28 @@ public class AnnouncementListener extends ListenerAdapter {
             }
 
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
-            newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field("👥 Party [" + currentSlots + "/" + slotDisplay + "]", partyField, false));
+            newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field(buildPartyFieldTitle(currentSlots, minSlots, maxSlots), partyField, false));
             
             event.editMessageEmbeds(newEmbed.build())
                  .setComponents(event.getMessage().getComponents()) 
                  .queue();
+            }
         }
-    }
 
     private Modal buildEventModal(String idPrefix, String title, String type, String audience, String urgency, 
                                   String defaultHost, String defaultTime, String defaultExtra, String defaultSlots, String defaultReward) {
         
         TextInput.Builder hostBuilder = TextInput.create("input_host", "Host / Trainer", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. @Deadcha or Name").setRequired(true);
+                .setPlaceholder("e.g. @Matcha or Username").setRequired(true);
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
         if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
-        TextInput.Builder timeBuilder = TextInput.create("input_time", "Time (yyyy-MM-dd HH:mm Timezone)", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 2026-07-31 20:00 GMT+7").setRequired(true);
+        TextInput.Builder timeBuilder = TextInput.create("input_time", "Time (Date Time Timezone)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 2026-10-15 20:00 GMT+7 or 8:00 PM GMT+5:30").setRequired(true);
         if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
 
-        TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Slots / Min Members", TextInputStyle.SHORT)
-                .setPlaceholder("e.g. 5 or 0 for Unlimited").setRequired(true);
+        TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Capacity (Min / Max)", TextInputStyle.SHORT)
+                .setPlaceholder("e.g. 2 / 10 (Min 2, Max 10) or 2 / Unlimited").setRequired(true);
         if (!defaultSlots.isBlank()) slotsBuilder.setValue(defaultSlots);
 
         TextInput.Builder rewardBuilder = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
@@ -1293,14 +1530,118 @@ public class AnnouncementListener extends ListenerAdapter {
                     }
                 }
 
-                hook.sendMessage("✅ Payout processing complete! Thread locking and archiving...").queue();
-                thread.sendMessage("🏆 **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
+                hook.sendMessage(" Payout processing complete! Thread locking and archiving...").queue();
+                thread.sendMessage(" **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
                     success -> thread.getManager().setLocked(true).setArchived(true).queue()
                 );
             } else {
                 hook.sendMessage("✅ Payout processing complete!").queue();
             }
         }, error -> hook.sendMessage("❌ Error fetching the event message.").queue());
+    }
+    public static long parseEventEpoch(String rawTime) {
+        if (rawTime == null || rawTime.isBlank()) return 0;
+        String text = rawTime.trim();
+
+        try {
+            Matcher dateMatcher = Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})").matcher(text);
+            if (!dateMatcher.find()) return 0;
+            int year = Integer.parseInt(dateMatcher.group(1));
+            int month = Integer.parseInt(dateMatcher.group(2));
+            int day = Integer.parseInt(dateMatcher.group(3));
+
+            Matcher timeMatcher = Pattern.compile("(?i)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?\\s*(am|pm)?").matcher(text);
+            if (!timeMatcher.find()) return 0;
+            int hour = Integer.parseInt(timeMatcher.group(1));
+            int min = Integer.parseInt(timeMatcher.group(2));
+            String ampm = timeMatcher.group(4);
+            if (ampm != null) {
+                if (ampm.equalsIgnoreCase("pm") && hour < 12) hour += 12;
+                else if (ampm.equalsIgnoreCase("am") && hour == 12) hour = 0;
+            }
+
+            ZoneId zoneId = ZoneOffset.UTC;
+            String upper = text.toUpperCase();
+
+            Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(upper);
+            if (offsetMatcher.find()) {
+                String sign = offsetMatcher.group(1);
+                int offsetHours = Integer.parseInt(offsetMatcher.group(2));
+                int offsetMins = 0;
+                if (offsetMatcher.group(3) != null) {
+                    offsetMins = Integer.parseInt(offsetMatcher.group(3));
+                } else if (offsetMatcher.group(4) != null) {
+                    double frac = Double.parseDouble("0." + offsetMatcher.group(4));
+                    offsetMins = (int) Math.round(frac * 60);
+                }
+                if (sign.equals("-")) {
+                    offsetHours = -offsetHours;
+                    offsetMins = -offsetMins;
+                }
+                zoneId = ZoneOffset.ofHoursMinutes(offsetHours, offsetMins);
+            } else if (upper.contains("EST")) zoneId = ZoneOffset.of("-05:00");
+            else if (upper.contains("EDT")) zoneId = ZoneOffset.of("-04:00");
+            else if (upper.contains("CST")) zoneId = ZoneOffset.of("-06:00");
+            else if (upper.contains("CDT")) zoneId = ZoneOffset.of("-05:00");
+            else if (upper.contains("PST")) zoneId = ZoneOffset.of("-08:00");
+            else if (upper.contains("PDT")) zoneId = ZoneOffset.of("-07:00");
+            else if (upper.contains("JST") || upper.contains("KST")) zoneId = ZoneOffset.of("+09:00");
+            else if (upper.contains("ICT")) zoneId = ZoneOffset.of("+07:00");
+            else if (upper.contains("IST")) zoneId = ZoneOffset.of("+05:30");
+            else if (upper.contains("BST") || upper.contains("CET")) zoneId = ZoneOffset.of("+01:00");
+            else if (upper.contains("CEST")) zoneId = ZoneOffset.of("+02:00");
+            else if (upper.contains("AEST")) zoneId = ZoneOffset.of("+10:00");
+
+            ZonedDateTime zdt = ZonedDateTime.of(year, month, day, hour, min, 0, 0, zoneId);
+            return zdt.toEpochSecond();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static int[] parseSlotConfig(String input) {
+        if (input == null || input.isBlank()) return new int[]{0, 0};
+        String s = input.trim();
+
+        int min = 0;
+        int max = 0;
+
+        Matcher minM = Pattern.compile("(?i)min(?:imum)?\\s*[:=]?\\s*(\\d+)").matcher(s);
+        if (minM.find()) min = Integer.parseInt(minM.group(1));
+
+        Matcher maxM = Pattern.compile("(?i)max(?:imum)?\\s*[:=]?\\s*(\\d+)").matcher(s);
+        if (maxM.find()) max = Integer.parseInt(maxM.group(1));
+
+        if (min == 0 && max == 0) {
+            Matcher slashM = Pattern.compile("(\\d+)\\s*(?:/|-|\\s+to\\s+)\\s*(\\d+|unlimited|none|0)?", Pattern.CASE_INSENSITIVE).matcher(s);
+            if (slashM.find()) {
+                min = Integer.parseInt(slashM.group(1));
+                String second = slashM.group(2);
+                if (second != null && !second.equalsIgnoreCase("unlimited") && !second.equalsIgnoreCase("none") && !second.equals("0")) {
+                    try { max = Integer.parseInt(second); } catch (Exception ignored) {}
+                }
+            } else {
+                Matcher single = Pattern.compile("(\\d+)").matcher(s);
+                if (single.find()) {
+                    min = Integer.parseInt(single.group(1));
+                }
+            }
+        }
+
+        return new int[]{min, max};
+    }
+
+    public static String buildPartyFieldTitle(int current, int min, int max) {
+        String maxDisplay = (max <= 0) ? "Unlimited" : String.valueOf(max);
+        StringBuilder sb = new StringBuilder("👥 Party [" + current + "/" + maxDisplay + "]");
+        if (max > 0 && current >= max) {
+            sb.append(" • 🟡 Full");
+        } else if (min > 0 && current >= min) {
+            sb.append(" •  Min Met (" + min + ")");
+        } else if (min > 0) {
+            sb.append(" •  Need " + (min - current) + " more");
+        }
+        return sb.toString();
     }
     
 }
