@@ -1164,8 +1164,9 @@ public class AnnouncementListener extends ListenerAdapter {
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
         if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
-        TextInput.Builder timeBuilder = TextInput.create("input_time", "Date & Time (Include Timezone!) Follow The Format: yyyy-mm-dd hh:mm timezone", TextInputStyle.SHORT)
-                .setPlaceholder("Example: 2026-10-15 20:00 GMT+7 (or 8:00 PM EST)").setRequired(true);
+        // 🚨 FIXED: Label kept under 45 characters. Format guide moved to the placeholder!
+        TextInput.Builder timeBuilder = TextInput.create("input_time", "Date & Time (Include Timezone)", TextInputStyle.SHORT)
+                .setPlaceholder("Format: yyyy-mm-dd hh:mm timezone (e.g. GMT+7)").setRequired(true);
         if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
 
         TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Capacity (Min / Max)", TextInputStyle.SHORT)
