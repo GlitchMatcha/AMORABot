@@ -1164,7 +1164,6 @@ public class AnnouncementListener extends ListenerAdapter {
         if (type.equals("training") || type.equals("training_comp")) hostBuilder.setLabel("Trainer");
         if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
-        // 🚨 FIXED: Label kept under 45 characters. Format guide moved to the placeholder!
         TextInput.Builder timeBuilder = TextInput.create("input_time", "Date & Time (Include Timezone)", TextInputStyle.SHORT)
                 .setPlaceholder("Format: yyyy-mm-dd hh:mm timezone (e.g. GMT+7)").setRequired(true);
         if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
