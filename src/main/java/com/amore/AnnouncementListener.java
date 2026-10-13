@@ -42,26 +42,22 @@ public class AnnouncementListener extends ListenerAdapter {
 
     @Override
     public void onMessageReactionAdd(net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent event) {
-        handleScheduleReaction(event.getJDA(), event.getMessageId(), event.getUserId(), event.getMember(), event.getReaction(), true);
+        handleScheduleReaction(event.getJDA(), event.getChannel(), event.getMessageId(), event.getUserId(), event.getMember(), event.getReaction(), true);
     }
 
     @Override
     public void onMessageReactionRemove(net.dv8tion.jda.api.events.message.react.MessageReactionRemoveEvent event) {
-        handleScheduleReaction(event.getJDA(), event.getMessageId(), event.getUserId(), null, null, false);
+        handleScheduleReaction(event.getJDA(), event.getChannel(), event.getMessageId(), event.getUserId(), null, null, false);
     }
 
-    private void handleScheduleReaction(net.dv8tion.jda.api.JDA jda, String messageId, String userId, net.dv8tion.jda.api.entities.Member member, net.dv8tion.jda.api.entities.MessageReaction reaction, boolean isAdding) {
+    private void handleScheduleReaction(net.dv8tion.jda.api.JDA jda, net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel, String messageId, String userId, net.dv8tion.jda.api.entities.Member member, net.dv8tion.jda.api.entities.MessageReaction reaction, boolean isAdding) {
         if (userId == null || userId.equals(jda.getSelfUser().getId())) return;
 
         DatabaseManager db = DatabaseManager.getInstance();
         String[] syncData = db.getEventSync(messageId);
         if (syncData == null) return;
 
-        String threadId = syncData[0];
         String audience = syncData[2];
-
-        ThreadChannel thread = jda.getThreadChannelById(threadId);
-        if (thread == null) return;
 
         if (isAdding && audience.equals("member")) {
             String memberRoleId = System.getenv("MEMBER_ROLE_ID");
@@ -73,7 +69,7 @@ public class AnnouncementListener extends ListenerAdapter {
             }
         }
 
-        thread.retrieveStartMessage().queue(startMsg -> {
+        channel.retrieveMessageById(messageId).queue(startMsg -> {
             MessageEmbed embed = startMsg.getEmbeds().get(0);
             String partyField = "";
             int currentSlots = 0;
@@ -104,7 +100,7 @@ public class AnnouncementListener extends ListenerAdapter {
             }
 
             String userMention = "<@" + userId + ">";
-
+            ThreadChannel thread = startMsg.getStartedThread();
             if (isAdding) {
                 if (partyField.contains(userId)) return;
                 if (maxSlots > 0 && currentSlots >= maxSlots) {
@@ -113,6 +109,8 @@ public class AnnouncementListener extends ListenerAdapter {
                 }
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
+                
+                if (thread != null) thread.addThreadMember(jda.getUserById(userId)).queue(null, err->{});
             } else {
                 if (!partyField.contains(userId)) return;
                 String[] users = partyField.split("\n");
@@ -126,6 +124,8 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = newParty.toString();
                 if (partyField.isEmpty()) partyField = "None";
                 currentSlots--;
+                
+                if (thread != null) thread.removeThreadMember(jda.getUserById(userId)).queue(null, err->{});
             }
 
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
@@ -133,7 +133,7 @@ public class AnnouncementListener extends ListenerAdapter {
             startMsg.editMessageEmbeds(newEmbed.build()).queue();
         });
     }
-
+    
     @Override
     public void onStringSelectInteraction(StringSelectInteractionEvent event) {
         if (!event.getComponentId().startsWith("menu_fused")) return;
@@ -507,8 +507,26 @@ public class AnnouncementListener extends ListenerAdapter {
                 .addField(partyFieldTitle, partyField, false)
                 .setFooter("AMORA Event Directive • Reward embedded: " + reward + " • Min: " + minSlots + " • Max: " + maxSlots + " • Time: " + rawTime, null);
 
+        // 🚨 CUSTOM PING LOGIC (AMORA, AMORIX, GUEST)
+        String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+        String amorixRoleId = System.getenv("AMORIX_ROLE_ID");
+        String guestRoleId = System.getenv("GUEST_ROLE_ID");
+
+        StringBuilder pingBuilder = new StringBuilder();
+        if (audience.equals("member")) {
+            if (memberRoleId != null && !memberRoleId.isBlank()) pingBuilder.append("<@&").append(memberRoleId).append("> ");
+            if (amorixRoleId != null && !amorixRoleId.isBlank()) pingBuilder.append("<@&").append(amorixRoleId).append("> ");
+            if (pingBuilder.length() == 0) pingBuilder.append("**[Members Only]**");
+        } else {
+            if (memberRoleId != null && !memberRoleId.isBlank()) pingBuilder.append("<@&").append(memberRoleId).append("> ");
+            if (amorixRoleId != null && !amorixRoleId.isBlank()) pingBuilder.append("<@&").append(amorixRoleId).append("> ");
+            if (guestRoleId != null && !guestRoleId.isBlank()) pingBuilder.append("<@&").append(guestRoleId).append("> ");
+            if (pingBuilder.length() == 0) pingBuilder.append("@everyone");
+        }
+        String pingMention = pingBuilder.toString().trim();
+
         MessageCreateBuilder builder = new MessageCreateBuilder();
-        builder.setContent(aestheticHeader);
+        builder.setContent(aestheticHeader + "\n\n" + pingMention + " . 00 . > Amora < . <3.");
         builder.addEmbeds(questEmbed.build());
         
         builder.addActionRow(
@@ -531,103 +549,46 @@ public class AnnouncementListener extends ListenerAdapter {
 
         if (isEdit) {
             event.editMessage(MessageEditData.fromCreateData(builder.build())).queue();
-            
-            String threadId = event.getChannel().getId();
+            String threadId = event.getMessage().getId(); 
             scheduleTimers(threadId, finalUnixEpoch, event.getJDA());
-
-            String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
-            
-            if (targetPingChannelId != null && event.getChannel().getType().isThread()) {
-                TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
-                NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
-
-                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = 
-                        (textChannel != null) ? textChannel : newsChannel;
-
-                if (pingChannel != null) {
-                    String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                    String pingMention = audience.equals("member") 
-                            ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
-                            : "@everyone";
-
-                    String jumpUrl = event.getChannel().asThreadChannel().getJumpUrl();
-                    String updatedNotification = aestheticHeader + 
-                        "\n\n🔗 **>> [CLICK HERE TO RSVP ON THE QUEST BOARD](" + jumpUrl + ") <<**\n\n" +
-                        pingMention + " . 00 . > Amora < . <3.";
-
-                    pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
-                        for (Message msg : messages) {
-                            if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
-                                msg.editMessage(updatedNotification).queue();
-                                break;
-                            }
-                        }
-                    });
-                }
-            }
-            
-            event.getHook().sendMessage("✅ **Event Details Updated:** The Quest Board, Schedules Announcement, and Automated Timers have all been updated.").setEphemeral(true).queue();
-            
+            event.getHook().sendMessage("✅ **Event Details Updated!**").setEphemeral(true).queue();
         } else {
-            String targetForumId = audience.equals("member") && urgency.equals("urgent") ? System.getenv("URGENT_BOUNTY_FORUM_ID") : System.getenv("STANDARD_BOUNTY_FORUM_ID");
-            
+            // 🚨 SINGLE CHANNEL ROUTING (NO MORE FORUMS)
             String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
 
-            if (targetForumId == null || targetPingChannelId == null) {
+            if (targetPingChannelId == null) {
                 event.reply("⚠️ **Routing Error:** Missing Environment Variables! Ensure `MEMBER_SCHEDULE_CHANNEL_ID` and `SCHEDULE_CHANNEL_ID` are set in the .env file.").setEphemeral(true).queue();
                 return;
             }
 
-            ForumChannel targetForum = event.getJDA().getForumChannelById(targetForumId);
-            if (targetForum != null) {
-                event.deferReply(true).queue();
-                
-                targetForum.createForumPost(displayTitle, builder.build()).queue(
-                    forumPost -> {
-                        scheduleTimers(forumPost.getThreadChannel().getId(), finalUnixEpoch, event.getJDA());
+            TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
+            NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
+            net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
 
-                        TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
-                        NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
-
-                        if (textChannel != null || newsChannel != null) {
-                            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                            String pingMention = audience.equals("member") ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") : "@everyone";
-                            String defaultEmoji = "✋";
-
-                        String notificationMessage = aestheticHeader + 
-                            "\n\n🔗 **>> [CLICK HERE TO VIEW QUEST DETAILS](" + forumPost.getThreadChannel().getJumpUrl() + ") <<**\n" +
-                            "*(React below or click the Raising Hand Emoji to join the party directly!)*\n\n" +
-                            pingMention + " . 00 . > Amora < . <3.";
-
-                        net.dv8tion.jda.api.interactions.components.buttons.Button joinBtn = 
-                            Button.success("sjoin_" + forumPost.getThreadChannel().getId() + ":" + audience, "✋ Join");
-                        net.dv8tion.jda.api.interactions.components.buttons.Button leaveBtn = 
-                            Button.danger("sleave_" + forumPost.getThreadChannel().getId(), "⭕ Leave");
-
-                        java.util.function.Consumer<Message> onScheduleSent = sentMsg -> {
-                            sentMsg.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(defaultEmoji)).queue();
-                            DatabaseManager.getInstance().saveEventSync(sentMsg.getId(), forumPost.getThreadChannel().getId(), defaultEmoji, audience);
-                        };
-
-                        if (textChannel != null) {
-                            textChannel.sendMessage(notificationMessage)
-                                       .addActionRow(joinBtn, leaveBtn)
-                                       .queue(onScheduleSent);
-                        } else {
-                            newsChannel.sendMessage(notificationMessage)
-                                       .addActionRow(joinBtn, leaveBtn)
-                                       .queue(onScheduleSent);
-                        }
-                        event.getHook().sendMessage("✅ Event successfully routed!").queue();
-                        } else {
-                            event.getHook().sendMessage("✅ Event created in Forum, but ⚠️ **could not find the target schedules channel!** Check permissions and ID.").queue();
-                        }
-                    },
-                    error -> event.getHook().sendMessage("⚠️ Error creating forum post: " + error.getMessage()).queue()
-                );
-            } else {
-                event.reply("Routing Error: Could not find the target forum channel.").setEphemeral(true).queue();
+            if (pingChannel == null) {
+                event.reply("⚠️ Routing Error: Could not find the target schedules channel!").setEphemeral(true).queue();
+                return;
             }
+
+            event.deferReply(true).queue();
+            
+            pingChannel.sendMessage(builder.build()).queue(
+                msg -> {
+                    // Create a discussion thread explicitly attached to this schedule message
+                    msg.createThreadChannel(displayTitle).queue(thread -> {
+                        scheduleTimers(thread.getId(), finalUnixEpoch, event.getJDA());
+                        
+                        String defaultEmoji = "✋";
+                        msg.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(defaultEmoji)).queue();
+                        DatabaseManager.getInstance().saveEventSync(msg.getId(), thread.getId(), defaultEmoji, audience);
+                        
+                        event.getHook().sendMessage(" Event successfully created successfully into Schedules!").queue();
+                    }, error -> {
+                        event.getHook().sendMessage(" Event posted, but failed to create a discussion thread!").queue();
+                    });
+                }, 
+                error -> event.getHook().sendMessage(" Error creating event: " + error.getMessage()).queue()
+            );
         }
     }
 
@@ -847,7 +808,6 @@ public class AnnouncementListener extends ListenerAdapter {
                 return;
             }
 
-            String audience = buttonId.split(":")[1];
             Message message = event.getMessage();
             MessageEmbed embed = message.getEmbeds().isEmpty() ? null : message.getEmbeds().get(0);
             
@@ -862,28 +822,8 @@ public class AnnouncementListener extends ListenerAdapter {
             
             event.editMessageEmbeds(closedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
 
-            if (event.getChannel().getType().isThread()) {
-                ThreadChannel thread = event.getChannel().asThreadChannel();
-                
-                String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
-                if (targetPingChannelId != null) {
-                    TextChannel textChannel = event.getJDA().getTextChannelById(targetPingChannelId);
-                    NewsChannel newsChannel = event.getJDA().getNewsChannelById(targetPingChannelId);
-                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
-
-                    if (pingChannel != null) {
-                        String jumpUrl = thread.getJumpUrl();
-                        pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
-                            for (Message msg : messages) {
-                                if (msg.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
-                                    msg.editMessage("🔒 **[THIS EVENT WAS CANCELLED/CLOSED]**\n~~" + msg.getContentRaw().replace("~~", "") + "~~").queue();
-                                    break;
-                                }
-                            }
-                        });
-                    }
-                }
-
+            ThreadChannel thread = event.getGuild().getThreadChannelById(message.getId());
+            if (thread != null) {
                 thread.sendMessage("🔒 **Event Concluded/Cancelled:** This quest thread has been officially closed by Staff without payouts.").queue(
                     success -> thread.getManager().setLocked(true).setArchived(true).queue()
                 );
@@ -951,104 +891,7 @@ public class AnnouncementListener extends ListenerAdapter {
             event.replyModal(buildEventModal("modal_edit:", "Edit Event", type, audience, urgency, host, timeStr, extra, slots, rewardStr)).queue();
             return;
         }
-        if (buttonId.startsWith("sjoin_") || buttonId.startsWith("sleave_")) {
-            boolean isJoining = buttonId.startsWith("sjoin_");
-            String payload = buttonId.replace(isJoining ? "sjoin_" : "sleave_", "");
-            String[] parts = payload.split(":");
-            String threadId = parts[0];
-            String audience = parts.length > 1 ? parts[1] : "everyone";
-
-            if (isJoining && audience.equals("member")) {
-                String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                if (memberRoleId != null && !memberRoleId.isBlank()) {
-                    if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
-                        event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
-                        return;
-                    }
-                }
-            }
-
-            ThreadChannel thread = event.getJDA().getThreadChannelById(threadId);
-            if (thread == null) {
-                event.reply(" Could not locate the Quest Board. It may have been closed.").setEphemeral(true).queue();
-                return;
-            }
-
-            event.deferReply(true).queue(hook -> {
-                thread.retrieveStartMessage().queue(startMsg -> {
-                    MessageEmbed embed = startMsg.getEmbeds().get(0);
-                    String partyField = "";
-                    int currentSlots = 0;
-                    int fieldIndex = -1;
-
-                    for (int i = 0; i < embed.getFields().size(); i++) {
-                        MessageEmbed.Field field = embed.getFields().get(i);
-                        if (field.getName() != null && field.getName().startsWith("👥 Party")) {
-                            partyField = field.getValue();
-                            fieldIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (fieldIndex == -1) {
-                        hook.sendMessage(" Error: Team data could not be parsed.").queue();
-                        return;
-                    }
-
-                    int minSlots = 0;
-                    int maxSlots = 0;
-                    if (embed.getFooter() != null && embed.getFooter().getText() != null) {
-                        Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(embed.getFooter().getText());
-                        if (mMin.find()) minSlots = Integer.parseInt(mMin.group(1));
-                        Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(embed.getFooter().getText());
-                        if (mMax.find()) maxSlots = Integer.parseInt(mMax.group(1));
-                    }
-                    
-                    if (partyField != null && !partyField.equals("None")) {
-                        currentSlots = partyField.split("\n").length;
-                    }
-
-                    String userId = event.getUser().getId();
-                    String userMention = "<@" + userId + ">";
-
-                    if (isJoining) {
-                        if (partyField.contains(userId)) {
-                            hook.sendMessage(" You are already in the team!").queue();
-                            return;
-                        }
-                        if (maxSlots > 0 && currentSlots >= maxSlots) {
-                            hook.sendMessage(" **Team Full:** There are no open slots remaining!").queue();
-                            return;
-                        }
-                        partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
-                        currentSlots++;
-                    } else {
-                        if (!partyField.contains(userId)) {
-                            hook.sendMessage(" You are not in the team!").queue();
-                            return;
-                        }
-                        String[] users = partyField.split("\n");
-                        StringBuilder newParty = new StringBuilder();
-                        for (String u : users) {
-                            if (!u.contains(userId) && !u.isBlank()) {
-                                if (newParty.length() > 0) newParty.append("\n");
-                                newParty.append(u);
-                            }
-                        }
-                        partyField = newParty.toString();
-                        if (partyField.isEmpty()) partyField = "None";
-                        currentSlots--;
-                    }
-
-                    EmbedBuilder newEmbed = new EmbedBuilder(embed);
-                    newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field(buildPartyFieldTitle(currentSlots, minSlots, maxSlots), partyField, false));
-                    startMsg.editMessageEmbeds(newEmbed.build()).queue();
-
-                    hook.sendMessage(isJoining ? " **Matcha confirmed!** You have been added to the team." : " **Matcha canceled!** You have left the team.").queue();
-                }, err -> hook.sendMessage(" Error syncing with the Quest Board.").queue());
-            });
-            return;
-        }
+        
         if (buttonId.startsWith("qjoin_") || buttonId.equals("qleave_button") || buttonId.equals("alert_party")) {
             
             MessageEmbed embed = event.getMessage().getEmbeds().get(0);
@@ -1128,6 +971,10 @@ public class AnnouncementListener extends ListenerAdapter {
                 }
                 partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
                 currentSlots++;
+                
+                ThreadChannel thread = event.getMessage().getStartedThread();
+                if (thread != null) thread.addThreadMember(event.getUser()).queue(null, err -> {});
+                
             } else {
                 if (!partyField.contains(userId)) {
                     event.reply(" You aren't in the team!").setEphemeral(true).queue();
@@ -1144,6 +991,9 @@ public class AnnouncementListener extends ListenerAdapter {
                 partyField = newParty.toString();
                 if (partyField.isEmpty()) partyField = "None";
                 currentSlots--;
+                
+                ThreadChannel thread = event.getMessage().getStartedThread();
+                if (thread != null) thread.removeThreadMember(event.getUser()).queue(null, err -> {});
             }
 
             EmbedBuilder newEmbed = new EmbedBuilder(embed);
@@ -1171,7 +1021,6 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setPlaceholder("Example: Min 2 Max 10 (or just 2 / Unlimited)").setRequired(true);
         if (!defaultSlots.isBlank()) slotsBuilder.setValue(defaultSlots);
 
-        // Ghi chú rõ chỉ cần nhập số
         TextInput.Builder rewardBuilder = TextInput.create("input_reward", "Reward (Points per person)", TextInputStyle.SHORT)
                 .setPlaceholder("Example: 50 (Just type the number)").setRequired(true);
         if (!defaultReward.isBlank()) rewardBuilder.setValue(defaultReward);
@@ -1512,28 +1361,8 @@ public class AnnouncementListener extends ListenerAdapter {
 
             startMsg.editMessageEmbeds(completedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue();
 
-            if (channel.getType().isThread()) {
-                ThreadChannel thread = (ThreadChannel) channel;
-                
-                String targetPingChannelId = audience.equals("member") ? System.getenv("MEMBER_SCHEDULE_CHANNEL_ID") : System.getenv("SCHEDULE_CHANNEL_ID");
-                if (targetPingChannelId != null) {
-                    TextChannel textChannel = startMsg.getJDA().getTextChannelById(targetPingChannelId);
-                    net.dv8tion.jda.api.entities.channel.concrete.NewsChannel newsChannel = startMsg.getJDA().getNewsChannelById(targetPingChannelId);
-                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel pingChannel = (textChannel != null) ? textChannel : newsChannel;
-
-                    if (pingChannel != null) {
-                        String jumpUrl = thread.getJumpUrl();
-                        pingChannel.getIterableHistory().takeAsync(100).thenAccept(messages -> {
-                            for (Message msg : messages) {
-                                if (msg.getAuthor().getId().equals(startMsg.getJDA().getSelfUser().getId()) && msg.getContentRaw().contains(jumpUrl)) {
-                                    msg.editMessage("✅ **[THIS EVENT IS COMPLETED]**\n~~" + msg.getContentRaw().replace("~~", "") + "~~").queue();
-                                    break;
-                                }
-                            }
-                        });
-                    }
-                }
-
+            ThreadChannel thread = startMsg.getStartedThread();
+            if (thread != null) {
                 hook.sendMessage(" Payout processing complete! Thread locking and archiving...").queue();
                 thread.sendMessage(" **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
                     success -> thread.getManager().setLocked(true).setArchived(true).queue()
@@ -1566,8 +1395,10 @@ public class AnnouncementListener extends ListenerAdapter {
 
             ZoneId zoneId = ZoneOffset.UTC;
             String upper = text.toUpperCase();
+            
+            String tzPart = upper.replaceAll("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}", "");
 
-            Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(upper);
+            Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(tzPart);
             if (offsetMatcher.find()) {
                 String sign = offsetMatcher.group(1);
                 int offsetHours = Integer.parseInt(offsetMatcher.group(2));
