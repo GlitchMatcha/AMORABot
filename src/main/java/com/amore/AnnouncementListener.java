@@ -531,7 +531,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 Button.success("qjoin_" + audience, "✋ Join"),
                 Button.danger("qleave_button", "⭕ Leave"),
                 Button.secondary("alert_party", " Alert the Current Team "),
-                Button.primary("view_board", "📋 Event Board") // 🚨 NEW BUTTON ADDED HERE
+                Button.primary("view_board", "📋 List of Active Events")
         );
         builder.addActionRow(
                 Button.primary("edit_event:" + type + ":" + audience + ":" + urgency, " Edit Details"),
@@ -599,7 +599,7 @@ public class AnnouncementListener extends ListenerAdapter {
             event.deferReply(true).queue(hook -> {
                 event.getChannel().getIterableHistory().takeAsync(50).thenAccept(messages -> {
                     EmbedBuilder boardEmbed = new EmbedBuilder()
-                        .setTitle(" AMORA LIST OF ACTIVE EVENTS BOARD")
+                        .setTitle("✦ AMORA - LIST OF ACTIVE EVENTS ✦")
                         .setColor(new Color(255, 182, 193));
                     
                     StringBuilder desc = new StringBuilder("Here is a summary of all active events currently open for you to join & check!:\n\n");
@@ -1374,33 +1374,178 @@ public class AnnouncementListener extends ListenerAdapter {
             if (fieldIndex != -1) {
                 completedEmbed.getFields().remove(fieldIndex);
             }
-            completedEmbed.addField(" EVENT FINISHED!", "Successfully completed by the party!\n\n" + payoutLog.toString(), false);
+            completedEmbed.addField("✅ Event Concluded & Paid", "All Points and rank bonuses have been distributed inside the event discussion thread.", false);
 
             startMsg.editMessageEmbeds(completedEmbed.build()).setComponents(java.util.Collections.emptyList()).queue(msg -> {
                 msg.delete().queueAfter(2, TimeUnit.HOURS);
             });
 
-            ThreadChannel thread = startMsg.getStartedThread();
+            ThreadChannel resolvedThread = startMsg.getStartedThread();
+            if (resolvedThread == null) {
+                String[] sync = db.getEventSync(msgId);
+                if (sync != null && sync[0] != null) {
+                    resolvedThread = startMsg.getGuild().getThreadChannelById(sync[0]);
+                }
+            }
+            final ThreadChannel thread = resolvedThread;
             if (thread != null) {
-                hook.sendMessage(" Payout processing complete! Thread locking and archiving...").queue();
-                thread.sendMessage(" **Event Concluded & Paid:** This event has been completed! All eligible party members have received their Points and profile stats.").queue(
-                    success -> thread.getManager().setLocked(true).setArchived(true).queue()
-                );
+                EmbedBuilder threadPayoutEmbed = new EmbedBuilder()
+                    .setColor(new Color(50, 205, 50))
+                    .setTitle("🎉 ✦ EVENT CONCLUDED & PAYOUT DISTRIBUTED ✦")
+                    .setDescription("This event has officially ended! Rewards have been credited to everyone in the party:\n\n" + payoutLog.toString())
+                    .setFooter("AMORA Directives System • Points & tasks updated", null);
+
+                thread.sendMessageEmbeds(threadPayoutEmbed.build()).queue(sent -> {
+                    thread.getManager().setLocked(true).queue();
+                });
+                hook.sendMessage("✅ **Payout processing complete!** Detailed payout notification has been posted inside the thread: " + thread.getAsMention()).queue();
             } else {
-                hook.sendMessage(" Payout processing complete!").queue();
+                hook.sendMessage("✅ **Payout processing complete!** Rewards have been distributed to the party.").queue();
             }
         }, error -> hook.sendMessage("❌ Error fetching the event message.").queue());
     }
+    private static int parseMonthName(String raw) {
+        String m = raw.toLowerCase();
+        if (m.startsWith("jan")) return 1;
+        if (m.startsWith("feb")) return 2;
+        if (m.startsWith("mar")) return 3;
+        if (m.startsWith("apr")) return 4;
+        if (m.startsWith("may")) return 5;
+        if (m.startsWith("jun")) return 6;
+        if (m.startsWith("jul")) return 7;
+        if (m.startsWith("aug")) return 8;
+        if (m.startsWith("sep")) return 9;
+        if (m.startsWith("oct")) return 10;
+        if (m.startsWith("nov")) return 11;
+        if (m.startsWith("dec")) return 12;
+        return 1;
+    }
+
+    public static ZoneId parseEventZoneId(String text) {
+        String upper = text.toUpperCase();
+
+        Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(upper);
+        if (offsetMatcher.find()) {
+            String sign = offsetMatcher.group(1);
+            int offsetHours = Integer.parseInt(offsetMatcher.group(2));
+            int offsetMins = 0;
+            if (offsetMatcher.group(3) != null) {
+                offsetMins = Integer.parseInt(offsetMatcher.group(3));
+            } else if (offsetMatcher.group(4) != null) {
+                double frac = Double.parseDouble("0." + offsetMatcher.group(4));
+                offsetMins = (int) Math.round(frac * 60);
+            }
+            if (sign.equals("-")) {
+                offsetHours = -offsetHours;
+                offsetMins = -offsetMins;
+            }
+            try {
+                return ZoneOffset.ofHoursMinutes(offsetHours, offsetMins);
+            } catch (Exception ignored) {}
+        }
+
+        // Eastern European Timezones (Fix for Ari)
+        if (Pattern.compile("\\bEEST\\b").matcher(upper).find()) return ZoneOffset.of("+03:00");
+        if (Pattern.compile("\\bEET\\b").matcher(upper).find()) return ZoneOffset.of("+02:00");
+
+        // Central & Western European
+        if (Pattern.compile("\\bCEST\\b").matcher(upper).find()) return ZoneOffset.of("+02:00");
+        if (Pattern.compile("\\bCET\\b").matcher(upper).find()) return ZoneOffset.of("+01:00");
+        if (Pattern.compile("\\bBST\\b").matcher(upper).find()) return ZoneOffset.of("+01:00");
+        if (Pattern.compile("\\bWEST\\b").matcher(upper).find()) return ZoneOffset.of("+01:00");
+        if (Pattern.compile("\\bWET\\b").matcher(upper).find()) return ZoneOffset.of("+00:00");
+        if (Pattern.compile("\\b(GMT|UTC|Z)\\b").matcher(upper).find()) return ZoneOffset.UTC;
+
+        // Middle East & Asia
+        if (Pattern.compile("\\bMSK\\b").matcher(upper).find()) return ZoneOffset.of("+03:00");
+        if (Pattern.compile("\\bGST\\b").matcher(upper).find()) return ZoneOffset.of("+04:00");
+        if (Pattern.compile("\\bIST\\b").matcher(upper).find()) return ZoneOffset.of("+05:30");
+        if (Pattern.compile("\\b(ICT|WIB)\\b").matcher(upper).find()) return ZoneOffset.of("+07:00");
+        if (Pattern.compile("\\b(SGT|MYT|PHT|WITA|HKT)\\b").matcher(upper).find()) return ZoneOffset.of("+08:00");
+        if (Pattern.compile("\\b(JST|KST)\\b").matcher(upper).find()) return ZoneOffset.of("+09:00");
+
+        // Australia & New Zealand
+        if (Pattern.compile("\\bACST\\b").matcher(upper).find()) return ZoneOffset.of("+09:30");
+        if (Pattern.compile("\\bACDT\\b").matcher(upper).find()) return ZoneOffset.of("+10:30");
+        if (Pattern.compile("\\bAEST\\b").matcher(upper).find()) return ZoneOffset.of("+10:00");
+        if (Pattern.compile("\\bAEDT\\b").matcher(upper).find()) return ZoneOffset.of("+11:00");
+        if (Pattern.compile("\\bNZST\\b").matcher(upper).find()) return ZoneOffset.of("+12:00");
+        if (Pattern.compile("\\bNZDT\\b").matcher(upper).find()) return ZoneOffset.of("+13:00");
+
+        // Americas
+        if (Pattern.compile("\\bEDT\\b").matcher(upper).find()) return ZoneOffset.of("-04:00");
+        if (Pattern.compile("\\bEST\\b").matcher(upper).find()) return ZoneOffset.of("-05:00");
+        if (Pattern.compile("\\bCDT\\b").matcher(upper).find()) return ZoneOffset.of("-05:00");
+        if (Pattern.compile("\\bCST\\b").matcher(upper).find()) return ZoneOffset.of("-06:00");
+        if (Pattern.compile("\\bMDT\\b").matcher(upper).find()) return ZoneOffset.of("-06:00");
+        if (Pattern.compile("\\bMST\\b").matcher(upper).find()) return ZoneOffset.of("-07:00");
+        if (Pattern.compile("\\bPDT\\b").matcher(upper).find()) return ZoneOffset.of("-07:00");
+        if (Pattern.compile("\\bPST\\b").matcher(upper).find()) return ZoneOffset.of("-08:00");
+        if (Pattern.compile("\\bAKDT\\b").matcher(upper).find()) return ZoneOffset.of("-08:00");
+        if (Pattern.compile("\\bAKST\\b").matcher(upper).find()) return ZoneOffset.of("-09:00");
+        if (Pattern.compile("\\bHST\\b").matcher(upper).find()) return ZoneOffset.of("-10:00");
+        if (Pattern.compile("\\bAST\\b").matcher(upper).find()) return ZoneOffset.of("-04:00");
+        if (Pattern.compile("\\bBRT\\b").matcher(upper).find()) return ZoneOffset.of("-03:00");
+
+        return ZoneOffset.UTC;
+    }
+
     public static long parseEventEpoch(String rawTime) {
         if (rawTime == null || rawTime.isBlank()) return 0;
         String text = rawTime.trim();
 
         try {
-            Matcher dateMatcher = Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})").matcher(text);
-            if (!dateMatcher.find()) return 0;
-            int year = Integer.parseInt(dateMatcher.group(1));
-            int month = Integer.parseInt(dateMatcher.group(2));
-            int day = Integer.parseInt(dateMatcher.group(3));
+            int year = 0, month = 0, day = 0;
+
+            // 1. Check YYYY-MM-DD or YYYY-DD-MM (e.g. 2026-23-10 or 2026-10-23)
+            Matcher ymdMatcher = Pattern.compile("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})").matcher(text);
+            if (ymdMatcher.find()) {
+                year = Integer.parseInt(ymdMatcher.group(1));
+                int p2 = Integer.parseInt(ymdMatcher.group(2));
+                int p3 = Integer.parseInt(ymdMatcher.group(3));
+                if (p2 > 12 && p3 <= 12) {
+                    day = p2;
+                    month = p3;
+                } else {
+                    month = p2;
+                    day = p3;
+                }
+            } else {
+                // 2. Check DD-MM-YYYY or MM-DD-YYYY
+                Matcher dmyMatcher = Pattern.compile("(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})").matcher(text);
+                if (dmyMatcher.find()) {
+                    int p1 = Integer.parseInt(dmyMatcher.group(1));
+                    int p2 = Integer.parseInt(dmyMatcher.group(2));
+                    year = Integer.parseInt(dmyMatcher.group(3));
+                    if (p1 > 12 && p2 <= 12) {
+                        day = p1;
+                        month = p2;
+                    } else if (p2 > 12 && p1 <= 12) {
+                        month = p1;
+                        day = p2;
+                    } else {
+                        month = p1;
+                        day = p2;
+                    }
+                } else {
+                    // 3. Named month e.g. "October 24, 2026" or "24 October 2026"
+                    Matcher namedMonth = Pattern.compile("(?i)(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})").matcher(text);
+                    if (namedMonth.find()) {
+                        month = parseMonthName(namedMonth.group(1));
+                        day = Integer.parseInt(namedMonth.group(2));
+                        year = Integer.parseInt(namedMonth.group(3));
+                    } else {
+                        Matcher namedMonthDayFirst = Pattern.compile("(?i)(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?),?\\s+(\\d{4})").matcher(text);
+                        if (namedMonthDayFirst.find()) {
+                            day = Integer.parseInt(namedMonthDayFirst.group(1));
+                            month = parseMonthName(namedMonthDayFirst.group(2));
+                            year = Integer.parseInt(namedMonthDayFirst.group(3));
+                        }
+                    }
+                }
+            }
+
+            if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31) return 0;
 
             Matcher timeMatcher = Pattern.compile("(?i)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?\\s*(am|pm)?").matcher(text);
             if (!timeMatcher.find()) return 0;
@@ -1412,40 +1557,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 else if (ampm.equalsIgnoreCase("am") && hour == 12) hour = 0;
             }
 
-            ZoneId zoneId = ZoneOffset.UTC;
-            String upper = text.toUpperCase();
-            
-            String tzPart = upper.replaceAll("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}", "");
-
-            Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(tzPart);
-            if (offsetMatcher.find()) {
-                String sign = offsetMatcher.group(1);
-                int offsetHours = Integer.parseInt(offsetMatcher.group(2));
-                int offsetMins = 0;
-                if (offsetMatcher.group(3) != null) {
-                    offsetMins = Integer.parseInt(offsetMatcher.group(3));
-                } else if (offsetMatcher.group(4) != null) {
-                    double frac = Double.parseDouble("0." + offsetMatcher.group(4));
-                    offsetMins = (int) Math.round(frac * 60);
-                }
-                if (sign.equals("-")) {
-                    offsetHours = -offsetHours;
-                    offsetMins = -offsetMins;
-                }
-                zoneId = ZoneOffset.ofHoursMinutes(offsetHours, offsetMins);
-            } else if (upper.contains("EST")) zoneId = ZoneOffset.of("-05:00");
-            else if (upper.contains("EDT")) zoneId = ZoneOffset.of("-04:00");
-            else if (upper.contains("CST")) zoneId = ZoneOffset.of("-06:00");
-            else if (upper.contains("CDT")) zoneId = ZoneOffset.of("-05:00");
-            else if (upper.contains("PST")) zoneId = ZoneOffset.of("-08:00");
-            else if (upper.contains("PDT")) zoneId = ZoneOffset.of("-07:00");
-            else if (upper.contains("JST") || upper.contains("KST")) zoneId = ZoneOffset.of("+09:00");
-            else if (upper.contains("ICT")) zoneId = ZoneOffset.of("+07:00");
-            else if (upper.contains("IST")) zoneId = ZoneOffset.of("+05:30");
-            else if (upper.contains("BST") || upper.contains("CET")) zoneId = ZoneOffset.of("+01:00");
-            else if (upper.contains("CEST")) zoneId = ZoneOffset.of("+02:00");
-            else if (upper.contains("AEST")) zoneId = ZoneOffset.of("+10:00");
-
+            ZoneId zoneId = parseEventZoneId(text);
             ZonedDateTime zdt = ZonedDateTime.of(year, month, day, hour, min, 0, 0, zoneId);
             return zdt.toEpochSecond();
         } catch (Exception e) {
