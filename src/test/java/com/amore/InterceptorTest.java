@@ -150,6 +150,67 @@ public class InterceptorTest {
     }
 
     @Test
+    @DisplayName("Face Maker delivery template from Image #1 must be intercepted and censored")
+    public void testFaceMakerDeliveryMessageIntercepted() {
+        String message = "｡‧ ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴘᴜʀᴄʜᴀꜱɪɴɢ .ᐟ\n\n" +
+                         "                      ～ ‧ ܁\n" +
+                         "          :   ･       :pink_ribbon:         :   ･\n\n" +
+                         "◞♡ ᶠᵃᶜᵉ ⁿᵃᵐᵉ: stargazer\n\n" +
+                         "◞♡ ᶠᵃᶜᵉ ᶜᵒᵈᵉ: 92747602132268\n\n" +
+                         "                      ～ ‧ ܁\n" +
+                         "          :   ･       :pink_ribbon:         :   ･\n\n" +
+                         "ᵖˡᵉᵃˢᵉ ᵈᵒⁿ'ᵗ ᶠᵒʳᵍᵉᵗ ᵗᵒ ˡᵉᵃᵛᵉ ᵃ ʳᵉᵛⁱᵉʷ .ᐟ ⁱ ʰⁱᵍʰˡʸ ᵃᵖᵖʳᵉᶜⁱᵃᵗᵉ ʸᵒᵘʳ ˢᵘᵖᵖᵒʳᵗ";
+
+        CommandListener.InterceptResult result = listener.evaluateInterception(message);
+        assertTrue(result.shouldIntercept, "Face code delivery must be intercepted");
+        assertTrue(result.censoredContent.contains("`[  securely hidden by AM0RA ]`"), "Face code must be replaced with censor tag");
+        assertFalse(result.censoredContent.contains("92747602132268"), "Sensitive face code must not be exposed in channel output");
+    }
+
+    @Test
+    @DisplayName("Various face and asset code delivery formats must be intercepted")
+    public void testFaceAndAssetCodeFormatsIntercepted() {
+        String[] deliveries = {
+            "face code: 92747602132268",
+            "face id: 92747602132268",
+            "asset id: 92747602132268",
+            "asset code: 92747602132268",
+            "outfit code: 92747602132268",
+            "code: 92747602132268",
+            "id: 92747602132268",
+            "asset: 92747602132268",
+            "92747602132268",
+            "|| 92747602132268 ||"
+        };
+
+        for (String msg : deliveries) {
+            CommandListener.InterceptResult result = listener.evaluateInterception(msg);
+            assertTrue(result.shouldIntercept, "Should intercept: " + msg);
+            assertTrue(result.censoredContent.contains("`[  securely hidden by AM0RA ]`"), "Should censor: " + msg);
+            assertFalse(result.censoredContent.contains("92747602132268"), "Code must not be in censored output: " + msg);
+        }
+    }
+
+    @Test
+    @DisplayName("Discord mentions must never be mistaken for transaction codes")
+    public void testDiscordMentionsNotIntercepted() {
+        String[] mentions = {
+            "<@123456789012345678>",
+            "<@!123456789012345678>",
+            "<@&123456789012345678>",
+            "<#123456789012345678>",
+            "<:stargazer:123456789012345678>",
+            "<a:sparkle:123456789012345678>"
+        };
+
+        for (String msg : mentions) {
+            CommandListener.InterceptResult result = listener.evaluateInterception(msg);
+            assertFalse(result.shouldIntercept, "Should not intercept mention: " + msg);
+            assertEquals(msg, result.censoredContent);
+        }
+    }
+
+    @Test
     @DisplayName("isValidTransactionCode correctly differentiates codes from English words and roblox terms")
     public void testIsValidTransactionCodeDirectly() {
         // Must be false
@@ -168,5 +229,6 @@ public class InterceptorTest {
         assertTrue(listener.isValidTransactionCode("X1Y2-Z3A4-B5C6-D7E8"));
         assertTrue(listener.isValidTransactionCode("AAAAA-BBBBB-CCCCC"));
         assertTrue(listener.isValidTransactionCode("sk_live_1234567890abcdef123456"));
+        assertTrue(listener.isValidTransactionCode("92747602132268"));
     }
 }
