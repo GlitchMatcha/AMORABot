@@ -120,9 +120,10 @@ D:/Discord/amora-bot/
     - 25 Wins: `ROLE_SUPER_MOST_ACTIVE` (30-day timer)
     - 50 Wins: `ROLE_FRENZY_KILLER` (permanent or long-term)
 - **Chat Minigames**:
-  - **Hunter Grid (`GridState`)**: 5x5 ASCII grid game where player navigates 🍵 away from the hunter 💀 toward sparks ✨.
-  - **Pet Mascot (`PetState`)**: Interactive pet with fullness, happiness, and cravings (food 🍓, toy 🧸, headpats ✋).
-  - **Random Spark Drops**: Periodically drops clickable buttons in chat allowing fastest users to claim free Sparks.
+  - **Hunter Maze Chase (`GridState`)**: 5x5 dungeon chase featuring player session locking, Stone Wall obstacles (`🧱`), Freeze Traps (`⚡`), Super Gems (`💎`), and Hunter AI with freeze recovery (`🧊`/`💀`).
+  - **Lounge Mascot Care (`PetState`)**: 3 random mascot species (Matcha Bunny 🐰, Cinna Cloud Pup ☁️🐶, Neon Star Kitty 🐱✨) featuring Affection Heart Bars (`💖`/`🤍`) and Combo multipliers (`💖 Combo x1, x2, x3!`) granting bonus Sparks.
+  - **Themed Tic-Tac-Toe (`TicTacToeState`)**: Aesthetic Matcha (`🍵`) vs Strawberry (`🍓`) pieces with stone obstacles (`🧱`), Solo AI (Minimax with alpha-beta pruning), PvP mode, and consolation Spark rewards on draws.
+  - **Random Spark Drops**: Clickable buttons dropped in chat with in-memory message batching.
 - **M.IKU Mood & AI Triggers**:
   - Dynamic stress tracking; triggers contextual replies, emotes, and reactions based on chat sentiment.
 

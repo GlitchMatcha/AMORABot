@@ -60,12 +60,9 @@ public class AnnouncementListener extends ListenerAdapter {
         String audience = syncData[2];
 
         if (isAdding && audience.equals("member")) {
-            String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-            if (memberRoleId != null && !memberRoleId.isBlank()) {
-                if (member == null || member.getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
-                    if (reaction != null) reaction.removeReaction(jda.getUserById(userId)).queue();
-                    return;
-                }
+            if (!CommandListener.isOfficialMember(member)) {
+                if (reaction != null) reaction.removeReaction(jda.getUserById(userId)).queue();
+                return;
             }
         }
 
@@ -793,11 +790,17 @@ public class AnnouncementListener extends ListenerAdapter {
                 String loungeId = System.getenv("LOUNGE_CHANNEL_ID"); 
                 String memberChatId = System.getenv("MEMBER_CHAT_CHANNEL_ID"); 
                 String memberRoleId = System.getenv("MEMBER_ROLE_ID");
+                String amorixRoleId = System.getenv("AMORIX_ROLE_ID");
 
-                String pingMention = audience.equals("member") 
-                        ? ((memberRoleId != null && !memberRoleId.isBlank()) ? "<@&" + memberRoleId + ">" : "**[Members Only]**") 
-                        : "@everyone";
-
+                String pingMention;
+                if (audience.equals("member")) {
+                    StringBuilder sb = new StringBuilder();
+                    if (memberRoleId != null && !memberRoleId.isBlank()) sb.append("<@&").append(memberRoleId.trim()).append("> ");
+                    if (amorixRoleId != null && !amorixRoleId.isBlank()) sb.append("<@&").append(amorixRoleId.trim()).append("> ");
+                    pingMention = sb.length() > 0 ? sb.toString().trim() : "**[Official Members]**";
+                } else {
+                    pingMention = "@everyone";
+                }
                 EmbedBuilder broadcast = new EmbedBuilder()
                     .setColor(new Color(255, 182, 193))
                     .setDescription(" **" + eventTitle + "** is starting soon!\n\n" +
@@ -993,12 +996,9 @@ public class AnnouncementListener extends ListenerAdapter {
             boolean isJoining = buttonId.startsWith("qjoin_");
 
             if (isJoining && buttonId.equals("qjoin_member")) {
-                String memberRoleId = System.getenv("MEMBER_ROLE_ID");
-                if (memberRoleId != null && !memberRoleId.isBlank()) {
-                    if (event.getMember().getRoles().stream().noneMatch(r -> r.getId().equals(memberRoleId))) {
-                        event.reply(" **Access Denied:** This event is strictly for Official Members!").setEphemeral(true).queue();
-                        return;
-                    }
+                if (!CommandListener.isOfficialMember(event.getMember())) {
+                    event.reply("❌ **Access Denied:** This event is strictly for Official Members (Amora & Amorix)!").setEphemeral(true).queue();
+                    return;
                 }
             }
 
