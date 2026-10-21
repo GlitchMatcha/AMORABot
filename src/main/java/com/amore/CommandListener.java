@@ -1236,11 +1236,15 @@ public class CommandListener extends ListenerAdapter {
             return false;
         }
 
+        // Numeric asset codes (Roblox face/clothing/model asset IDs: 8-20 digits)
+        if (clean.matches("^\\d{8,20}$")) {
+            return true;
+        }
+
         // High-entropy random alphanumeric token (at least 16 chars with mixed letters and numbers, no spaces)
         if (clean.length() >= 16 && clean.matches("^[A-Za-z0-9_-]{16,64}$") && clean.matches(".*[A-Za-z].*") && clean.matches(".*\\d.*")) {
             return true;
         }
-
         String upper = clean.toUpperCase();
         // Formatted license / voucher / activation key: e.g. ABCD-1234-EFGH or X1Y2-Z3A4-B5C6-D7E8
         if (upper.matches("^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,5}$")) {
@@ -1273,7 +1277,7 @@ public class CommandListener extends ListenerAdapter {
             return new InterceptResult(false, content != null ? content : "");
         }
 
-        Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://[^\\s)\\]>]+|\\|\\|\\s*(?:https?://\\S+|[A-Za-z0-9_-]{8,64})\\s*\\|\\||\\b(?:code|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=]\\s*(?:\\r?\\n)?\\s*\\S+|\\b[A-Za-z0-9]{3,8}(?:-[A-Za-z0-9]{3,8}){1,5}\\b)");
+        Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|<@&?\\d+>|<#\\d+>|https?://[^\\s)\\]>]+|\\|\\|\\s*(?:https?://\\S+|[A-Za-z0-9_-]{8,64})\\s*\\|\\||\\b(?:(?:face|asset|outfit)\\s+(?:code|id)|code|id|asset|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=]\\s*(?:\\r?\\n)?\\s*\\S+|(?<![-/.@&#])\\b\\d{8,20}\\b(?![-/.>])|\\b[A-Za-z0-9]{3,8}(?:-[A-Za-z0-9]{3,8}){1,5}\\b)");
         Matcher matcher = sensitivePattern.matcher(content);
 
         boolean shouldIntercept = false;
@@ -1282,7 +1286,7 @@ public class CommandListener extends ListenerAdapter {
         while (matcher.find()) {
             String matchText = matcher.group();
             
-            if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
+            if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>") || matchText.matches("^<@&?\\d+>$") || matchText.matches("^<#\\d+>$")) {
                 matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
                 continue;
             }
@@ -1296,9 +1300,10 @@ public class CommandListener extends ListenerAdapter {
             
             String codeToTest = innerText;
             boolean hasExplicitPrefix = false;
+            int splitIndex = -1;
             
-            if (innerText.toLowerCase().matches("^(?:code|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=].*")) {
-                int splitIndex = Math.max(innerText.indexOf(':'), innerText.indexOf('='));
+            if (innerText.toLowerCase().matches("^(?:(?:face|asset|outfit)\\s+(?:code|id)|code|id|asset|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=].*")) {
+                splitIndex = Math.max(innerText.indexOf(':'), innerText.indexOf('='));
                 if (splitIndex != -1) {
                     String prefix = innerText.substring(0, splitIndex).trim().toLowerCase();
                     codeToTest = innerText.substring(splitIndex + 1).trim();
@@ -1331,7 +1336,12 @@ public class CommandListener extends ListenerAdapter {
             
             if (isDeliveryUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
                 shouldIntercept = true;
-                matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
+                if (hasExplicitPrefix && splitIndex != -1) {
+                    String prefixPart = innerText.substring(0, splitIndex + 1);
+                    matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(prefixPart) + " `[  securely hidden by AM0RA ]`");
+                } else {
+                    matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
+                }
             } else {
                 matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
             }
