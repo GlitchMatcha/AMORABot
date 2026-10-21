@@ -1,7 +1,107 @@
+# ========================================================
+# Maven Build Outputs & Artifacts
+# ========================================================
 target/
-*.db
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
 dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ========================================================
+# Compiled Bytecode & Archives
+# ========================================================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+
+# ========================================================
+# Environment, API Keys & Secret Credentials
+# ========================================================
 .env
-.vscode/
-.idea/
+.env.*
+!.env.example
+secrets.json
+credentials.json
+*.pem
+*.key
+*.pfx
+*.p12
+
+# ========================================================
+# Local Databases & Storage Dumps
+# ========================================================
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sql.dump
+
+# ========================================================
+# Logs & Crash Dumps
+# ========================================================
 *.log
+logs/
+hs_err_pid*
+replay_pid*
+
+# ========================================================
+# IDE & Code Editor Configurations
+# ========================================================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.metadata/
+bin/
+
+# Visual Studio Code
+.vscode/
+
+# NetBeans
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+
+# ========================================================
+# Operating System Temporary Files
+# ========================================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.fuse_hidden*
+.directory
