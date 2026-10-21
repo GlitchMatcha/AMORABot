@@ -1221,20 +1221,123 @@ public class CommandListener extends ListenerAdapter {
         }
     }
     
-    private boolean isValidTransactionCode(String word) {
+    boolean isValidTransactionCode(String word) {
         if (word == null) return false;
         
-        word = word.replaceAll("[`*|_~]", "").trim().toUpperCase();
-        
-        // Formatted license / voucher / activation key: e.g. ABCD-1234-EFGH or X1Y2-Z3A4-B5C6-D7E8
-        if (Pattern.compile("^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,5}$").matcher(word).matches()) return true;
+        String clean = word.replaceAll("[`*|_~]", "").trim();
+        if (clean.isEmpty()) return false;
+
+        String lower = clean.toLowerCase();
+        // Explicitly exclude Roblox, gamepass, and Robux terms or URLs
+        if (lower.contains("roblox") || lower.contains("gamepass") || lower.contains("game-pass") || lower.contains("robux") || lower.contains("r$")) {
+            return false;
+        }
+        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.contains("/")) {
+            return false;
+        }
 
         // High-entropy random alphanumeric token (at least 16 chars with mixed letters and numbers, no spaces)
-        if (word.length() >= 16 && word.matches("^[A-Z0-9_-]{16,64}$") && word.matches(".*[A-Z].*") && word.matches(".*\\d.*")) {
+        if (clean.length() >= 16 && clean.matches("^[A-Za-z0-9_-]{16,64}$") && clean.matches(".*[A-Za-z].*") && clean.matches(".*\\d.*")) {
             return true;
+        }
+
+        String upper = clean.toUpperCase();
+        // Formatted license / voucher / activation key: e.g. ABCD-1234-EFGH or X1Y2-Z3A4-B5C6-D7E8
+        if (upper.matches("^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,5}$")) {
+            // Real voucher/license keys contain numbers (e.g. ABCD-1234-EFGH or 4X9B-7KL2)
+            if (upper.matches(".*\\d.*")) {
+                return true;
+            }
+            // If purely letters (no digits), require at least 3 segments (e.g. AAAA-BBBB-CCCC) and original uppercase
+            String[] parts = upper.split("-");
+            if (parts.length >= 3 && clean.equals(upper)) {
+                return true;
+            }
         }
         
         return false;
+    }
+
+    public static class InterceptResult {
+        public final boolean shouldIntercept;
+        public final String censoredContent;
+
+        public InterceptResult(boolean shouldIntercept, String censoredContent) {
+            this.shouldIntercept = shouldIntercept;
+            this.censoredContent = censoredContent;
+        }
+    }
+
+    public InterceptResult evaluateInterception(String content) {
+        if (content == null || content.isBlank()) {
+            return new InterceptResult(false, content != null ? content : "");
+        }
+
+        Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://[^\\s)\\]>]+|\\|\\|\\s*(?:https?://\\S+|[A-Za-z0-9_-]{8,64})\\s*\\|\\||\\b(?:code|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=]\\s*(?:\\r?\\n)?\\s*\\S+|\\b[A-Za-z0-9]{3,8}(?:-[A-Za-z0-9]{3,8}){1,5}\\b)");
+        Matcher matcher = sensitivePattern.matcher(content);
+
+        boolean shouldIntercept = false;
+        StringBuffer censoredBuffer = new StringBuffer();
+
+        while (matcher.find()) {
+            String matchText = matcher.group();
+            
+            if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
+                matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+                continue;
+            }
+
+            String innerText = matchText.trim();
+            if (innerText.startsWith("||") && innerText.endsWith("||") && innerText.length() >= 4) {
+                innerText = innerText.substring(2, innerText.length() - 2).trim();
+            }
+
+            boolean isDeliveryUrl = innerText.matches("(?iU)^https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/.*");
+            
+            String codeToTest = innerText;
+            boolean hasExplicitPrefix = false;
+            
+            if (innerText.toLowerCase().matches("^(?:code|delivery|secret|download|link|key|pass|password|passcode|pin|license)\\s*[:=].*")) {
+                int splitIndex = Math.max(innerText.indexOf(':'), innerText.indexOf('='));
+                if (splitIndex != -1) {
+                    String prefix = innerText.substring(0, splitIndex).trim().toLowerCase();
+                    codeToTest = innerText.substring(splitIndex + 1).trim();
+
+                    String codeLower = codeToTest.toLowerCase();
+                    boolean isCodeRobloxOrPass = codeLower.contains("roblox.com") ||
+                                                codeLower.contains("gamepass") ||
+                                                codeLower.contains("game-pass") ||
+                                                codeLower.contains("robux") ||
+                                                codeLower.contains("r$");
+
+                    boolean isCodeSafeUrl = isCodeRobloxOrPass ||
+                                           codeToTest.matches("(?iU)^https?://(?:[a-zA-Z0-9-]+\\.)?(?:roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|discordapp\\.net|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com|giphy\\.com|youtube\\.com|youtu\\.be|twitter\\.com|x\\.com)/.*");
+                    boolean isCodeDeliveryUrl = codeToTest.matches("(?iU)^https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/.*");
+
+                    if (isCodeDeliveryUrl) {
+                        hasExplicitPrefix = true;
+                    } else if (isCodeSafeUrl || isCodeRobloxOrPass) {
+                        hasExplicitPrefix = false;
+                    } else if (prefix.equals("pass")) {
+                        // "pass:" in order threads overwhelmingly means gamepass/price; only intercept if it's an actual transaction code
+                        hasExplicitPrefix = isValidTransactionCode(codeToTest);
+                    } else if (!codeToTest.startsWith("http://") && !codeToTest.startsWith("https://")) {
+                        hasExplicitPrefix = true;
+                    }
+                }
+            }
+            
+            codeToTest = codeToTest.replaceAll("[`*|_~]", "").trim();
+            
+            if (isDeliveryUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
+                shouldIntercept = true;
+                matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
+            } else {
+                matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
+            }
+        }
+        matcher.appendTail(censoredBuffer);
+        return new InterceptResult(shouldIntercept, censoredBuffer.toString());
     }
     private String buildProgressBar(int current, int max, int length) {
         int filled = (int) Math.round(((double) current / max) * length);
@@ -1370,46 +1473,10 @@ public class CommandListener extends ListenerAdapter {
                 // if (!thread.getName().startsWith("⏳")) {
                     
                 String content = event.getMessage().getContentRaw();
+                InterceptResult interceptResult = evaluateInterception(content);
                 
-                Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/\\S+|\\b(?:code|delivery|secret|download|link|key|pass|password|pin|license)\\s*[:=]\\s*(?:\\r?\\n)?\\s*\\S+|\\b[A-Za-z0-9]{3,8}(?:-[A-Za-z0-9]{3,8}){1,5}\\b|\\|\\|\\s*(?:https?://\\S+|[A-Za-z0-9_-]{8,64})\\s*\\|\\|)");                    
-                Matcher matcher = sensitivePattern.matcher(content);
-
-                boolean shouldIntercept = false;
-                StringBuffer censoredBuffer = new StringBuffer();
-
-                while (matcher.find()) {
-                    String matchText = matcher.group();
-                    
-                    if (matchText.matches("(?i)<a?:[a-zA-Z0-9_]+:\\d+>")) {
-                        matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
-                        continue;
-                    }
-
-                    boolean isDeliveryUrl = matchText.matches("(?iU)^https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/.*");
-                    
-                    String codeToTest = matchText;
-                    boolean hasExplicitPrefix = false;
-                    
-                    if (matchText.toLowerCase().matches("^(?:code|delivery|secret|download|link|key|pass|password|pin|license)\\s*[:=].*")) {
-                        int splitIndex = Math.max(matchText.indexOf(':'), matchText.indexOf('='));
-                        if (splitIndex != -1) {
-                            codeToTest = matchText.substring(splitIndex + 1).trim();
-                            hasExplicitPrefix = true;
-                        }
-                    }
-                    
-                    codeToTest = codeToTest.replaceAll("[`*|_~]", "").trim();
-                    
-                    if (isDeliveryUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
-                        shouldIntercept = true;
-                        matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
-                    } else {
-                        matcher.appendReplacement(censoredBuffer, Matcher.quoteReplacement(matchText));
-                    }
-                }
-                matcher.appendTail(censoredBuffer);
-                if (shouldIntercept) {
-                    String censoredContent = censoredBuffer.toString();
+                if (interceptResult.shouldIntercept) {
+                    String censoredContent = interceptResult.censoredContent;
                     boolean hasAttachments = !event.getMessage().getAttachments().isEmpty();
 
                     thread.getHistoryFromBeginning(20).queue(history -> {
