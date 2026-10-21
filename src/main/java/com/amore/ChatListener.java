@@ -67,28 +67,63 @@ public class ChatListener extends ListenerAdapter {
         }, 10, 60, java.util.concurrent.TimeUnit.SECONDS);
     }
     private static class GridState {
+        String playerId = null;
         int pX = 2, pY = 2;
-        int sX, sY;        
-        int eX, eY;        
+        int sX, sY;
+        int gX = -1, gY = -1;
+        int fX = -1, fY = -1;
+        int oX = -1, oY = -1;
+        int eX, eY;
+        int hunterFreezeTurns = 0;
+        int moves = 0;
+        boolean hasGem = false;
 
         GridState() {
+            java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
             do {
-                sX = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
-                sY = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
+                sX = rng.nextInt(5);
+                sY = rng.nextInt(5);
             } while (sX == pX && sY == pY);
-            
+
             do {
-                eX = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
-                eY = java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
-            } while ((eX == pX && eY == pY) || (eX == sX && eY == sY) || (Math.abs(eX - pX) < 2 && Math.abs(eY - pY) < 2));
+                gX = rng.nextInt(5);
+                gY = rng.nextInt(5);
+            } while ((gX == pX && gY == pY) || (gX == sX && gY == sY));
+
+            do {
+                fX = rng.nextInt(5);
+                fY = rng.nextInt(5);
+            } while ((fX == pX && fY == pY) || (fX == sX && fY == sY) || (fX == gX && fY == gY));
+
+            do {
+                oX = rng.nextInt(5);
+                oY = rng.nextInt(5);
+            } while ((oX == pX && oY == pY) || (oX == sX && oY == sY) || (oX == gX && oY == gY) || (oX == fX && oY == fY));
+
+            do {
+                eX = rng.nextInt(5);
+                eY = rng.nextInt(5);
+            } while ((eX == pX && eY == pY) || (eX == oX && eY == oY) || (Math.abs(eX - pX) < 2 && Math.abs(eY - pY) < 2));
         }
 
         void moveHunter() {
-            if (Math.abs(pX - eX) > Math.abs(pY - eY)) {
-                eX += (pX > eX) ? 1 : -1;
-            } else {
-                eY += (pY > eY) ? 1 : -1;
+            if (hunterFreezeTurns > 0) {
+                hunterFreezeTurns--;
+                return;
             }
+            int nextEX = eX;
+            int nextEY = eY;
+            if (Math.abs(pX - eX) > Math.abs(pY - eY)) {
+                nextEX += (pX > eX) ? 1 : -1;
+            } else {
+                nextEY += (pY > eY) ? 1 : -1;
+            }
+            if (nextEX == oX && nextEY == oY) {
+                if (pY != eY) nextEY += (pY > eY) ? 1 : -1;
+                else if (pX != eX) nextEX += (pX > eX) ? 1 : -1;
+            }
+            eX = nextEX;
+            eY = nextEY;
         }
         
         String render() {
@@ -96,8 +131,11 @@ public class ChatListener extends ListenerAdapter {
             for (int y = 0; y < 5; y++) {
                 for (int x = 0; x < 5; x++) {
                     if (x == pX && y == pY) sb.append("🍵");
-                    else if (x == eX && y == eY) sb.append("💀"); // Render the Hunter
+                    else if (x == eX && y == eY) sb.append(hunterFreezeTurns > 0 ? "🧊" : "💀");
                     else if (x == sX && y == sY) sb.append("✨");
+                    else if (x == gX && y == gY) sb.append("💎");
+                    else if (x == fX && y == fY) sb.append("⚡");
+                    else if (x == oX && y == oY) sb.append("🧱");
                     else sb.append("⬛");
                 }
                 sb.append("\n");
@@ -107,22 +145,40 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private static class PetState {
+        String mascotName;
+        String mascotEmoji;
         int fullness = 2;  
         int happiness = 2; 
-        int craving = java.util.concurrent.ThreadLocalRandom.current().nextInt(3); 
+        int combo = 0;
+        int craving;
+
+        PetState() {
+            int type = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
+            if (type == 0) {
+                mascotName = "Matcha Bunny";
+                mascotEmoji = "🐰";
+            } else if (type == 1) {
+                mascotName = "Cinna Cloud Pup";
+                mascotEmoji = "☁️🐶";
+            } else {
+                mascotName = "Neon Star Kitty";
+                mascotEmoji = "🐱✨";
+            }
+            craving = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
+        }
         
         String renderBar(int value) {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 5; i++) {
-                sb.append(i < value ? "🟢" : "⚪");
+                sb.append(i < value ? "💖" : "🤍");
             }
             return sb.toString();
         }
         
         String getCravingText() {
-            if (craving == 0) return "🍓 *The mascot is staring at its empty bowl... it looks hungry!*";
-            if (craving == 1) return "🧸 *The mascot is dragging a toy towards you... it wants to play!*";
-            return "✋ *The mascot is nudging your hand... it wants headpats!*";
+            if (craving == 0) return "🍓 *" + mascotName + " is sniffing its bowl... it wants a sweet berry treat!*";
+            if (craving == 1) return "🧸 *" + mascotName + " is bouncing excitedly with a toy... it wants to play!*";
+            return "✋ *" + mascotName + " is nuzzling your palm... it wants soft headpats!*";
         }
         
         void rerollCraving() {
@@ -317,10 +373,10 @@ public class ChatListener extends ListenerAdapter {
                 for (int c = 0; c < size; c++) {
                     int i = r * size + c;
                     String id = "ttt_" + i;
-                    if (board[i] == -1) btns.add(Button.secondary(id, "⬛").asDisabled());
-                    else if (board[i] == 1) btns.add(Button.danger(id, "❌").asDisabled());
-                    else if (board[i] == 2) btns.add(Button.primary(id, "⭕").asDisabled());
-                    else btns.add(Button.secondary(id, "➖"));
+                    if (board[i] == -1) btns.add(Button.secondary(id, "🧱").asDisabled());
+                    else if (board[i] == 1) btns.add(Button.success(id, "🍵").asDisabled());
+                    else if (board[i] == 2) btns.add(Button.danger(id, "🍓").asDisabled());
+                    else btns.add(Button.secondary(id, "◽"));
                 }
                 rows.add(net.dv8tion.jda.api.interactions.components.ActionRow.of(btns));
             }
@@ -1600,50 +1656,92 @@ public class ChatListener extends ListenerAdapter {
                 event.reply("This grid has expired or is already completed!").setEphemeral(true).queue();
                 return;
             }
+
+            // Session ownership lock
+            if (state.playerId == null) {
+                state.playerId = event.getUser().getId();
+            } else if (!state.playerId.equals(event.getUser().getId())) {
+                event.reply("🕹️ This game is being run by <@" + state.playerId + ">! Type `!spawngame` to start your own.").setEphemeral(true).queue();
+                return;
+            }
             
-            if (buttonId.equals("grid_up") && state.pY > 0) state.pY--;
-            else if (buttonId.equals("grid_down") && state.pY < 4) state.pY++;
-            else if (buttonId.equals("grid_left") && state.pX > 0) state.pX--;
-            else if (buttonId.equals("grid_right") && state.pX < 4) state.pX++;
+            int targetX = state.pX;
+            int targetY = state.pY;
+
+            if (buttonId.equals("grid_up") && state.pY > 0) targetY--;
+            else if (buttonId.equals("grid_down") && state.pY < 4) targetY++;
+            else if (buttonId.equals("grid_left") && state.pX > 0) targetX--;
+            else if (buttonId.equals("grid_right") && state.pX < 4) targetX++;
             else {
                 event.deferEdit().queue(); 
                 return;
+            }
+
+            // Check wall collision
+            if (targetX == state.oX && targetY == state.oY) {
+                event.reply("🧱 A stone wall blocks your path! Try another direction.").setEphemeral(true).queue();
+                return;
+            }
+
+            state.pX = targetX;
+            state.pY = targetY;
+            state.moves++;
+
+            String bonusNote = "";
+            if (state.pX == state.fX && state.pY == state.fY) {
+                state.fX = -1;
+                state.fY = -1;
+                state.hunterFreezeTurns = 2;
+                bonusNote += "\n⚡ **FREEZE TRAP ACTIVATED!** Hunter is frozen for 2 turns!";
+            }
+
+            if (state.pX == state.gX && state.pY == state.gY) {
+                state.gX = -1;
+                state.gY = -1;
+                state.hasGem = true;
+                bonusNote += "\n💎 **SUPER GEM FOUND!** +5 bonus Sparks if you reach the exit Spark!";
             }
             
             if (state.pX == state.sX && state.pY == state.sY) {
                 activeGrids.remove(msgId); 
                 
+                int reward = 3 + (state.hasGem ? 5 : 0) + (state.moves <= 6 ? 2 : 0);
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + 2); // Buffed reward
+                db.updateSparks(event.getUser().getId(), currentSparks + reward);
                 
                 EmbedBuilder winEmbed = new EmbedBuilder()
-                    .setTitle("🎉 Spark Captured!")
+                    .setTitle("🎉 Spark Captured! (Maze Cleared)")
                     .setColor(new Color(255, 182, 193))
-                    .setDescription("🏆 " + event.getUser().getAsMention() + " outran the Hunter and caught the Spark!\n\n*( `+2 Sparks` )*");
+                    .setDescription("🏆 " + event.getUser().getAsMention() + " successfully outmaneuvered the Hunter!\n\n" +
+                                    "📊 **Run Performance:**\n" +
+                                    "• Moves: `" + state.moves + "`" + (state.moves <= 6 ? " *(Speed Bonus!)*" : "") + "\n" +
+                                    "• Super Gem: `" + (state.hasGem ? "💎 Claimed (+5 Sparks)" : "None") + "`\n\n" +
+                                    "*( `+" + reward + " Sparks Total` )*");
                 
                 event.editMessageEmbeds(winEmbed.build()).setComponents().queue();
                 return;
             }
 
-            // Move the Hunter after the player moves
             state.moveHunter();
 
-            // Check if the Hunter caught the player
             if (state.pX == state.eX && state.pY == state.eY) {
                 activeGrids.remove(msgId);
                 EmbedBuilder loseEmbed = new EmbedBuilder()
-                    .setTitle("💀 Caught!")
+                    .setTitle("💀 Caught in the Maze!")
                     .setColor(Color.RED)
-                    .setDescription("Oh no! " + event.getUser().getAsMention() + " was caught by the Hunter!\n\n" + state.render());
+                    .setDescription("Oh no! " + event.getUser().getAsMention() + " was cornered by the Hunter!\n\n" + state.render());
                 event.editMessageEmbeds(loseEmbed.build()).setComponents().queue();
                 return;
             }
             
             EmbedBuilder updatedEmbed = new EmbedBuilder()
-                .setTitle("🕹️ Spark Grid (HUNTED)")
+                .setTitle("🕹️ AMORA Spark Chase (Maze Hunter)")
                 .setColor(new Color(138, 43, 226))
-                .setDescription("Use the arrows to move your 🍵 to the ✨!\n⚠️ **Watch out for the Hunter (💀)!**\n\n" + state.render());
+                .setDescription("Runner: <@" + state.playerId + "> | Moves: `" + state.moves + "`\n" +
+                                (state.hunterFreezeTurns > 0 ? "🧊 **Hunter is FROZEN (" + state.hunterFreezeTurns + " turns remaining)!**" : "⚠️ **Hunter (💀) is closing in!**") +
+                                bonusNote + "\n\n" +
+                                state.render());
                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
             
@@ -1668,23 +1766,23 @@ public class ChatListener extends ListenerAdapter {
             
             String feedback = "";
             
-            // Check if player satisfied the pet's craving
             if (action == state.craving) {
-                feedback = "✅ *" + event.getUser().getName() + " made the mascot very happy!*";
+                state.combo++;
+                feedback = "💖 **Combo x" + state.combo + "!** " + event.getUser().getName() + " delighted **" + state.mascotName + "**!";
                 if (action == 0 && state.fullness < 5) state.fullness++;
                 else if (state.happiness < 5) state.happiness++;
             } else {
-                feedback = "💢 *" + event.getUser().getName() + " annoyed the mascot! That's not what it wanted!*";
+                state.combo = 0;
+                feedback = "💢 *" + event.getUser().getName() + " gave the wrong care! Combo reset!*";
                 if (state.happiness > 0) state.happiness--;
             }
             
-            // Runaway mechanic
             if (state.happiness == 0) {
                 activePets.remove(msgId);
                 EmbedBuilder sadEmbed = new EmbedBuilder()
-                    .setTitle("🐾 The Pet Ran Away!")
+                    .setTitle("🐾 " + state.mascotName + " Trotted Away!")
                     .setColor(Color.RED)
-                    .setDescription(event.getUser().getAsMention() + " annoyed the mascot too much and it ran away...");
+                    .setDescription(event.getUser().getAsMention() + " upset the mascot too much and it slipped back into the garden...");
                 event.editMessageEmbeds(sadEmbed.build()).setComponents().queue();
                 return;
             }
@@ -1692,15 +1790,16 @@ public class ChatListener extends ListenerAdapter {
             if (state.fullness == 5 && state.happiness == 5) {
                 activePets.remove(msgId);
                 
+                int reward = 3 + Math.min(state.combo, 4);
                 DatabaseManager db = DatabaseManager.getInstance();
                 int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + 2); // Buffed reward
+                db.updateSparks(event.getUser().getId(), currentSparks + reward);
                 
                 EmbedBuilder happyEmbed = new EmbedBuilder()
-                    .setTitle("🐾 The Pet is Happy!")
+                    .setTitle("🎉 " + state.mascotEmoji + " " + state.mascotName + " is Overjoyed!")
                     .setColor(new Color(255, 182, 193))
-                    .setDescription(event.getUser().getAsMention() + " perfectly satisfied the mascot!\n" +
-                                    "It left behind a small gift before happily trotting away.\n\n*( `+2 Sparks` )*");
+                    .setDescription("🏆 " + event.getUser().getAsMention() + " reached maximum affection with a **Combo x" + state.combo + "** streak!\n" +
+                                    state.mascotName + " happily left behind a sparkling gift before curling up for a nap.\n\n*( `+" + reward + " Sparks` )*");
                 
                 event.editMessageEmbeds(happyEmbed.build()).setComponents().queue();
                 return;
@@ -1709,15 +1808,15 @@ public class ChatListener extends ListenerAdapter {
             state.rerollCraving();
             
             EmbedBuilder updatedEmbed = new EmbedBuilder()
-                .setTitle("🐾 AMORA Lounge Mascot")
+                .setTitle("🐾 AMORA Lounge Mascot: " + state.mascotName + " " + state.mascotEmoji)
                 .setColor(new Color(255, 182, 193))
                 .setDescription(feedback + "\n\n" +
                                 state.getCravingText() + "\n\n" +
                                 "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
-                                "**Happiness:** " + state.renderBar(state.happiness));
+                                "**Happiness:** " + state.renderBar(state.happiness) + "\n" +
+                                "✨ **Affection Streak:** `" + state.combo + " in a row`");
                                 
             event.editMessageEmbeds(updatedEmbed.build()).queue();
-
         } else if (buttonId.startsWith("ttt_")) {
             String msgId = event.getMessageId();
             TicTacToeState state = activeTicTacToe.get(msgId);
@@ -1828,7 +1927,11 @@ public class ChatListener extends ListenerAdapter {
                         endEmbed.setColor(Color.RED).setTitle("💀 AI Wins!").setDescription("The AMORA AI remains undefeated.");
                     }
                 } else {
-                    endEmbed.setColor(Color.GRAY).setTitle("🤝 Draw!").setDescription("It's a tie! Nobody wins this time.");
+                    db.updateSparks(state.playerXId, db.getSparks(state.playerXId) + 1);
+                    if (state.isPvP && state.playerOId != null) {
+                        db.updateSparks(state.playerOId, db.getSparks(state.playerOId) + 1);
+                    }
+                    endEmbed.setColor(Color.LIGHT_GRAY).setTitle("🤝 Hard-Fought Draw!").setDescription("A brilliant stalemate! Both players received `+1 Spark` for playing.");
                 }
                 event.editMessageEmbeds(endEmbed.build()).setComponents(state.renderButtons()).queue();
                 return;
@@ -1890,9 +1993,13 @@ public class ChatListener extends ListenerAdapter {
         GridState state = new GridState();
         
         EmbedBuilder embed = new EmbedBuilder()
-            .setTitle("🕹️ Spark Grid")
+            .setTitle("🕹️ AMORA Spark Chase (Maze Hunter)")
             .setColor(new Color(138, 43, 226))
-            .setDescription("Use the arrows to move your 🍵 to the ✨!\n\n" + state.render());
+            .setDescription("Guide your 🍵 to the ✨ or 💎 while dodging the 💀!\n" +
+                            "⚡ = Freeze Trap (Freezes Hunter for 2 turns)\n" +
+                            "🧱 = Wall Obstacle | 💎 = Super Gem (+5 Sparks!)\n\n" +
+                            state.render())
+            .setFooter("AMORA Mini-Arcade • First player to move takes control!", null);
 
         channel.sendMessageEmbeds(embed.build())
             .addActionRow(
@@ -1909,12 +2016,14 @@ public class ChatListener extends ListenerAdapter {
         PetState state = new PetState();
         
         EmbedBuilder embed = new EmbedBuilder()
-            .setTitle("🐾 AMORA Lounge Mascot")
+            .setTitle("🐾 AMORA Lounge Mascot: " + state.mascotName + " " + state.mascotEmoji)
             .setColor(new Color(255, 182, 193))
-            .setDescription("A wild AMORA pet has wandered into the lounge!\n\n" +
+            .setDescription("A wild **" + state.mascotName + "** has wandered into the lounge!\n\n" +
                             state.getCravingText() + "\n\n" +
                             "**Fullness:** " + state.renderBar(state.fullness) + "\n" +
-                            "**Happiness:** " + state.renderBar(state.happiness));
+                            "**Happiness:** " + state.renderBar(state.happiness) + "\n" +
+                            "*(Build your Combo streak for bonus Sparks!)*")
+            .setFooter("AMORA Mascot Care System • Feed, play, and pet!", null);
 
         channel.sendMessageEmbeds(embed.build())
             .addActionRow(
@@ -1934,7 +2043,8 @@ public class ChatListener extends ListenerAdapter {
             .setTitle("🎮 AMORA Tic-Tac-Toe (" + size + "x" + size + ")")
             .setColor(new Color(88, 101, 242))
             .setDescription("A new " + size + "x" + size + " board has appeared!\n" +
-                            "<:4_greenboba:1527260255417794571>  **Goal:** Get **" + state.winCondition + " in a row** to win!\n" +
+                            "🍵 **Matcha** vs 🍓 **Strawberry**\n" +
+                            "🎯 **Goal:** Connect **" + state.winCondition + " in a row** to win!\n" +
                             "⏳ **Timer:** Auto-aborts <t:" + state.getUnixExpiry() + ":R>\n\n" +
                             "Choose your game mode:");
 
