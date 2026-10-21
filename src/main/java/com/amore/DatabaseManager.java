@@ -138,6 +138,14 @@ public class DatabaseManager {
         return connection;
     }
 
+    public synchronized PreparedStatement prepare(String query) throws SQLException {
+        return ensureConnected().prepareStatement(query);
+    }
+
+    public synchronized Statement createStatement() throws SQLException {
+        return ensureConnected().createStatement();
+    }
+
     private void initializeDatabase() {
         if (connection == null) {
             throw new IllegalStateException("Cannot initialize database because connection is null.");
@@ -240,7 +248,7 @@ public class DatabaseManager {
                 + "PRIMARY KEY (channel_id, message_id)"
                 + ");";
 
-        try (Statement stmt = connection.createStatement()) {
+        try (Statement stmt = createStatement()) {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
             stmt.execute(createVerificationsTable);
@@ -279,9 +287,9 @@ public class DatabaseManager {
         String deleteActiveTrades = "DELETE FROM active_trades WHERE expires_at < ?;";
         String deletePendingForges = "DELETE FROM pending_forges WHERE expires_at < ?;";
 
-        try (PreparedStatement p1 = connection.prepareStatement(deletePendingTradeSetups);
-             PreparedStatement p2 = connection.prepareStatement(deleteActiveTrades);
-             PreparedStatement p3 = connection.prepareStatement(deletePendingForges)) {
+        try (PreparedStatement p1 = prepare(deletePendingTradeSetups);
+             PreparedStatement p2 = prepare(deleteActiveTrades);
+             PreparedStatement p3 = prepare(deletePendingForges)) {
             p1.setLong(1, now);
             p2.setLong(1, now);
             p3.setLong(1, now);
@@ -297,7 +305,7 @@ public class DatabaseManager {
         String query = "INSERT INTO users "
                 + "(user_id, sparks, points, inventory, pity, bounties_cleared, urgent_cleared, ac_wins) "
                 + "VALUES (?, 0, 0, '', 0, 0, 0, 0) ON CONFLICT (user_id) DO NOTHING;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -308,7 +316,7 @@ public class DatabaseManager {
     public void scheduleRoleRemoval(String userId, String roleId, long expiresAt) {
         String query = "INSERT INTO role_timers (user_id, role_id, expires_at) VALUES (?, ?, ?) "
                 + "ON CONFLICT (user_id, role_id) DO UPDATE SET expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setString(2, roleId);
             pstmt.setLong(3, expiresAt);
@@ -321,7 +329,7 @@ public class DatabaseManager {
     public List<ExpiredRole> getExpiredRoles(long currentTimeMillis) {
         List<ExpiredRole> expired = new ArrayList<>();
         String query = "SELECT user_id, role_id FROM role_timers WHERE expires_at <= ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setLong(1, currentTimeMillis);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -336,7 +344,7 @@ public class DatabaseManager {
 
     public void deleteRoleTimer(String userId, String roleId) {
         String query = "DELETE FROM role_timers WHERE user_id = ? AND role_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setString(2, roleId);
             pstmt.executeUpdate();
@@ -347,7 +355,7 @@ public class DatabaseManager {
 
     public int getAcWins(String userId) {
         String query = "SELECT ac_wins FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getInt("ac_wins");
@@ -360,7 +368,7 @@ public class DatabaseManager {
     public void updateAcWins(String userId, int newWins) {
         getAcWins(userId);
         String query = "UPDATE users SET ac_wins = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, newWins);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -370,7 +378,7 @@ public class DatabaseManager {
     public List<String> getTopAcWins() {
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, ac_wins FROM users WHERE ac_wins > 0 ORDER BY ac_wins DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -385,7 +393,7 @@ public class DatabaseManager {
         getPoints(userId); 
         String column = isUrgent ? "urgent_cleared" : "bounties_cleared";
         String query = "UPDATE users SET " + column + " = " + column + " + 1 WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -396,7 +404,7 @@ public class DatabaseManager {
     public List<String> getTopWealth() {
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, points, sparks FROM users ORDER BY points DESC, sparks DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -412,7 +420,7 @@ public class DatabaseManager {
     public List<String> getTopBounties() {
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, bounties_cleared FROM users WHERE bounties_cleared > 0 ORDER BY bounties_cleared DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -428,7 +436,7 @@ public class DatabaseManager {
     public List<String> getTopUrgent() {
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, urgent_cleared FROM users WHERE urgent_cleared > 0 ORDER BY urgent_cleared DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -444,7 +452,7 @@ public class DatabaseManager {
     public void addShopItem(String itemName, String secretLink) {
         String query = "INSERT INTO shop_items (item_name, secret_link) VALUES (?, ?) "
                 + "ON CONFLICT (item_name) DO UPDATE SET secret_link = EXCLUDED.secret_link;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, secretLink);
             pstmt.executeUpdate();
@@ -455,7 +463,7 @@ public class DatabaseManager {
 
     public boolean shopItemExists(String itemName) {
         String query = "SELECT 1 FROM shop_items WHERE item_name = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, itemName);
             try (ResultSet rs = pstmt.executeQuery()) {
                 return rs.next();
@@ -468,7 +476,7 @@ public class DatabaseManager {
 
     public String getSecretLink(String itemName) {
         String query = "SELECT secret_link FROM shop_items WHERE item_name = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, itemName);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -484,7 +492,7 @@ public class DatabaseManager {
     public int getSparks(String userId) {
         ensureConnected();
         String query = "SELECT sparks FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -502,7 +510,7 @@ public class DatabaseManager {
     public long getLastTaskDate(String userId) {
         ensureConnected();
         String query = "SELECT last_task_date FROM users WHERE user_id = ?;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getLong("last_task_date");
@@ -514,7 +522,7 @@ public class DatabaseManager {
     public int getActivityStrikes(String userId) {
         ensureConnected();
         String query = "SELECT activity_strikes FROM users WHERE user_id = ?;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getInt("activity_strikes");
@@ -526,7 +534,7 @@ public class DatabaseManager {
     public void setActivityStrikes(String userId, int strikes) {
         ensureConnected();
         String query = "UPDATE users SET activity_strikes = ? WHERE user_id = ?;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, strikes);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -537,7 +545,7 @@ public class DatabaseManager {
         ensureConnected();
         getSparks(userId);
         String query = "UPDATE users SET sparks = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, newAmount);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -548,7 +556,7 @@ public class DatabaseManager {
 
     public int getPoints(String userId) {
         String query = "SELECT points FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -567,7 +575,7 @@ public class DatabaseManager {
         ensureConnected();
         getPoints(userId);
         String query = "UPDATE users SET points = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, newAmount);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -579,7 +587,7 @@ public class DatabaseManager {
     public int getPity(String userId) {
         ensureConnected();
         String query = "SELECT pity FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -597,7 +605,7 @@ public class DatabaseManager {
         ensureConnected();
         getPity(userId);
         String query = "UPDATE users SET pity = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, newPity);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -609,7 +617,7 @@ public class DatabaseManager {
     public int getBountiesCleared(String userId) {
         ensureConnected();
         String query = "SELECT bounties_cleared FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -626,7 +634,7 @@ public class DatabaseManager {
     public int getUrgentCleared(String userId) {
         ensureConnected();
         String query = "SELECT urgent_cleared FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -645,7 +653,7 @@ public class DatabaseManager {
         String currentInventory = getInventory(userId);
         String updatedInventory = currentInventory.isEmpty() ? item : currentInventory + "," + item;
         String query = "UPDATE users SET inventory = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, updatedInventory);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -658,7 +666,7 @@ public class DatabaseManager {
         ensureConnected();
         getInventory(userId);
         String query = "UPDATE users SET inventory = ? WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, newInventory == null ? "" : newInventory);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -670,7 +678,7 @@ public class DatabaseManager {
     public String getInventory(String userId) {
         ensureConnected();
         String query = "SELECT inventory FROM users WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -691,7 +699,7 @@ public class DatabaseManager {
                 + "VALUES (?, ?, ?, NULL, NULL, ?) "
                 + "ON CONFLICT (setup_id) DO UPDATE SET "
                 + "sender_id = EXCLUDED.sender_id, target_id = EXCLUDED.target_id, expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, setupId);
             pstmt.setString(2, senderId);
             pstmt.setString(3, targetId);
@@ -705,7 +713,7 @@ public class DatabaseManager {
     public PendingTradeSetupRecord getPendingTradeSetup(String setupId) {
         ensureConnected();
         String query = "SELECT * FROM pending_trade_setups WHERE setup_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, setupId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -733,7 +741,7 @@ public class DatabaseManager {
     public void updatePendingTradeOffer(String setupId, String selectedOffer) {
         ensureConnected();
         String query = "UPDATE pending_trade_setups SET selected_offer = ? WHERE setup_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, selectedOffer);
             pstmt.setString(2, setupId);
             pstmt.executeUpdate();
@@ -745,7 +753,7 @@ public class DatabaseManager {
     public void updatePendingTradeRequest(String setupId, String selectedRequest) {
         ensureConnected();
         String query = "UPDATE pending_trade_setups SET selected_request = ? WHERE setup_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, selectedRequest);
             pstmt.setString(2, setupId);
             pstmt.executeUpdate();
@@ -757,7 +765,7 @@ public class DatabaseManager {
     public void deletePendingTradeSetup(String setupId) {
         ensureConnected();
         String query = "DELETE FROM pending_trade_setups WHERE setup_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, setupId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -773,7 +781,7 @@ public class DatabaseManager {
                 + "ON CONFLICT (trade_id) DO UPDATE SET "
                 + "sender_id = EXCLUDED.sender_id, target_id = EXCLUDED.target_id, "
                 + "offer_item = EXCLUDED.offer_item, request_item = EXCLUDED.request_item, expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, tradeId);
             pstmt.setString(2, senderId);
             pstmt.setString(3, targetId);
@@ -789,7 +797,7 @@ public class DatabaseManager {
     public ActiveTradeRecord getActiveTrade(String tradeId) {
         ensureConnected();
         String query = "SELECT * FROM active_trades WHERE trade_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, tradeId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -817,7 +825,7 @@ public class DatabaseManager {
     public void deleteActiveTrade(String tradeId) {
         ensureConnected();
         String query = "DELETE FROM active_trades WHERE trade_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, tradeId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -829,7 +837,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO pending_forges (owner_id, ingredient, expires_at) VALUES (?, ?, ?) "
                 + "ON CONFLICT (owner_id) DO UPDATE SET ingredient = EXCLUDED.ingredient, expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, ownerId);
             pstmt.setString(2, ingredient);
             pstmt.setLong(3, expiresAt);
@@ -842,7 +850,7 @@ public class DatabaseManager {
     public String getPendingForgeIngredient(String ownerId) {
         ensureConnected();
         String query = "SELECT ingredient, expires_at FROM pending_forges WHERE owner_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, ownerId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -863,7 +871,7 @@ public class DatabaseManager {
     public void deletePendingForge(String ownerId) {
         ensureConnected();
         String query = "DELETE FROM pending_forges WHERE owner_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, ownerId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -888,7 +896,7 @@ public class DatabaseManager {
     public boolean songLinkExists(String link) {
         ensureConnected();
         String query = "SELECT 1 FROM song_suggestions WHERE LOWER(link) = LOWER(?) AND is_active = 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, link);
             try (ResultSet rs = pstmt.executeQuery()) {
                 return rs.next();
@@ -904,7 +912,7 @@ public class DatabaseManager {
         String query = "INSERT INTO song_suggestions "
                 + "(added_by, title, artist, link, source, is_active, created_at, last_featured_at) "
                 + "VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, addedBy);
             pstmt.setString(2, title);
             pstmt.setString(3, artist);
@@ -923,9 +931,10 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, last_featured_at) VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
         int count = 0;
+        Connection conn = ensureConnected();
         try {
-            connection.setAutoCommit(false); 
-            try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+            conn.setAutoCommit(false); 
+            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
                 long now = System.currentTimeMillis();
                 for (int i = 0; i < links.size(); i++) {
                     pstmt.setString(1, addedBy);
@@ -938,13 +947,13 @@ public class DatabaseManager {
                     count++;
                 }
                 pstmt.executeBatch(); 
-                connection.commit();  
+                conn.commit();  
             } catch (SQLException e) {
-                connection.rollback();
+                conn.rollback();
                 e.printStackTrace();
                 count = 0;
             } finally {
-                connection.setAutoCommit(true); 
+                conn.setAutoCommit(true); 
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -955,7 +964,7 @@ public class DatabaseManager {
     public SongSuggestionRecord getSongSuggestionByLink(String link) {
         ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, link);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -971,7 +980,7 @@ public class DatabaseManager {
     public SongSuggestionRecord getSongSuggestionById(int songId) {
         ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, songId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -988,7 +997,7 @@ public class DatabaseManager {
         ensureConnected();
         List<SongSuggestionRecord> songs = new ArrayList<>();
         String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, limit);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -1005,7 +1014,7 @@ public class DatabaseManager {
         ensureConnected();
         List<SongSuggestionRecord> songs = new ArrayList<>();
         String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setInt(2, limit);
             try (ResultSet rs = pstmt.executeQuery()) {
@@ -1022,7 +1031,7 @@ public class DatabaseManager {
     public SongSuggestionRecord getRandomActiveSongSuggestion() {
         ensureConnected();
         String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY last_featured_at ASC, RANDOM() LIMIT 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query);
+        try (PreparedStatement pstmt = prepare(query);
              ResultSet rs = pstmt.executeQuery()) {
             if (rs.next()) {
                 return mapSongSuggestion(rs);
@@ -1036,7 +1045,7 @@ public class DatabaseManager {
     public boolean deactivateSongSuggestion(int songId) {
         ensureConnected();
         String query = "UPDATE song_suggestions SET is_active = 0 WHERE song_id = ? AND is_active = 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, songId);
             return pstmt.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -1048,7 +1057,7 @@ public class DatabaseManager {
     public void markSongFeatured(int songId, long featuredAt) {
         ensureConnected();
         String query = "UPDATE song_suggestions SET last_featured_at = ? WHERE song_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setLong(1, featuredAt);
             pstmt.setInt(2, songId);
             pstmt.executeUpdate();
@@ -1060,7 +1069,7 @@ public class DatabaseManager {
     public int getActiveSongSuggestionCount() {
         ensureConnected();
         String query = "SELECT COUNT(*) AS total FROM song_suggestions WHERE is_active = 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query);
+        try (PreparedStatement pstmt = prepare(query);
              ResultSet rs = pstmt.executeQuery()) {
             if (rs.next()) {
                 return rs.getInt("total");
@@ -1074,7 +1083,7 @@ public class DatabaseManager {
     public String getBotState(String key) {
         ensureConnected();
         String query = "SELECT state_value FROM bot_state WHERE state_key = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, key);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -1091,7 +1100,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO bot_state (state_key, state_value) VALUES (?, ?) "
                 + "ON CONFLICT (state_key) DO UPDATE SET state_value = EXCLUDED.state_value;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, key);
             pstmt.setString(2, value);
             pstmt.executeUpdate();
@@ -1104,7 +1113,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO creator_stats (user_id, listed_this_month, sold_this_month) VALUES (?, 1, 0) "
                 + "ON CONFLICT (user_id) DO UPDATE SET listed_this_month = creator_stats.listed_this_month + 1;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
@@ -1113,7 +1122,7 @@ public class DatabaseManager {
     public void incrementCreatorOrder(String userId) {
         ensureConnected();
         String query = "UPDATE creator_stats SET sold_this_month = sold_this_month + 1, all_time_orders = all_time_orders + 1 WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
@@ -1125,7 +1134,7 @@ public class DatabaseManager {
         String selectQuery = "SELECT user_id FROM creator_stats WHERE listed_this_month > 0 AND sold_this_month = 0;";
         String resetQuery = "UPDATE creator_stats SET listed_this_month = 0, sold_this_month = 0;";
 
-        try (Statement stmt = connection.createStatement(); 
+        try (Statement stmt = createStatement();
              ResultSet rs = stmt.executeQuery(selectQuery)) {
             while (rs.next()) {
                 needsCompensation.add(rs.getString("user_id"));
@@ -1135,7 +1144,7 @@ public class DatabaseManager {
         }
 
         if (resetCounters) {
-            try (Statement stmt = connection.createStatement()) {
+            try (Statement stmt = createStatement()) {
                 stmt.executeUpdate(resetQuery);
             } catch (SQLException e) { 
                 e.printStackTrace(); 
@@ -1149,7 +1158,7 @@ public class DatabaseManager {
         ensureConnected();
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, sold_this_month FROM creator_stats WHERE sold_this_month > 0 ORDER BY sold_this_month DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -1164,7 +1173,7 @@ public class DatabaseManager {
         ensureConnected();
         List<String> top = new ArrayList<>();
         String query = "SELECT user_id, all_time_orders FROM creator_stats WHERE all_time_orders > 0 ORDER BY all_time_orders DESC LIMIT 10;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             int rank = 1;
             while (rs.next() && rank <= 10) {
                 top.add("`#" + rank + "` <@" + rs.getString("user_id") + "> - **"
@@ -1178,7 +1187,7 @@ public class DatabaseManager {
     public void addCreatorRating(String userId, int stars) {
         ensureConnected();
         String query = "UPDATE creator_stats SET total_stars = total_stars + ?, total_ratings = total_ratings + 1 WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, stars);
             pstmt.setString(2, userId);
             pstmt.executeUpdate();
@@ -1188,7 +1197,7 @@ public class DatabaseManager {
     public String getCreatorRatingString(String userId) {
         ensureConnected();
         String query = "SELECT total_stars, total_ratings FROM creator_stats WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -1219,7 +1228,7 @@ public class DatabaseManager {
     public void saveCreatorPrompt(String creatorId, String channelId, String messageId, String originalMsgId) {
         ensureConnected();
         String query = "INSERT INTO creator_prompts (creator_id, channel_id, message_id, original_msg_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, creatorId);
             pstmt.setString(2, channelId);
             pstmt.setString(3, messageId);
@@ -1232,7 +1241,7 @@ public class DatabaseManager {
         ensureConnected();
         List<String[]> list = new ArrayList<>();
         String query = "SELECT channel_id, message_id FROM creator_prompts WHERE creator_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, creatorId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -1246,7 +1255,7 @@ public class DatabaseManager {
     public void removeCreatorPrompt(String channelId, String messageId) {
         ensureConnected();
         String query = "DELETE FROM creator_prompts WHERE channel_id = ? AND message_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, channelId);
             pstmt.setString(2, messageId);
             pstmt.executeUpdate();
@@ -1257,7 +1266,7 @@ public class DatabaseManager {
         ensureConnected();
         List<String> list = new ArrayList<>();
         String query = "SELECT message_id FROM creator_prompts WHERE original_msg_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, originalMsgId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -1272,7 +1281,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO bot_state (state_key, state_value) VALUES (?, ?) "
                 + "ON CONFLICT (state_key) DO UPDATE SET state_value = CAST((CAST(bot_state.state_value AS INTEGER) + ?) AS TEXT);";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, key);
             pstmt.setString(2, String.valueOf(amount));
             pstmt.setInt(3, amount);
@@ -1284,7 +1293,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO staff_stats (user_id, " + column + ") VALUES (?, ?) "
                 + "ON CONFLICT (user_id) DO UPDATE SET " + column + " = staff_stats." + column + " + ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setInt(2, amount);
             pstmt.setInt(3, amount);
@@ -1294,7 +1303,7 @@ public class DatabaseManager {
 
     public long[] getTotalServerWealth() {
         ensureConnected();
-        try (Statement stmt = connection.createStatement();
+        try (Statement stmt = createStatement();
              ResultSet rs = stmt.executeQuery("SELECT SUM(sparks) as s, SUM(points) as p FROM users;")) {
             if (rs.next()) return new long[]{rs.getLong("s"), rs.getLong("p")};
         } catch (SQLException e) { e.printStackTrace(); }
@@ -1303,7 +1312,7 @@ public class DatabaseManager {
 
     public int getTotalMonthlyOrders() {
         ensureConnected();
-        try (Statement stmt = connection.createStatement();
+        try (Statement stmt = createStatement();
              ResultSet rs = stmt.executeQuery("SELECT SUM(sold_this_month) as total FROM creator_stats;")) {
             if (rs.next()) return rs.getInt("total");
         } catch (SQLException e) { e.printStackTrace(); }
@@ -1312,7 +1321,7 @@ public class DatabaseManager {
 
     public int getTotalAcWins() {
         ensureConnected();
-        try (Statement stmt = connection.createStatement();
+        try (Statement stmt = createStatement();
              ResultSet rs = stmt.executeQuery("SELECT SUM(ac_wins) as total FROM users;")) {
             if (rs.next()) return rs.getInt("total");
         } catch (SQLException e) { e.printStackTrace(); }
@@ -1325,7 +1334,7 @@ public class DatabaseManager {
         String query = "SELECT user_id, tickets_handled, events_hosted, payouts_processed, "
                 + "(tickets_handled + events_hosted + payouts_processed) as total "
                 + "FROM staff_stats ORDER BY total DESC;";
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(query)) {
+        try (Statement stmt = createStatement(); ResultSet rs = stmt.executeQuery(query)) {
             while (rs.next()) {
                 ledger.add(new String[]{ rs.getString("user_id"), String.valueOf(rs.getInt("total")), String.valueOf(rs.getInt("tickets_handled")), String.valueOf(rs.getInt("events_hosted")), String.valueOf(rs.getInt("payouts_processed")) });
             }
@@ -1335,7 +1344,7 @@ public class DatabaseManager {
 
     public void wipeAllMonthlyStats() {
         ensureConnected();
-        try (Statement stmt = connection.createStatement()) {
+        try (Statement stmt = createStatement()) {
             stmt.executeUpdate("UPDATE creator_stats SET sold_this_month = 0, listed_this_month = 0;");
             stmt.executeUpdate("DELETE FROM staff_stats;");
             stmt.executeUpdate("UPDATE bot_state SET state_value = '0' WHERE state_key IN ('global_gacha_pulls', 'global_items_forged', 'global_miku_gifts', 'global_points_injected', 'global_messages_sent', 'global_commands_used');");
@@ -1345,7 +1354,7 @@ public class DatabaseManager {
     public boolean isUserVerified(String userId) {
         ensureConnected();
         String query = "SELECT verified FROM user_verifications WHERE user_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -1362,7 +1371,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, ?, ?) "
                 + "ON CONFLICT (user_id) DO UPDATE SET verified = EXCLUDED.verified, verified_at = EXCLUDED.verified_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setInt(2, verified ? 1 : 0);
             pstmt.setLong(3, verified ? System.currentTimeMillis() : 0);
@@ -1377,7 +1386,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, 1, ?) "
                 + "ON CONFLICT (user_id) DO UPDATE SET verified = 1, verified_at = EXCLUDED.verified_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setLong(2, System.currentTimeMillis());
             pstmt.executeUpdate();
@@ -1390,7 +1399,7 @@ public class DatabaseManager {
         ensureConnected();
         String query = "INSERT INTO zkp_sessions (session_id, user_id, expires_at) VALUES (?, ?, ?) "
                 + "ON CONFLICT (session_id) DO UPDATE SET user_id = EXCLUDED.user_id, expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, sessionId);
             pstmt.setString(2, userId);
             pstmt.setLong(3, expiresAt);
@@ -1403,7 +1412,7 @@ public class DatabaseManager {
     public String verifyZkpSession(String sessionId) {
         ensureConnected();
         String query = "SELECT user_id, expires_at FROM zkp_sessions WHERE session_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, sessionId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -1422,7 +1431,7 @@ public class DatabaseManager {
    public void addTaskToBank(String rankTarget, String content) {
         ensureConnected();
         String query = "INSERT INTO task_bank (rank_target, content) VALUES (?, ?);";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, rankTarget);
             pstmt.setString(2, content);
             pstmt.executeUpdate();
@@ -1432,7 +1441,7 @@ public class DatabaseManager {
     public String getRandomTaskForRank(String rankTarget) {
         ensureConnected();
         String query = "SELECT content FROM task_bank WHERE LOWER(rank_target) = LOWER(?) ORDER BY RANDOM() LIMIT 1;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, rankTarget);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getString("content");
@@ -1443,7 +1452,7 @@ public class DatabaseManager {
     public void saveScheduleTask(int dayOfWeek, String taskName, String userId) {
         ensureConnected();
         String query = "INSERT INTO staff_schedule (day_of_week, task_name, user_id) VALUES (?, ?, ?) ON CONFLICT (day_of_week, task_name) DO UPDATE SET user_id = EXCLUDED.user_id;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, dayOfWeek);
             pstmt.setString(2, taskName);
             pstmt.setString(3, userId);
@@ -1455,7 +1464,7 @@ public class DatabaseManager {
         ensureConnected();
         List<String[]> tasks = new ArrayList<>();
         String query = "SELECT task_name, user_id FROM staff_schedule WHERE day_of_week = ?;";
-        try (java.sql.PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setInt(1, dayOfWeek);
             try (java.sql.ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -1468,7 +1477,7 @@ public class DatabaseManager {
     public void saveEventSync(String scheduleMsgId, String threadId, String rsvpEmoji, String audience) {
         ensureConnected();
         String query = "INSERT INTO event_sync (schedule_msg_id, thread_id, rsvp_emoji, audience) VALUES (?, ?, ?, ?) ON CONFLICT (schedule_msg_id) DO UPDATE SET thread_id = EXCLUDED.thread_id, rsvp_emoji = EXCLUDED.rsvp_emoji, audience = EXCLUDED.audience;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, scheduleMsgId);
             pstmt.setString(2, threadId);
             pstmt.setString(3, rsvpEmoji);
@@ -1480,7 +1489,7 @@ public class DatabaseManager {
     public String[] getEventSync(String scheduleMsgId) {
         ensureConnected();
         String query = "SELECT thread_id, rsvp_emoji, audience FROM event_sync WHERE schedule_msg_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, scheduleMsgId);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
@@ -1494,7 +1503,7 @@ public class DatabaseManager {
     public void deleteEventSync(String scheduleMsgId) {
         ensureConnected();
         String query = "DELETE FROM event_sync WHERE schedule_msg_id = ?;";
-        try (PreparedStatement pstmt = connection.prepareStatement(query)) {
+        try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, scheduleMsgId);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }

@@ -163,11 +163,10 @@ D:/Discord/amora-bot/
 - Selects a quote from `QUOTES`, deletes the previous quote message (using message ID saved in `bot_state.last_quote_msg_id`), and posts the new quote embed in `LOUNGE_CHANNEL_ID`.
 
 ### 3.10 `ZkpWebServer.java` & `src/main/resources/index.html` (Web Endpoints)
-- Starts embedded `HttpServer` on port `PORT`:
+- Starts embedded `HttpServer` on port `PORT` backed by a multi-threaded fixed thread pool (`Executors.newFixedThreadPool(4)`):
   - `GET /verify?session=<ID>`: Serves `index.html` for client-side cryptographic proof generation simulation.
-  - `POST /verify-proof`: Validates session ID and public signals, calls `db.markUserVerified(userId)`.
-  - `POST /stripe-webhook`: Listens for `identity.verification_session.verified` webhook events from Stripe, marks user verified in DB, and grants `ADULT_ROLE_ID`.
-
+  - `POST /verify-proof`: Validates session ID, marks user verified in DB, strips `minorRole` if present, and automatically assigns `ADULT_ROLE_ID`.
+  - `POST /stripe-webhook`: Verifies Stripe webhook cryptographic signature (when `STRIPE_WEBHOOK_SECRET` is set), processes `identity.verification_session.verified`, marks user verified in DB, and grants `ADULT_ROLE_ID`.
 ### 3.11 `StripeService.java`
 - Wraps Stripe Identity API (`com.stripe:stripe-java`).
 - `createVerificationSession(String discordUserId)`: Creates a Stripe VerificationSession requiring document and selfie match, embedding the `discord_user_id` in metadata.
@@ -234,6 +233,8 @@ D:/Discord/amora-bot/
 | `PING_BUILDS` | Creator ping role ID for build assets | `ChatListener.java` |
 | `STRIPE_SECRET_KEY` / `STRIPE_API_KEY` | Stripe API Secret Key for Identity verification | `StripeService.java` |
 | `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key | `YouTubePlaylistImporter.java` |
+| `BASE_WEB_URL` | Base public URL of the bot (e.g. `https://amora-bot.onrender.com`) for ZKP verification links | `CommandListener.java` |
+| `STRIPE_WEBHOOK_SECRET` | Secret key used to verify incoming Stripe webhook signatures | `ZkpWebServer.java` |
 
 ---
 

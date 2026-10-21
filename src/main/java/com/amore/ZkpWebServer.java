@@ -26,10 +26,10 @@ public class ZkpWebServer {
             HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             
             server.createContext("/verify", new VerifyPageHandler());
-            server.createContext("/verify-proof", new ProofHandler());
+            server.createContext("/verify-proof", new ProofHandler(jda));
             server.createContext("/stripe-webhook", new StripeWebhookHandler(jda));
             
-            server.setExecutor(null); 
+            server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
             server.start();
             System.out.println("✦ Embedded Web Server started on port " + port);
         } catch (IOException e) {
@@ -62,6 +62,16 @@ public class ZkpWebServer {
     }
 
     static class ProofHandler implements HttpHandler {
+        private final JDA jda;
+
+        public ProofHandler() {
+            this(null);
+        }
+
+        public ProofHandler(JDA jda) {
+            this.jda = jda;
+        }
+
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -87,9 +97,32 @@ public class ZkpWebServer {
                     db.markUserVerified(userId);
                     success = true;
                     System.out.println("✦ ZKP Proof validated successfully for user ID: " + userId);
+                    if (jda != null) {
+                        String adultRoleId = System.getenv("ADULT_ROLE_ID");
+                        String minorRoleId = System.getenv("MINOR_ROLE_ID");
+                        if (adultRoleId != null && !adultRoleId.isBlank()) {
+                            for (Guild guild : jda.getGuilds()) {
+                                Role adultRole = guild.getRoleById(adultRoleId);
+                                Role minorRole = (minorRoleId != null && !minorRoleId.isBlank()) ? guild.getRoleById(minorRoleId) : null;
+                                if (adultRole != null) {
+                                    guild.retrieveMemberById(userId).queue(
+                                        member -> {
+                                            if (minorRole != null && member.getRoles().contains(minorRole)) {
+                                                guild.removeRoleFromMember(member, minorRole).queue();
+                                            }
+                                            guild.addRoleToMember(member, adultRole).queue(
+                                                s -> System.out.println("✦ Automatically assigned 18+ role to " + member.getUser().getName()),
+                                                err -> System.err.println("❌ Failed to assign 18+ role: " + err.getMessage())
+                                            );
+                                        },
+                                        failure -> {}
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
             if (success) {
                 String okResponse = "{\"status\":\"verified\"}";
                 byte[] bytes = okResponse.getBytes(StandardCharsets.UTF_8);
@@ -132,6 +165,17 @@ public class ZkpWebServer {
             try (Scanner scanner = new Scanner(is, StandardCharsets.UTF_8.name())) {
                 requestBody = scanner.useDelimiter("\\A").hasNext() ? scanner.next() : "";
             }
+            String sigHeader = exchange.getRequestHeaders().getFirst("Stripe-Signature");
+            String webhookSecret = System.getenv("STRIPE_WEBHOOK_SECRET");
+            if (webhookSecret != null && !webhookSecret.isBlank() && sigHeader != null) {
+                try {
+                    com.stripe.net.Webhook.Signature.verifyHeader(requestBody, sigHeader, webhookSecret, 300);
+                } catch (Exception sigEx) {
+                    System.err.println("❌ Stripe Webhook Signature Verification failed: " + sigEx.getMessage());
+                    exchange.sendResponseHeaders(400, -1);
+                    return;
+                }
+            }
 
             try {
                 JSONObject jsonEvent = new JSONObject(requestBody);
@@ -154,11 +198,16 @@ public class ZkpWebServer {
                                     if (jda != null) {
                                         String adultRoleId = System.getenv("ADULT_ROLE_ID");
                                         if (adultRoleId != null && !adultRoleId.isBlank()) {
+                                            String minorRoleId = System.getenv("MINOR_ROLE_ID");
                                             for (Guild guild : jda.getGuilds()) {
                                                 Role adultRole = guild.getRoleById(adultRoleId);
+                                                Role minorRole = (minorRoleId != null && !minorRoleId.isBlank()) ? guild.getRoleById(minorRoleId) : null;
                                                 if (adultRole != null) {
                                                     guild.retrieveMemberById(discordUserId).queue(
                                                         member -> {
+                                                            if (minorRole != null && member.getRoles().contains(minorRole)) {
+                                                                guild.removeRoleFromMember(member, minorRole).queue();
+                                                            }
                                                             guild.addRoleToMember(member, adultRole).queue(
                                                                 success -> System.out.println("✦ Assigned 18+ role to " + member.getUser().getName()),
                                                                 error -> System.err.println("❌ Failed to assign role in guild: " + error.getMessage())

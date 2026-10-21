@@ -51,6 +51,21 @@ public class ChatListener extends ListenerAdapter {
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
     
     private static final Deque<Long> processedShopMessages = new ArrayDeque<>();
+    private static final java.util.concurrent.atomic.AtomicInteger pendingMessageCount = new java.util.concurrent.atomic.AtomicInteger(0);
+    private static final java.util.concurrent.ScheduledExecutorService METRICS_SCHEDULER = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+
+    static {
+        METRICS_SCHEDULER.scheduleAtFixedRate(() -> {
+            try {
+                int count = pendingMessageCount.getAndSet(0);
+                if (count > 0) {
+                    DatabaseManager.getInstance().incrementGlobalStat("global_messages_sent", count);
+                }
+            } catch (Exception e) {
+                System.err.println("Warning: failed to flush chat message metric: " + e.getMessage());
+            }
+        }, 10, 60, java.util.concurrent.TimeUnit.SECONDS);
+    }
     private static class GridState {
         int pX = 2, pY = 2;
         int sX, sY;        
@@ -1357,7 +1372,7 @@ public class ChatListener extends ListenerAdapter {
             return;
         }
 
-        DatabaseManager.getInstance().incrementGlobalStat("global_messages_sent", 1);
+        pendingMessageCount.incrementAndGet();
         if (event.getMessage().getContentRaw().equalsIgnoreCase("!spawngame")) {
             spawnRandomLoungeGame(event.getChannel());
             event.getMessage().delete().queue(); 

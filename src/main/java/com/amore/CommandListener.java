@@ -1226,29 +1226,13 @@ public class CommandListener extends ListenerAdapter {
         
         word = word.replaceAll("[`*|_~]", "").trim().toUpperCase();
         
-        int length = word.length();
-        
-        if (Pattern.compile("^([A-Z0-9]{3,6}-)+[A-Z0-9]{3,6}$").matcher(word).matches()) return true;
-        if (word.matches("\\d{5,}")) return true; // Accept 5+ digit codes (2FA, game pins)
-        
-        if (length < 4) return false;
-        
-        boolean hasLetter = false;
-        boolean hasDigit = false;
-        for (char c : word.toCharArray()) {
-            if (Character.isLetter(c)) hasLetter = true;
-            if (Character.isDigit(c)) hasDigit = true;
+        // Formatted license / voucher / activation key: e.g. ABCD-1234-EFGH or X1Y2-Z3A4-B5C6-D7E8
+        if (Pattern.compile("^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,5}$").matcher(word).matches()) return true;
+
+        // High-entropy random alphanumeric token (at least 16 chars with mixed letters and numbers, no spaces)
+        if (word.length() >= 16 && word.matches("^[A-Z0-9_-]{16,64}$") && word.matches(".*[A-Z].*") && word.matches(".*\\d.*")) {
+            return true;
         }
-        
-        if (hasLetter && hasDigit && length >= 5) {
-            return true; 
-        }
-        
-        int vowels = 0;
-        for (char c : word.toCharArray()) {
-            if ("AEIOU".indexOf(c) != -1) vowels++;
-        }
-        if (vowels <= 1 && length >= 4) return true; // Allow max 1 vowel for things like "XKAM"
         
         return false;
     }
@@ -1387,7 +1371,7 @@ public class CommandListener extends ListenerAdapter {
                     
                 String content = event.getMessage().getContentRaw();
                 
-                Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?!([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))\\S+|(?<![-/.])\\b(?=[a-zA-Z0-9]*[a-zA-Z])(?=[a-zA-Z0-9]*\\d)[a-zA-Z0-9]{5,15}\\b(?![-/.])|(?<![-/.@&#])\\b\\d{6,20}\\b(?![-/.>])|(?:code|link|id|key|pass|password|file|asset)\\s*[:=]\\s*(?:\\r?\\n)?\\s*(?!https?://([a-zA-Z0-9-]+\\.)?(roblox\\.com|discord\\.com|discordapp\\.com|discord\\.gg|imgur\\.com|gyazo\\.com|pinterest\\.com|prnt\\.sc|tenor\\.com))[^\n]+|^\\s*(?:\\|\\|\\s*)?[a-zA-Z0-9_-]{5,20}(?:\\s*\\|\\|)?\\s*$)");                    
+                Pattern sensitivePattern = Pattern.compile("(?iU)(<a?:[a-zA-Z0-9_]+:\\d+>|https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/\\S+|\\b(?:code|delivery|secret|download|link|key|pass|password|pin|license)\\s*[:=]\\s*(?:\\r?\\n)?\\s*\\S+|\\b[A-Za-z0-9]{3,8}(?:-[A-Za-z0-9]{3,8}){1,5}\\b|\\|\\|\\s*(?:https?://\\S+|[A-Za-z0-9_-]{8,64})\\s*\\|\\|)");                    
                 Matcher matcher = sensitivePattern.matcher(content);
 
                 boolean shouldIntercept = false;
@@ -1401,22 +1385,22 @@ public class CommandListener extends ListenerAdapter {
                         continue;
                     }
 
-                    boolean isUrl = matchText.matches("(?iU)^https?://.*");
+                    boolean isDeliveryUrl = matchText.matches("(?iU)^https?://(?:[a-zA-Z0-9-]+\\.)?(?:drive\\.google\\.com|mega\\.nz|mediafire\\.com|dropbox\\.com|wetransfer\\.com|we\\.tl|onedrive\\.live\\.com|1drv\\.ms|pastebin\\.com|rentry\\.(?:co|org)|anonfiles\\.com|pixeldrain\\.com|catbox\\.moe|filebin\\.net)/.*");
                     
                     String codeToTest = matchText;
                     boolean hasExplicitPrefix = false;
                     
-                    if (matchText.toLowerCase().matches("^(code|link|id|key|pass|password|file|asset)\\s*[:=].*")) {
+                    if (matchText.toLowerCase().matches("^(?:code|delivery|secret|download|link|key|pass|password|pin|license)\\s*[:=].*")) {
                         int splitIndex = Math.max(matchText.indexOf(':'), matchText.indexOf('='));
                         if (splitIndex != -1) {
                             codeToTest = matchText.substring(splitIndex + 1).trim();
-                            hasExplicitPrefix = true; // Flag it for guaranteed censorship
+                            hasExplicitPrefix = true;
                         }
                     }
                     
                     codeToTest = codeToTest.replaceAll("[`*|_~]", "").trim();
                     
-                    if (isUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
+                    if (isDeliveryUrl || hasExplicitPrefix || isValidTransactionCode(codeToTest)) {
                         shouldIntercept = true;
                         matcher.appendReplacement(censoredBuffer, "`[  securely hidden by AM0RA ]`");
                     } else {
@@ -1798,23 +1782,44 @@ public class CommandListener extends ListenerAdapter {
             User user = event.getUser();
             
             if (db.isUserVerified(user.getId())) {
-                event.reply(" You are already cryptographically verified as 18+!").setEphemeral(true).queue();
+                event.reply(" You are already verified as 18+!").setEphemeral(true).queue();
                 return;
             }
 
+            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
+
             String sessionId = UUID.randomUUID().toString();
-            
+            db.createZkpSession(sessionId, user.getId(), System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(30));
+
+            String baseWebUrl = System.getenv("BASE_WEB_URL");
+            if (baseWebUrl == null || baseWebUrl.isBlank()) {
+                baseWebUrl = System.getenv("RENDER_EXTERNAL_URL");
+            }
+            if (baseWebUrl == null || baseWebUrl.isBlank()) {
+                baseWebUrl = "http://localhost:" + (System.getenv("PORT") != null ? System.getenv("PORT") : "8080");
+            }
+            String portalUrl = baseWebUrl.replaceAll("/+$", "") + "/verify?session=" + sessionId;
+
             EmbedBuilder zkpEmbed = new EmbedBuilder()
                 .setColor(Color.decode("#FF5FA2"))
-                .setTitle("✦ ZERO-KNOWLEDGE AGE VERIFICATION ✦")
-                .setDescription("To protect your privacy, we do **not** accept ID uploads.\n\n" +
-                                "1. Click the secure portal link below.\n" +
-                                "2. Approve the cryptographic age check via your secure identity app.\n" +
-                                "3. Your zero-knowledge proof will automatically unlock your 18+ access.\n\n" +
-                                "🔗 **[Open Secure ZKP Portal](https://your-zkp-verification-domain.com/verify?session=" + sessionId + "&user=" + user.getId() + ")**")
-                .setFooter("AMORA Privacy Engine • Zero data stored", null);
+                .setTitle("✦ AUTOMATED 18+ AGE VERIFICATION ✦")
+                .setDescription("Choose an automated verification method below to unlock the 18+ Adult Zone without waiting for staff tickets!\n\n" +
+                                "🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n" +
+                                "• **Instant Attestation**: If your account is over 90 days old, confirm the 18+ compliance terms directly below.\n" +
+                                "• **Zero-Knowledge Portal**: Open the browser portal to complete your cryptographic proof.\n" +
+                                "• **Zero Data Stored**: No ID uploads, photos, or documents are ever retained.")
+                .setFooter("AMORA Automated Privacy Engine • Free & Instant", null);
 
-            event.replyEmbeds(zkpEmbed.build()).setEphemeral(true).queue();
+            List<Button> buttons = new ArrayList<>();
+            if (accountAgeDays >= 90) {
+                buttons.add(Button.success("verify_attest_18", "🥂 Confirm 18+ Terms & Unlock"));
+            }
+            buttons.add(Button.link(portalUrl, "🌐 Open ZKP Web Portal"));
+
+            event.replyEmbeds(zkpEmbed.build())
+                 .addActionRow(buttons)
+                 .setEphemeral(true)
+                 .queue();
             return;
         }
 
@@ -3827,34 +3832,43 @@ public class CommandListener extends ListenerAdapter {
             boolean isVerified = db.isUserVerified(user.getId());
 
             if (!isVerified) {
-                event.deferReply(true).queue();
+                long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
 
-                scheduler.execute(() -> {
-                    try {
-                        String stripeUrl = StripeService.createVerificationSession(user.getId());
+                String sessionId = UUID.randomUUID().toString();
+                db.createZkpSession(sessionId, user.getId(), System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(30));
 
-                        EmbedBuilder stripeEmbed = new EmbedBuilder()
-                            .setColor(Color.decode("#FF5FA2"))
-                            .setTitle("✦ 18+ ZONE: SECURE AGE VERIFICATION REQUIRED ✦")
-                            .setDescription("To access the **Adult Zone**, you must verify that you are at least 18 years old via our automated verification gate.\n\n" +
-                                            " **Privacy & Data Protection:**\n" +
-                                            "• Verification is conducted directly by **Stripe Identity**.\n" +
-                                            "• No IDs, real names, or photos are ever viewed, stored, or accessible by AMORA.\n\n" +
-                                            "**Instructions:**\n" +
-                                            "1. Click the button below to open the secure Stripe portal.\n" +
-                                            "2. Scan your ID and complete the quick selfie check.\n" +
-                                            "3. Once Stripe approves you, return to Discord and click **🥂 18+ Adult Zone** to claim your role!")
-                            .setFooter("AMORA Safety Engine • Powered by Stripe Identity", null);
+                String baseWebUrl = System.getenv("BASE_WEB_URL");
+                if (baseWebUrl == null || baseWebUrl.isBlank()) {
+                    baseWebUrl = System.getenv("RENDER_EXTERNAL_URL");
+                }
+                if (baseWebUrl == null || baseWebUrl.isBlank()) {
+                    baseWebUrl = "http://localhost:" + (System.getenv("PORT") != null ? System.getenv("PORT") : "8080");
+                }
+                String portalUrl = baseWebUrl.replaceAll("/+$", "") + "/verify?session=" + sessionId;
 
-                        event.getHook().sendMessageEmbeds(stripeEmbed.build())
-                             .addActionRow(Button.link(stripeUrl, "🛡️ Verify with Stripe Identity"))
-                             .queue();
+                EmbedBuilder verifyEmbed = new EmbedBuilder()
+                    .setColor(Color.decode("#FF5FA2"))
+                    .setTitle("✦ 18+ ZONE: AUTOMATED AGE VERIFICATION ✦")
+                    .setDescription("To access the **Adult Zone**, please confirm your age through our automated gate (no tickets or manual wait times!):\n\n" +
+                                    "🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n" +
+                                    "**Options to Verify:**\n" +
+                                    (accountAgeDays >= 90 
+                                        ? "1. **Instant Attestation**: Click the green button below to legally attest that you are 18+ and accept adult zone terms.\n" 
+                                        : "1. ⚠️ **Account Under 90 Days**: Your account is too new for instant 1-click verification. Please use the Web Portal.\n") +
+                                    "2. **Zero-Knowledge Portal**: Open our web portal to verify cryptographically without uploading any ID.\n\n" +
+                                    "*Zero personal data, real names, or photos are ever seen or stored by AMORA staff.*")
+                    .setFooter("AMORA Automated Safety Engine • Fee-Free & Secure", null);
 
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        event.getHook().sendMessage("❌ Failed to initiate verification session: " + e.getMessage()).queue();
-                    }
-                });
+                List<Button> buttons = new ArrayList<>();
+                if (accountAgeDays >= 90) {
+                    buttons.add(Button.success("verify_attest_18", "🥂 Confirm 18+ Terms & Unlock"));
+                }
+                buttons.add(Button.link(portalUrl, "🌐 Open ZKP Web Portal"));
+
+                event.replyEmbeds(verifyEmbed.build())
+                     .addActionRow(buttons)
+                     .setEphemeral(true)
+                     .queue();
                 return;
             }
 
@@ -3867,8 +3881,8 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.deferReply(true).queue();
-            net.dv8tion.jda.api.entities.Role adultRole = guild.getRoleById(adultRoleId);
-            net.dv8tion.jda.api.entities.Role minorRole = minorRoleId != null ? guild.getRoleById(minorRoleId) : null;
+            Role adultRole = guild.getRoleById(adultRoleId);
+            Role minorRole = minorRoleId != null ? guild.getRoleById(minorRoleId) : null;
 
             if (minorRole != null && event.getMember().getRoles().contains(minorRole)) {
                 guild.removeRoleFromMember(user, minorRole).queue();
@@ -3878,10 +3892,52 @@ public class CommandListener extends ListenerAdapter {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
                         event.getHook().sendMessage("🥂 **Identity Confirmed!** The **Adult Zone (18+)** has been successfully unlocked for you! ✨").queue();
-                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " verified via Stripe Identity and claimed the 18+ role.", Color.decode("#FF5FA2"));
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " claimed the 18+ role.", Color.decode("#FF5FA2"));
                     },
                     error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
+            }
+            return;
+        }
+
+        if (componentId.equals("verify_attest_18")) {
+            User user = event.getUser();
+            Guild guild = event.getGuild();
+            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
+
+            if (accountAgeDays < 90) {
+                event.reply("❌ **Verification Blocked:** Your Discord account is only " + accountAgeDays + " days old. Automated age verification requires an account age of at least 90 days to prevent throwaway alt accounts. Please contact staff for assistance.").setEphemeral(true).queue();
+                return;
+            }
+
+            db.setVerified(user.getId(), true);
+
+            String adultRoleId = System.getenv("ADULT_ROLE_ID");
+            String minorRoleId = System.getenv("MINOR_ROLE_ID");
+
+            if (adultRoleId == null || adultRoleId.isBlank()) {
+                event.reply("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+            Role adultRole = guild.getRoleById(adultRoleId);
+            Role minorRole = (minorRoleId != null && !minorRoleId.isBlank()) ? guild.getRoleById(minorRoleId) : null;
+
+            if (minorRole != null && event.getMember().getRoles().contains(minorRole)) {
+                guild.removeRoleFromMember(user, minorRole).queue();
+            }
+
+            if (adultRole != null) {
+                guild.addRoleToMember(user, adultRole).queue(
+                    success -> {
+                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your account age (" + accountAgeDays + " days) and terms attestation have been verified. Enjoy the Adult Zone! ✨").queue();
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " self-verified as 18+ (Account Age: " + accountAgeDays + " days).", Color.decode("#FF5FA2"));
+                    },
+                    error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
+                );
+            } else {
+                event.getHook().sendMessage("❌ Adult role not found on this server. Check configuration!").queue();
             }
             return;
         }
