@@ -66,6 +66,15 @@ public class CommandListener extends ListenerAdapter {
     private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
     private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
+    private static final String AMORIX_ROLE_ID = System.getenv("AMORIX_ROLE_ID");
+    private static final String AMORA_ROLE_ID = System.getenv("AMORA_ROLE_ID");
+    private static final String TRAINEE_ROLE_ID = System.getenv("TRAINEE_ROLE_ID");
+    private static final String TRAINEE_ROLE_IDS = System.getenv("TRAINEE_ROLE_IDS");
+    private static final String GUEST_ROLE_ID = System.getenv("GUEST_ROLE_ID");
+    private static final String VISITOR_ROLE_ID = System.getenv("VISITOR_ROLE_ID");
+    private static final String HIGH_STAFF_ROLE_IDS = System.getenv("HIGH_STAFF_ROLE_IDS");
+    private static final String TICKET_CHANNEL_ID = System.getenv("TICKET_CHANNEL_ID");
+    private static final String HIATUS_CHANNEL_ID = System.getenv("HIATUS_CHANNEL_ID");
     private static final String MINOR_CHANNEL_ID = System.getenv("MINOR_CHANNEL_ID");
     private static final String ADULT_CHANNEL_ID = System.getenv("ADULT_CHANNEL_ID");
     private static final String ADULT_ROLE_ID = System.getenv("ADULT_ROLE_ID");
@@ -259,6 +268,64 @@ public class CommandListener extends ListenerAdapter {
             return hasAnyAllowedRole(event, MUSIC_ADMIN_ROLE_IDS);
         }
         return false;
+    }
+
+    public static boolean isOfficialMember(net.dv8tion.jda.api.entities.Member member) {
+        if (member == null) return false;
+        if (member.hasPermission(Permission.ADMINISTRATOR)) return true;
+
+        List<String> officialRanks = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
+
+        return member.getRoles().stream().anyMatch(role -> {
+            String id = role.getId();
+            String name = role.getName().trim();
+
+            if (MEMBER_ROLE_ID != null && !MEMBER_ROLE_ID.isBlank() && id.equals(MEMBER_ROLE_ID.trim())) return true;
+            if (AMORIX_ROLE_ID != null && !AMORIX_ROLE_ID.isBlank() && id.equals(AMORIX_ROLE_ID.trim())) return true;
+            if (AMORA_ROLE_ID != null && !AMORA_ROLE_ID.isBlank() && id.equals(AMORA_ROLE_ID.trim())) return true;
+            if (id.equals("1519498175352668371")) return true;
+
+            if (HIGH_STAFF_ROLE_IDS != null && !HIGH_STAFF_ROLE_IDS.isBlank()) {
+                for (String staffId : HIGH_STAFF_ROLE_IDS.split(",")) {
+                    if (id.equals(staffId.trim())) return true;
+                }
+            }
+
+            if (officialRanks.stream().anyMatch(rank -> rank.equalsIgnoreCase(name))) return true;
+
+            String lowerName = name.toLowerCase();
+            return lowerName.equals("amora") || lowerName.equals("official member")
+                    || lowerName.equals("official amora") || lowerName.equals("amorix")
+                    || lowerName.startsWith("amora ") || lowerName.contains("official member");
+        });
+    }
+
+    public static boolean isTraineeMember(net.dv8tion.jda.api.entities.Member member) {
+        if (member == null) return false;
+        return member.getRoles().stream().anyMatch(role -> {
+            String id = role.getId();
+            String name = role.getName().trim().toLowerCase();
+            if (TRAINEE_ROLE_ID != null && !TRAINEE_ROLE_ID.isBlank() && id.equals(TRAINEE_ROLE_ID.trim())) return true;
+            if (TRAINEE_ROLE_IDS != null && !TRAINEE_ROLE_IDS.isBlank()) {
+                for (String tId : TRAINEE_ROLE_IDS.split(",")) {
+                    if (id.equals(tId.trim())) return true;
+                }
+            }
+            if (id.equals("1516061152843665549")) return true;
+            return name.contains("trainee");
+        });
+    }
+
+    public static boolean isVisitorMember(net.dv8tion.jda.api.entities.Member member) {
+        if (member == null) return false;
+        return member.getRoles().stream().anyMatch(role -> {
+            String id = role.getId();
+            String name = role.getName().trim().toLowerCase();
+            if (VISITOR_ROLE_ID != null && !VISITOR_ROLE_ID.isBlank() && id.equals(VISITOR_ROLE_ID.trim())) return true;
+            if (GUEST_ROLE_ID != null && !GUEST_ROLE_ID.isBlank() && id.equals(GUEST_ROLE_ID.trim())) return true;
+            if (id.equals("1516061302701817986")) return true;
+            return name.contains("visitor") || name.contains("guest");
+        });
     }
 
     private String getExactItemName(String inventory, String searchTerm) {
@@ -3700,7 +3767,10 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("hub_hiatus")) {
-            event.reply(" **Hiatus Requests:** Please use the official Hiatus bot in <#YOUR_HIATUS_CHANNEL_ID> to log your leave of absence. AMORA will automatically detect your hiatus role and freeze your activity strikes!")
+            String hiatusTarget = (HIATUS_CHANNEL_ID != null && !HIATUS_CHANNEL_ID.isBlank())
+                    ? "<#" + HIATUS_CHANNEL_ID.trim() + ">"
+                    : "the official hiatus channel";
+            event.reply(" **Hiatus Requests:** Please use the official Hiatus bot in " + hiatusTarget + " to log your leave of absence. AMORA will automatically detect your hiatus role and freeze your activity strikes!")
                  .setEphemeral(true).queue();
             return;
         }
@@ -4095,17 +4165,26 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.startsWith("role_")) {
-            String visitorRoleId = "1516061302701817986";
-            String traineeRoleId = "1516061152843665549";
-            String amoraRoleId = "1519498175352668371"; 
-            
-            boolean isTrainee = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(traineeRoleId));
-            boolean isAmora = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(amoraRoleId));
-            boolean isVisitor = event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(visitorRoleId));
+            if (event.getMember() == null) {
+                event.reply("ʚ This action can only be performed inside the AMORA server! ɞ").setEphemeral(true).queue();
+                return;
+            }
+
+            boolean isTrainee = isTraineeMember(event.getMember());
+            boolean isAmora = isOfficialMember(event.getMember());
+            boolean isVisitor = isVisitorMember(event.getMember());
+
+            String ticketChannelMention = (TICKET_CHANNEL_ID != null && !TICKET_CHANNEL_ID.isBlank())
+                    ? "<#" + TICKET_CHANNEL_ID.trim() + ">"
+                    : "<#1469314519816863836>";
+
+            String resolvedVisitorRoleId = (VISITOR_ROLE_ID != null && !VISITOR_ROLE_ID.isBlank())
+                    ? VISITOR_ROLE_ID.trim()
+                    : ((GUEST_ROLE_ID != null && !GUEST_ROLE_ID.isBlank()) ? GUEST_ROLE_ID.trim() : "1516061302701817986");
 
             if (componentId.equals("role_member")) {
                 if (isTrainee || isAmora) {
-                    event.reply("ʚ You are already a Trainee or Official Member! If you have questions or need help, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
+                    event.reply("ʚ You are already a Trainee or Official Member! If you have questions or need help, please open a ticket in " + ticketChannelMention + ". ɞ").setEphemeral(true).queue();
                     return;
                 }
                 
@@ -4163,7 +4242,7 @@ public class CommandListener extends ListenerAdapter {
 
             if (componentId.equals("role_visitor")) {
                 if (isAmora || isTrainee) {
-                    event.reply("ʚ You are already an active part of AMORA! If you have questions, please open a ticket in <#1469314519816863836>. ɞ").setEphemeral(true).queue();
+                    event.reply("ʚ You are already an active part of AMORA! If you have questions, please open a ticket in " + ticketChannelMention + ". ɞ").setEphemeral(true).queue();
                     return;
                 }
                 if (isVisitor) {
@@ -4172,7 +4251,7 @@ public class CommandListener extends ListenerAdapter {
                 }
 
                 event.deferReply(true).queue();
-                net.dv8tion.jda.api.entities.Role role = event.getGuild().getRoleById(visitorRoleId);
+                net.dv8tion.jda.api.entities.Role role = event.getGuild().getRoleById(resolvedVisitorRoleId);
                 if (role != null) {
                     event.getGuild().addRoleToMember(event.getUser(), role).queue(
                         success -> {
@@ -4181,6 +4260,8 @@ public class CommandListener extends ListenerAdapter {
                         },
                         error -> event.getHook().sendMessage("ʚ Oh no! An error occurred assigning the role. ɞ").queue()
                     );
+                } else {
+                    event.getHook().sendMessage("ʚ Visitor role configuration error. Please contact staff! ɞ").queue();
                 }
                 return;
             } 
