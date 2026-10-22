@@ -66,7 +66,7 @@ test("code exchange fails on Discord errors and on a malformed user id", async (
 
 test("config derives the proof domain, CORS origin and Discord redirect from SITE_URL", () => {
   const env = {
-    SITE_URL: "https://glitchmatcha.github.io/AMORABot/",
+    SITE_URL: "https://amora-verify.netlify.app/",
     BOT_INTERNAL_URL: "https://bot.test/",
     VERIFIER_SHARED_SECRET: "s".repeat(40),
     ID_HASH_PEPPER: "p".repeat(40),
@@ -74,9 +74,9 @@ test("config derives the proof domain, CORS origin and Discord redirect from SIT
     DISCORD_CLIENT_SECRET: "csecret",
   };
   const config = loadConfig(env);
-  assert.equal(config.domain, "glitchmatcha.github.io");
-  assert.equal(config.siteOrigin, "https://glitchmatcha.github.io");
-  assert.equal(config.redirectUri, "https://glitchmatcha.github.io/AMORABot/verify.html");
+  assert.equal(config.domain, "amora-verify.netlify.app");
+  assert.equal(config.siteOrigin, "https://amora-verify.netlify.app");
+  assert.equal(config.redirectUri, "https://amora-verify.netlify.app/verify.html");
   assert.equal(config.botUrl, "https://bot.test");
 
   assert.equal(loadConfig({ ...env, SITE_URL: "http://localhost:8082" }).redirectUri, "http://localhost:8082/verify.html");

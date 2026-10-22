@@ -1,0 +1,17 @@
+# Static age-verification portal (verifier/site + verifier/src/client.js). The API stays on Render.
+# Set API_BASE_URL (the Render verifier origin, no trailing slash) in Netlify: Site configuration -> Environment variables.
+[build]
+  base = "verifier"
+  command = "npm ci && npm run build"
+  publish = "dist/site"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
