@@ -125,12 +125,15 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
 
     let outcome;
     try {
-      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.uniqueIdentifier));
+      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.uniqueIdentifier), config.devMode);
     } catch (err) {
       console.error("bot complete failed:", err.message);
       return send(res, 502, { ok: false, message: "Verification is temporarily unavailable." });
     }
     if (outcome === "ok") return send(res, 200, { ok: true, message: "Verified. You can return to Discord." });
+    if (outcome === "dev_proof_not_allowed") {
+      return send(res, 403, { ok: false, message: "Test-mode proofs are not accepted on this server." });
+    }
     if (outcome === "duplicate_id") {
       return send(res, 409, { ok: false, message: "This ID has already been used to verify another Discord account. Contact staff." });
     }

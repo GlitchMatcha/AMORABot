@@ -28,7 +28,8 @@ async function withServer(overrides, run) {
         calls.sessionLive++;
         return overrides.live ?? true;
       },
-      complete: async (token, fp) => {
+      complete: async (token, fp, devMode) => {
+        calls.lastDevMode = devMode;
         calls.complete.push({ token, fp });
         return overrides.outcome ?? "ok";
       },
@@ -89,6 +90,18 @@ test("a valid proof completes with a pepper-keyed fingerprint, never the raw ide
 test("the same ID on a second account yields 409", async () => {
   await withServer({ outcome: "duplicate_id" }, async (base) => {
     assert.equal((await post(base, goodBody)).status, 409);
+  });
+});
+
+test("the dev-mode flag is forwarded to the bot and a refusal surfaces as 403", async () => {
+  await withServer({ config: { devMode: true }, outcome: "dev_proof_not_allowed" }, async (base, calls) => {
+    const res = await post(base, goodBody);
+    assert.equal(res.status, 403);
+    assert.equal(calls.lastDevMode, true);
+  });
+  await withServer({ config: { devMode: false } }, async (base, calls) => {
+    assert.equal((await post(base, goodBody)).status, 200);
+    assert.equal(calls.lastDevMode, false);
   });
 });
 

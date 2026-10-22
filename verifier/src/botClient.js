@@ -34,12 +34,13 @@ export function createBotClient({ botUrl, secret, fetchImpl = fetch, now = Date.
       return json.live === true;
     },
 
-    /** Consumes the session and marks the owner verified. Returns "ok" | "duplicate_id" | "invalid_session". */
-    async complete(token, idFingerprint) {
-      const { status, json } = await post("/internal/age/complete", { token, idFingerprint });
+    /** Consumes the session and marks the owner verified. Returns "ok" | "duplicate_id" | "invalid_session" | "dev_proof_not_allowed". */
+    async complete(token, idFingerprint, devMode = false) {
+      const { status, json } = await post("/internal/age/complete", { token, idFingerprint, devMode });
       if (status === 200 && json.status === "ok") return "ok";
       if (status === 409) return "duplicate_id";
       if (status === 410) return "invalid_session";
+      if (status === 403) return "dev_proof_not_allowed";
       throw new Error(`complete failed with HTTP ${status}`);
     },
   };
