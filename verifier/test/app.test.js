@@ -289,3 +289,17 @@ test("a user who cancels on Discord is told so", async () => {
     assert.equal(res.headers.get("location"), "/verify?error=denied");
   });
 });
+
+test("the portal and the about page link to the official app stores, and /about needs no login", async () => {
+  await withServer({}, async (base) => {
+    for (const path of ["/verify", "/about"]) {
+      const res = await fetch(`${base}${path}`);
+      assert.equal(res.status, 200, path);
+      const html = await res.text();
+      assert.ok(html.includes("https://apps.apple.com/us/app/zkpassport/id6477371975"), `${path} App Store link`);
+      assert.ok(html.includes("https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport"), `${path} Google Play link`);
+      assert.match(res.headers.get("content-security-policy"), /script-src 'self'/);
+    }
+    assert.match(await (await fetch(`${base}/verify`)).text(), /href="\/about"/);
+  });
+});

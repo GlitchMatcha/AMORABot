@@ -137,8 +137,9 @@ public class CommandListener extends ListenerAdapter {
 
         StringBuilder description = new StringBuilder();
         if (portalUrl != null) {
-            description.append("**Zero-knowledge proof (strongest):** prove you are 18+ with the chip in your passport or ID card using the free zkPassport app. ")
-                       .append("The proof is made on your phone — AMORA only learns \"18 or older\" plus a one-way fingerprint that stops one ID from verifying several accounts. ")
+            description.append("**Zero-knowledge proof (strongest):** prove you are 18+ using the chip in your passport or ID card. ")
+                       .append("Your phone checks it privately and AMORA only gets a \"yes, 18 or older\" — your name, photo and birthday never leave your phone.\n")
+                       .append("📱 New to this? Get the free app first: [iPhone](https://apps.apple.com/us/app/zkpassport/id6477371975) · [Android](https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport)\n")
                        .append("The link works once and expires in ").append(AGE_SESSION_TTL_MINUTES).append(" minutes.\n\n");
         }
         if (attestAvailable) {
@@ -159,6 +160,7 @@ public class CommandListener extends ListenerAdapter {
         List<Button> buttons = new ArrayList<>();
         if (portalUrl != null) {
             buttons.add(Button.link(portalUrl, "🔐 Prove 18+ (zkPassport)"));
+            buttons.add(Button.link(verifierUrl + "/about", "ℹ️ Is my info safe?"));
         }
         if (attestAvailable) {
             buttons.add(Button.success("verify_attest_18", "🥂 I am 18+ — Self-attest"));
