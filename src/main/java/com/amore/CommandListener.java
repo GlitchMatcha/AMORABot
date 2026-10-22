@@ -132,7 +132,8 @@ public class CommandListener extends ListenerAdapter {
             String token = java.util.HexFormat.of().formatHex(raw);
             DatabaseManager.getInstance().createAgeSession(InternalApiServer.sha256Hex(token), user.getId(),
                     System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(AGE_SESSION_TTL_MINUTES));
-            portalUrl = verifierUrl + "/verify?s=" + token;
+            // The token goes in the URL fragment: browsers never send it to a server (static portal, no request logs).
+            portalUrl = verifierUrl + "/verify.html#s=" + token;
         }
 
         StringBuilder description = new StringBuilder();

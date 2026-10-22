@@ -1,30 +1,18 @@
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { fingerprint } from "./hmac.js";
-import { clearCookie, deriveKey, parseCookies, readPayload, serializeCookie, signPayload } from "./cookies.js";
+import { deriveKey, readPayload, signPayload } from "./signedTokens.js";
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
-const SESSION_COOKIE = "amora_session";
-const OAUTH_COOKIE = "amora_oauth";
-const OAUTH_TTL_MS = 10 * 60_000;
+const STATE_PATTERN = /^[a-f0-9]{32}$/;
 const SESSION_TTL_MS = 15 * 60_000;
 
+// JSON API only: the portal is a static site on another origin, so there is nothing here for a browser to
+// navigate to. Auth is a signed bearer token, so no cookies and no credentialed CORS.
 const SECURITY_HEADERS = {
   "Cache-Control": "no-store",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  // The zkPassport button talks to its bridge/popup over https/wss; scripts are limited to our own bundle.
-  "Content-Security-Policy":
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; " +
-    "connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-};
-
-const STATIC_FILES = {
-  "/verify": { file: "public/index.html", type: "text/html; charset=utf-8" },
-  "/about": { file: "public/about.html", type: "text/html; charset=utf-8" },
-  "/style.css": { file: "public/style.css", type: "text/css; charset=utf-8" },
-  "/client.js": { file: "dist/client.js", type: "text/javascript; charset=utf-8" },
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
 };
 
 class BodyTooLarge extends Error {}
@@ -65,96 +53,90 @@ function clientAddress(req) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createApp({ config, verifyAgeProof, bot, discordAuth, rootDir, now = Date.now }) {
+export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date.now }) {
   const allow = createRateLimiter(config.rateLimitPerMinute, now);
-  const sessionKey = deriveKey(config.sharedSecret, "amora-session-cookie-v1");
-  const oauthKey = deriveKey(config.sharedSecret, "amora-oauth-state-v1");
+  const sessionKey = deriveKey(config.sharedSecret, "amora-session-v1");
   let inFlight = 0;
+
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": config.siteOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin",
+  };
 
   function send(res, status, body, headers = {}) {
     const isJson = typeof body === "object";
     res.writeHead(status, {
       ...SECURITY_HEADERS,
+      ...corsHeaders,
       "Content-Type": isJson ? "application/json" : "text/plain; charset=utf-8",
       ...headers,
     });
     res.end(isJson ? JSON.stringify(body) : body);
   }
 
-  function redirect(res, location, cookies = []) {
-    res.writeHead(302, { ...SECURITY_HEADERS, Location: location, "Set-Cookie": cookies });
-    res.end();
-  }
-
-  async function serveStatic(res, entry) {
-    try {
-      const content = await readFile(new URL(entry.file, rootDir));
-      res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": entry.type });
-      res.end(content);
-    } catch {
-      send(res, 404, "Not found");
-    }
-  }
-
   function currentLogin(req) {
-    return readPayload(sessionKey, parseCookies(req.headers.cookie)[SESSION_COOKIE], now());
+    const match = /^Bearer (\S+)$/.exec(req.headers.authorization ?? "");
+    return match ? readPayload(sessionKey, match[1], now()) : null;
   }
 
-  /** Step 1: remember which session this browser is logging in for, then send the user to Discord. */
-  async function handleAuthStart(req, res, url) {
-    if (!allow(clientAddress(req))) return send(res, 429, "Too many attempts. Try again in a minute.");
-    const token = url.searchParams.get("s");
-    if (!TOKEN_PATTERN.test(token ?? "")) return redirect(res, "/verify?error=invalid");
-
-    const nonce = randomBytes(16).toString("hex");
-    const pending = signPayload(oauthKey, { t: token, n: nonce, exp: now() + OAUTH_TTL_MS });
-    return redirect(res, discordAuth.authorizeUrl(nonce), [
-      serializeCookie(OAUTH_COOKIE, pending, { maxAgeSeconds: OAUTH_TTL_MS / 1000, secure: config.secureCookies }),
-    ]);
-  }
-
-  /** Step 2: Discord sends the user back. Only a login for the account that owns the session is accepted. */
-  async function handleAuthCallback(req, res, url) {
-    if (!allow(clientAddress(req))) return send(res, 429, "Too many attempts. Try again in a minute.");
-    const clear = [clearCookie(OAUTH_COOKIE, config.secureCookies)];
-    const fail = (code) => redirect(res, `/verify?error=${code}`, clear);
-
-    const pending = readPayload(oauthKey, parseCookies(req.headers.cookie)[OAUTH_COOKIE], now());
-    const code = url.searchParams.get("code");
-    if (!pending || !code || url.searchParams.get("state") !== pending.n) {
-      return fail(url.searchParams.get("error") === "access_denied" ? "denied" : "login_failed");
+  async function readJson(req, res) {
+    if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) {
+      send(res, 415, { ok: false, message: "Unsupported request." });
+      return undefined;
     }
+    try {
+      return JSON.parse(await readBody(req, config.maxBodyBytes)) ?? {};
+    } catch (err) {
+      if (err instanceof BodyTooLarge) send(res, 413, { ok: false, message: "Request too large." });
+      else send(res, 400, { ok: false, message: "Malformed request." });
+      return undefined;
+    }
+  }
+
+  /** The portal asks for the Discord authorize URL so the OAuth client id and redirect stay configured in one place. */
+  function handleDiscordUrl(res, url) {
+    const state = url.searchParams.get("state") ?? "";
+    if (!STATE_PATTERN.test(state)) return send(res, 400, { ok: false, error: "invalid" });
+    return send(res, 200, { ok: true, url: discordAuth.authorizeUrl(state) });
+  }
+
+  /**
+   * Exchanges the Discord authorization code. Only a login for the account that owns the session is accepted;
+   * it returns a short-lived signed bearer the portal sends to /api/verify.
+   */
+  async function handleLogin(req, res) {
+    if (!allow(clientAddress(req))) return send(res, 429, { ok: false, error: "rate_limited" });
+    const payload = await readJson(req, res);
+    if (payload === undefined) return undefined;
+
+    const { token, code } = payload;
+    if (!TOKEN_PATTERN.test(token ?? "")) return send(res, 400, { ok: false, error: "invalid" });
+    if (typeof code !== "string" || !code || code.length > 512) return send(res, 400, { ok: false, error: "login_failed" });
 
     let user;
     try {
       user = await discordAuth.exchange(code);
     } catch (err) {
       console.error("discord login failed:", err.message);
-      return fail("login_failed");
+      return send(res, 400, { ok: false, error: "login_failed" });
     }
 
     let check;
     try {
-      check = await bot.sessionCheck(pending.t, user.id);
+      check = await bot.sessionCheck(token, user.id);
     } catch (err) {
       console.error("bot session-check failed:", err.message);
-      return fail("unavailable");
+      return send(res, 502, { ok: false, error: "unavailable" });
     }
-    if (check.banned) return fail("banned");
-    if (!check.live) return fail("expired");
-    if (!check.ownerMatches) return fail("wrong_account");
+    if (check.banned) return send(res, 403, { ok: false, error: "banned" });
+    if (!check.live) return send(res, 410, { ok: false, error: "expired" });
+    if (!check.ownerMatches) return send(res, 403, { ok: false, error: "wrong_account" });
 
-    const login = signPayload(sessionKey, { t: pending.t, u: user.id, name: user.username, exp: now() + SESSION_TTL_MS });
-    return redirect(res, "/verify", [
-      clearCookie(OAUTH_COOKIE, config.secureCookies),
-      serializeCookie(SESSION_COOKIE, login, { maxAgeSeconds: SESSION_TTL_MS / 1000, secure: config.secureCookies }),
-    ]);
-  }
-
-  function handleMe(req, res) {
-    const login = currentLogin(req);
-    if (!login) return send(res, 200, { loggedIn: false });
-    return send(res, 200, { loggedIn: true, username: login.name, token: login.t });
+    const session = signPayload(sessionKey, { t: token, u: user.id, exp: now() + SESSION_TTL_MS });
+    return send(res, 200, { ok: true, username: user.username, session });
   }
 
   async function handleVerify(req, res) {
@@ -162,21 +144,13 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, rootDir, n
 
     const login = currentLogin(req);
     if (!login) return send(res, 401, { ok: false, message: "Log in with Discord first." });
-    if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) {
-      return send(res, 415, { ok: false, message: "Unsupported request." });
-    }
+    const payload = await readJson(req, res);
+    if (payload === undefined) return undefined;
 
-    let payload;
-    try {
-      payload = JSON.parse(await readBody(req, config.maxBodyBytes));
-    } catch (err) {
-      if (err instanceof BodyTooLarge) return send(res, 413, { ok: false, message: "Request too large." });
-      return send(res, 400, { ok: false, message: "Malformed request." });
-    }
-    // The session token and Discord identity come from the signed login cookie, never from the request body.
+    // The session token and Discord identity come from the signed bearer, never from the request body.
     const token = login.t;
     const discordUserId = login.u;
-    const { proofs, queryResult } = payload ?? {};
+    const { proofs, queryResult } = payload;
 
     // Cheap check first so we only run the expensive proof verification for a live session of this very user.
     let check;
@@ -231,14 +205,19 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, rootDir, n
       const url = new URL(req.url, "http://localhost");
       const path = url.pathname;
 
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, { ...SECURITY_HEADERS, ...corsHeaders });
+        return res.end();
+      }
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
       if (req.method === "GET" && path === "/config.json") {
         return send(res, 200, { scope: config.scope, devMode: config.devMode });
       }
-      if (req.method === "GET" && path === "/auth/discord") return handleAuthStart(req, res, url);
-      if (req.method === "GET" && path === "/auth/callback") return handleAuthCallback(req, res, url);
-      if (req.method === "GET" && path === "/api/me") return handleMe(req, res);
-      if (req.method === "GET" && STATIC_FILES[path]) return serveStatic(res, STATIC_FILES[path]);
+      if (req.method === "GET" && path === "/api/discord-url") return handleDiscordUrl(res, url);
+      if (path === "/api/login") {
+        if (req.method !== "POST") return send(res, 405, "Method not allowed", { Allow: "POST" });
+        return handleLogin(req, res);
+      }
       if (path === "/api/verify") {
         if (req.method !== "POST") return send(res, 405, "Method not allowed", { Allow: "POST" });
         return handleVerify(req, res);

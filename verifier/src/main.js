@@ -20,10 +20,9 @@ const app = createApp({
     clientSecret: config.discordClientSecret,
     redirectUri: config.redirectUri,
   }),
-  rootDir: new URL("../", import.meta.url),
 });
 
 createServer(app).listen(config.port, () => {
-  console.log(`AMORA age verifier listening on :${config.port} (domain=${config.domain}, scope=${config.scope}, devMode=${config.devMode})`);
+  console.log(`AMORA age verifier API listening on :${config.port} (site=${config.siteOrigin}, scope=${config.scope}, devMode=${config.devMode})`);
   console.log(`Discord OAuth redirect URI (register this exactly): ${config.redirectUri}`);
 });

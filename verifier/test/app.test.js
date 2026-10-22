@@ -3,31 +3,31 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createApp } from "../src/app.js";
 import { fingerprint } from "../src/hmac.js";
-import { deriveKey, signPayload } from "../src/cookies.js";
+import { deriveKey, signPayload } from "../src/signedTokens.js";
 
 const TOKEN = "a".repeat(64);
 const USER = "123456789012345678";
+const SITE = "https://portal.test";
 const config = {
   scope: "test-scope",
   devMode: false,
+  siteOrigin: SITE,
   sharedSecret: "k".repeat(40),
   idHashPepper: "p".repeat(32),
-  secureCookies: false,
   maxConcurrentVerifications: 2,
   maxBodyBytes: 1024,
   rateLimitPerMinute: 1000,
 };
 
-const sessionKey = deriveKey(config.sharedSecret, "amora-session-cookie-v1");
-const loginCookie = (overrides = {}, key = sessionKey) =>
-  `amora_session=${signPayload(key, { t: TOKEN, u: USER, name: "tester", exp: Date.now() + 60_000, ...overrides })}`;
+const sessionKey = deriveKey(config.sharedSecret, "amora-session-v1");
+const bearer = (overrides = {}, key = sessionKey) =>
+  `Bearer ${signPayload(key, { t: TOKEN, u: USER, exp: Date.now() + 60_000, ...overrides })}`;
 
 async function withServer(overrides, run) {
   const calls = { verify: 0, complete: [], checks: [], exchange: [] };
   const check = overrides.check ?? { live: true, ownerMatches: true, banned: false };
   const deps = {
     config: { ...config, ...overrides.config },
-    rootDir: new URL("../", import.meta.url),
     verifyAgeProof: async (input) => {
       calls.verify++;
       return (overrides.verify ?? (() => ({ ok: true, uniqueIdentifier: "raw-id-123" })))(input);
@@ -35,6 +35,7 @@ async function withServer(overrides, run) {
     bot: {
       sessionCheck: async (token, userId) => {
         calls.checks.push({ token, userId });
+        if (overrides.checkError) throw new Error("bot down");
         return check;
       },
       complete: async (token, fp, devMode, userId) => {
@@ -65,23 +66,24 @@ const body = { proofs: [{}], queryResult: {} };
 const post = (base, payload, headers = {}) =>
   fetch(`${base}/api/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: loginCookie(), ...headers },
+    headers: { "Content-Type": "application/json", Authorization: bearer(), ...headers },
     body: JSON.stringify(payload),
   });
-const get = (base, path, headers = {}) => fetch(`${base}${path}`, { redirect: "manual", headers });
-const cookieValue = (res, name) => {
-  const line = res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`));
-  return line ? line.split(";")[0] : null;
-};
+const login = (base, payload, headers = {}) =>
+  fetch(`${base}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(payload),
+  });
 
 // ---- /api/verify ---------------------------------------------------------------------------------
 
-test("verification requires a valid Discord login cookie", async () => {
+test("verification requires a valid signed bearer token", async () => {
   await withServer({}, async (base, calls) => {
-    const forgedWithOtherKey = loginCookie({}, deriveKey("x".repeat(40), "amora-session-cookie-v1"));
-    for (const cookie of [undefined, "amora_session=garbage", loginCookie({ exp: Date.now() - 1 }), forgedWithOtherKey]) {
+    const forgedWithOtherKey = bearer({}, deriveKey("x".repeat(40), "amora-session-v1"));
+    for (const authorization of [undefined, "Bearer garbage", "Basic abc", bearer({ exp: Date.now() - 1 }), forgedWithOtherKey]) {
       const headers = { "Content-Type": "application/json" };
-      if (cookie) headers.Cookie = cookie;
+      if (authorization) headers.Authorization = authorization;
       const res = await fetch(`${base}/api/verify`, { method: "POST", headers, body: JSON.stringify(body) });
       assert.equal(res.status, 401);
     }
@@ -90,11 +92,11 @@ test("verification requires a valid Discord login cookie", async () => {
   });
 });
 
-test("the session token and Discord user come from the cookie, never the request body", async () => {
+test("the session token and Discord user come from the bearer, never the request body", async () => {
   await withServer({}, async (base, calls) => {
     const res = await post(base, { ...body, token: "f".repeat(64), discordUserId: "999" });
     assert.equal(res.status, 200);
-    assert.deepEqual(calls.checks, [{ token: TOKEN, userId: USER }, ]);
+    assert.deepEqual(calls.checks, [{ token: TOKEN, userId: USER }]);
     assert.equal(calls.complete[0].token, TOKEN);
     assert.equal(calls.complete[0].userId, USER);
   });
@@ -102,7 +104,7 @@ test("the session token and Discord user come from the cookie, never the request
 
 test("non-JSON content type is refused", async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/verify`, { method: "POST", headers: { "Content-Type": "text/plain", Cookie: loginCookie() }, body: "x" });
+    const res = await fetch(`${base}/api/verify`, { method: "POST", headers: { "Content-Type": "text/plain", Authorization: bearer() }, body: "x" });
     assert.equal(res.status, 415);
   });
 });
@@ -174,13 +176,12 @@ test("rate limit applies per client address (last X-Forwarded-For entry)", async
   });
 });
 
-test("only POST is allowed on /api/verify and responses carry hardening headers", async () => {
+test("only POST is allowed on /api/verify and /api/login", async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/verify`);
-    assert.equal(res.status, 405);
-    assert.equal(res.headers.get("referrer-policy"), "no-referrer");
-    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
-    assert.match(res.headers.get("content-security-policy"), /script-src 'self'/);
+    for (const path of ["/api/verify", "/api/login"]) {
+      const res = await fetch(`${base}${path}`);
+      assert.equal(res.status, 405, path);
+    }
   });
 });
 
@@ -190,116 +191,100 @@ test("config.json exposes scope and devMode for the portal", async () => {
   });
 });
 
+// ---- CORS: the portal lives on another origin --------------------------------------------------------
+
+test("the portal origin is allowed and preflights succeed; no credentialed CORS", async () => {
+  await withServer({}, async (base) => {
+    const pre = await fetch(`${base}/api/verify`, { method: "OPTIONS", headers: { Origin: SITE, "Access-Control-Request-Method": "POST" } });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get("access-control-allow-origin"), SITE);
+    assert.match(pre.headers.get("access-control-allow-headers"), /Authorization/);
+    assert.equal(pre.headers.get("access-control-allow-credentials"), null);
+
+    const res = await fetch(`${base}/config.json`, { headers: { Origin: SITE } });
+    assert.equal(res.headers.get("access-control-allow-origin"), SITE);
+    assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  });
+});
+
+test("the API serves no pages or cookies", async () => {
+  await withServer({}, async (base) => {
+    for (const path of ["/", "/verify", "/about", "/client.js", "/auth/discord", "/auth/callback", "/api/me"]) {
+      const res = await fetch(`${base}${path}`, { redirect: "manual" });
+      assert.equal(res.status, 404, path);
+      assert.equal(res.headers.get("set-cookie"), null);
+    }
+  });
+});
+
 // ---- Discord login ---------------------------------------------------------------------------------
 
-test("/auth/discord rejects a malformed token and never contacts Discord", async () => {
+test("/api/discord-url builds the authorize URL only for a well-formed state", async () => {
   await withServer({}, async (base) => {
-    const res = await get(base, "/auth/discord?s=nope");
-    assert.equal(res.status, 302);
-    assert.equal(res.headers.get("location"), "/verify?error=invalid");
+    const state = "0123456789abcdef0123456789abcdef";
+    const ok = await (await fetch(`${base}/api/discord-url?state=${state}`)).json();
+    assert.deepEqual(ok, { ok: true, url: `https://discord.test/authorize?state=${state}` });
+
+    for (const bad of ["", "nope", "A".repeat(32), "a".repeat(64)]) {
+      const res = await fetch(`${base}/api/discord-url?state=${bad}`);
+      assert.equal(res.status, 400, bad);
+    }
   });
 });
 
-test("/auth/discord redirects to Discord with a nonce state and an HttpOnly cookie", async () => {
-  await withServer({}, async (base) => {
-    const res = await get(base, `/auth/discord?s=${TOKEN}`);
-    assert.equal(res.status, 302);
-    const location = new URL(res.headers.get("location"));
-    assert.equal(location.origin, "https://discord.test");
-    assert.match(location.searchParams.get("state"), /^[a-f0-9]{32}$/);
-    assert.ok(!res.headers.get("location").includes(TOKEN), "the session token must not travel through Discord");
-    const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("amora_oauth="));
-    assert.match(setCookie, /HttpOnly/);
-    assert.match(setCookie, /SameSite=Lax/);
-  });
-});
-
-async function startLogin(base) {
-  const start = await get(base, `/auth/discord?s=${TOKEN}`);
-  return { state: new URL(start.headers.get("location")).searchParams.get("state"), cookie: cookieValue(start, "amora_oauth") };
-}
-
-test("the account that owns the session logs in and /api/me returns its token", async () => {
+test("the account that owns the session gets a bearer that /api/verify accepts", async () => {
   await withServer({}, async (base, calls) => {
-    const { state, cookie } = await startLogin(base);
-    const res = await get(base, `/auth/callback?code=abc&state=${state}`, { Cookie: cookie });
-    assert.equal(res.status, 302);
-    assert.equal(res.headers.get("location"), "/verify");
+    const res = await login(base, { token: TOKEN, code: "abc" });
+    assert.equal(res.status, 200);
+    const out = await res.json();
+    assert.equal(out.ok, true);
+    assert.equal(out.username, "tester");
     assert.deepEqual(calls.exchange, ["abc"]);
     assert.deepEqual(calls.checks.at(-1), { token: TOKEN, userId: USER });
 
-    const session = cookieValue(res, "amora_session");
-    assert.ok(session);
-    const me = await (await get(base, "/api/me", { Cookie: session })).json();
-    assert.deepEqual(me, { loggedIn: true, username: "tester", token: TOKEN });
-    assert.deepEqual(await (await get(base, "/api/me")).json(), { loggedIn: false });
+    const verified = await post(base, body, { Authorization: `Bearer ${out.session}` });
+    assert.equal(verified.status, 200);
+    assert.deepEqual(calls.complete.at(-1).userId, USER);
   });
 });
 
-test("a different Discord account is refused and gets no session cookie", async () => {
+test("a different Discord account is refused and gets no session", async () => {
   await withServer({ check: { live: true, ownerMatches: false, banned: false }, discordUser: { id: "555555555555555555", username: "friend" } }, async (base) => {
-    const { state, cookie } = await startLogin(base);
-    const res = await get(base, `/auth/callback?code=abc&state=${state}`, { Cookie: cookie });
-    assert.equal(res.headers.get("location"), "/verify?error=wrong_account");
-    assert.equal(cookieValue(res, "amora_session"), null);
+    const res = await login(base, { token: TOKEN, code: "abc" });
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { ok: false, error: "wrong_account" });
   });
 });
 
 test("banned and expired sessions are refused at login", async () => {
   const cases = [
-    [{ live: true, ownerMatches: true, banned: true }, "banned"],
-    [{ live: false, ownerMatches: false, banned: false }, "expired"],
+    [{ live: true, ownerMatches: true, banned: true }, 403, "banned"],
+    [{ live: false, ownerMatches: false, banned: false }, 410, "expired"],
   ];
-  for (const [check, code] of cases) {
+  for (const [check, status, error] of cases) {
     await withServer({ check }, async (base) => {
-      const { state, cookie } = await startLogin(base);
-      const res = await get(base, `/auth/callback?code=abc&state=${state}`, { Cookie: cookie });
-      assert.equal(res.headers.get("location"), `/verify?error=${code}`);
-      assert.equal(cookieValue(res, "amora_session"), null);
+      const res = await login(base, { token: TOKEN, code: "abc" });
+      assert.equal(res.status, status);
+      assert.deepEqual(await res.json(), { ok: false, error });
     });
   }
 });
 
-test("callback rejects a missing cookie, a wrong state and a Discord failure", async () => {
+test("login rejects a malformed token or code without contacting Discord, and reports Discord/bot failures", async () => {
   await withServer({}, async (base, calls) => {
-    const { state, cookie } = await startLogin(base);
-    const attempts = [
-      [`/auth/callback?code=abc&state=${state}`, {}],
-      [`/auth/callback?code=abc&state=${"0".repeat(32)}`, { Cookie: cookie }],
-      [`/auth/callback?state=${state}`, { Cookie: cookie }],
-    ];
-    for (const [path, headers] of attempts) {
-      const res = await get(base, path, headers);
-      assert.equal(res.headers.get("location"), "/verify?error=login_failed");
-      assert.equal(cookieValue(res, "amora_session"), null);
-    }
+    assert.equal((await login(base, { token: "nope", code: "abc" })).status, 400);
+    assert.equal((await login(base, { token: TOKEN })).status, 400);
+    assert.equal((await login(base, { token: TOKEN, code: "x".repeat(600) })).status, 400);
+    assert.equal((await login(base, { token: TOKEN, code: "abc" }, { "Content-Type": "text/plain" })).status, 415);
     assert.equal(calls.exchange.length, 0);
   });
   await withServer({ exchangeError: true }, async (base) => {
-    const { state, cookie } = await startLogin(base);
-    const res = await get(base, `/auth/callback?code=abc&state=${state}`, { Cookie: cookie });
-    assert.equal(res.headers.get("location"), "/verify?error=login_failed");
+    const res = await login(base, { token: TOKEN, code: "abc" });
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { ok: false, error: "login_failed" });
   });
-});
-
-test("a user who cancels on Discord is told so", async () => {
-  await withServer({}, async (base) => {
-    const { state, cookie } = await startLogin(base);
-    const res = await get(base, `/auth/callback?error=access_denied&state=${state}`, { Cookie: cookie });
-    assert.equal(res.headers.get("location"), "/verify?error=denied");
-  });
-});
-
-test("the portal and the about page link to the official app stores, and /about needs no login", async () => {
-  await withServer({}, async (base) => {
-    for (const path of ["/verify", "/about"]) {
-      const res = await fetch(`${base}${path}`);
-      assert.equal(res.status, 200, path);
-      const html = await res.text();
-      assert.ok(html.includes("https://apps.apple.com/us/app/zkpassport/id6477371975"), `${path} App Store link`);
-      assert.ok(html.includes("https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport"), `${path} Google Play link`);
-      assert.match(res.headers.get("content-security-policy"), /script-src 'self'/);
-    }
-    assert.match(await (await fetch(`${base}/verify`)).text(), /href="\/about"/);
+  await withServer({ checkError: true }, async (base) => {
+    assert.equal((await login(base, { token: TOKEN, code: "abc" })).status, 502);
   });
 });

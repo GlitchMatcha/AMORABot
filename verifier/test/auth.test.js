@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveKey, parseCookies, readPayload, signPayload } from "../src/cookies.js";
+import { deriveKey, readPayload, signPayload } from "../src/signedTokens.js";
 import { createDiscordAuth } from "../src/discordAuth.js";
 import { loadConfig } from "../src/config.js";
 
@@ -18,11 +18,6 @@ test("signed payloads round-trip and reject tampering, other keys and expiry", (
   assert.equal(readPayload(key, `${body}.${sig}.x`, 1_000), null);
   assert.equal(readPayload(key, undefined, 1_000), null);
   assert.equal(readPayload(key, signPayload(key, { u: "1" }), 1_000), null, "payloads without exp are refused");
-});
-
-test("cookie header parsing", () => {
-  assert.deepEqual(parseCookies("a=1; b=two=2;  c=3"), { a: "1", b: "two=2", c: "3" });
-  assert.deepEqual(parseCookies(undefined), {});
 });
 
 test("Discord authorize URL requests only the identify scope with our state and redirect", () => {
@@ -69,9 +64,9 @@ test("code exchange fails on Discord errors and on a malformed user id", async (
   await assert.rejects(() => badId.exchange("x"));
 });
 
-test("config requires the Discord OAuth credentials and derives the redirect URI", () => {
+test("config derives the proof domain, CORS origin and Discord redirect from SITE_URL", () => {
   const env = {
-    VERIFIER_DOMAIN: "amora-verifier.onrender.com",
+    SITE_URL: "https://glitchmatcha.github.io/AMORABot/",
     BOT_INTERNAL_URL: "https://bot.test/",
     VERIFIER_SHARED_SECRET: "s".repeat(40),
     ID_HASH_PEPPER: "p".repeat(40),
@@ -79,11 +74,14 @@ test("config requires the Discord OAuth credentials and derives the redirect URI
     DISCORD_CLIENT_SECRET: "csecret",
   };
   const config = loadConfig(env);
-  assert.equal(config.redirectUri, "https://amora-verifier.onrender.com/auth/callback");
-  assert.equal(config.secureCookies, true);
+  assert.equal(config.domain, "glitchmatcha.github.io");
+  assert.equal(config.siteOrigin, "https://glitchmatcha.github.io");
+  assert.equal(config.redirectUri, "https://glitchmatcha.github.io/AMORABot/verify.html");
   assert.equal(config.botUrl, "https://bot.test");
 
-  assert.equal(loadConfig({ ...env, VERIFIER_DOMAIN: "localhost:8081" }).redirectUri, "http://localhost:8081/auth/callback");
+  assert.equal(loadConfig({ ...env, SITE_URL: "http://localhost:8082" }).redirectUri, "http://localhost:8082/verify.html");
+  assert.throws(() => loadConfig({ ...env, SITE_URL: "http://portal.test" }), /https/);
+  assert.throws(() => loadConfig({ ...env, SITE_URL: undefined }), /SITE_URL/);
   assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_SECRET: "" }), /DISCORD_CLIENT_SECRET/);
   assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_ID: undefined }), /DISCORD_CLIENT_ID/);
 });

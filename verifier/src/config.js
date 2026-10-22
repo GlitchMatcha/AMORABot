@@ -22,17 +22,19 @@ export function loadConfig(env = process.env) {
     throw new Error("ZK_DEV_MODE accepts mock passports and must not be enabled with NODE_ENV=production");
   }
 
-  // Host the portal is served from (no scheme). Must equal the origin users open: the proof is bound to it.
-  const domain = required(env, "VERIFIER_DOMAIN");
-  const baseUrl = (env.VERIFIER_BASE_URL?.trim() || `${/^localhost(:\d+)?$/.test(domain) ? "http" : "https"}://${domain}`).replace(/\/+$/, "");
+  // Public URL the static portal (verify.html, about.html, ...) is served from, e.g. https://user.github.io/AMORABot.
+  // The zkPassport proof is bound to its hostname and Discord redirects back to it after login.
+  const siteUrl = new URL(required(env, "SITE_URL"));
+  if (siteUrl.protocol !== "https:" && siteUrl.hostname !== "localhost") throw new Error("SITE_URL must be https");
+  const site = siteUrl.href.replace(/\/+$/, "");
 
   return {
     port: Number(env.PORT || 8081),
-    domain,
-    baseUrl,
+    domain: siteUrl.hostname,
+    // Value of the CORS Access-Control-Allow-Origin header: the only origin allowed to call this API.
+    siteOrigin: siteUrl.origin,
     // Must be registered exactly in the Discord developer portal (OAuth2 -> Redirects).
-    redirectUri: `${baseUrl}/auth/callback`,
-    secureCookies: baseUrl.startsWith("https://"),
+    redirectUri: `${site}/verify.html`,
     // Base URL of the bot's internal API, e.g. https://amora-bot.onrender.com
     botUrl: required(env, "BOT_INTERNAL_URL").replace(/\/+$/, ""),
     sharedSecret: requiredSecret(env, "VERIFIER_SHARED_SECRET"),

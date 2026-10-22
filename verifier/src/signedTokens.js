@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-/** Per-purpose HMAC key derived from the shared secret, so cookie and state signatures can't be mixed up. */
+/** Per-purpose HMAC key derived from the shared secret, so token signatures can't be mixed up. */
 export function deriveKey(secret, label) {
   return createHmac("sha256", secret).update(label).digest();
 }
@@ -30,21 +30,4 @@ export function readPayload(key, value, now = Date.now()) {
   }
   if (typeof payload?.exp !== "number" || payload.exp < now) return null;
   return payload;
-}
-
-export function parseCookies(header) {
-  const cookies = {};
-  for (const part of String(header ?? "").split(";")) {
-    const index = part.indexOf("=");
-    if (index > 0) cookies[part.slice(0, index).trim()] = part.slice(index + 1).trim();
-  }
-  return cookies;
-}
-
-export function serializeCookie(name, value, { maxAgeSeconds, secure }) {
-  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""}`;
-}
-
-export function clearCookie(name, secure) {
-  return serializeCookie(name, "", { maxAgeSeconds: 0, secure });
 }
