@@ -6,6 +6,9 @@ import { createProofVerifier } from "./proofVerifier.js";
 
 const config = loadConfig();
 
+if (config.devMode) {
+  console.warn("WARNING: ZK_DEV_MODE is ON. Mock passports are accepted and ANYONE can verify as 18+. Unset it before real use.");
+}
 const app = createApp({
   config,
   verifyAgeProof: createProofVerifier(config),
