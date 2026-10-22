@@ -22,6 +22,7 @@ const SECURITY_HEADERS = {
 
 const STATIC_FILES = {
   "/verify": { file: "public/index.html", type: "text/html; charset=utf-8" },
+  "/about": { file: "public/about.html", type: "text/html; charset=utf-8" },
   "/style.css": { file: "public/style.css", type: "text/css; charset=utf-8" },
   "/client.js": { file: "dist/client.js", type: "text/javascript; charset=utf-8" },
 };

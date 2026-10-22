@@ -1,11 +1,26 @@
 body { font-family: system-ui, sans-serif; background: #23272a; color: #fff; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+body.page { place-items: start center; }
 .card { background: #2c2f33; padding: 32px; border-radius: 12px; max-width: 480px; margin: 16px; text-align: center; }
+.card.wide { max-width: 680px; text-align: left; }
 h1 { margin-top: 0; }
-p { line-height: 1.5; color: #dcddde; }
+h2 { margin: 28px 0 8px; font-size: 1.15rem; color: #fff; }
+p, li { line-height: 1.55; color: #dcddde; }
+.lead { font-size: 1.1rem; }
+.muted { color: #a3a6aa; font-size: 0.92rem; margin: 6px 0; }
+a { color: #8ea1ff; }
 #zkpassport { margin: 24px 0; display: flex; justify-content: center; }
 .btn { display: inline-block; margin: 16px 0 0; padding: 12px 24px; background: #5865f2; color: #fff; border-radius: 8px; font-weight: 600; text-decoration: none; }
 .btn:hover { background: #4752c4; }
 .btn[hidden] { display: none; }
+.app-box { margin: 20px 0 4px; padding: 16px; background: #23272a; border: 1px solid #3a3e44; border-radius: 10px; }
+.stores { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 12px 0 0; }
+.card.wide .stores { justify-content: flex-start; }
+.store-btn { display: inline-block; padding: 9px 16px; background: #3a3e44; color: #fff; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 0.95rem; }
+.store-btn:hover { background: #4b5058; }
+.info-btn { display: block; margin-top: 22px; padding: 12px 16px; border: 1px solid #5865f2; border-radius: 8px; color: #c9d1ff; text-decoration: none; font-size: 0.95rem; line-height: 1.4; }
+.info-btn:hover { background: #343a6b; }
+ul.good li::marker { content: "\2705  "; }
+ul.bad li::marker { content: "\274C  "; }
 .status { font-weight: 600; color: #7289da; }
 .status[data-kind="success"] { color: #43b581; }
 .status[data-kind="error"] { color: #ff6b6b; }
