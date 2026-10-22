@@ -62,7 +62,8 @@ if (error) {
   show(ERRORS[error] ?? ERRORS.login_failed, "error");
 } else {
   const me = await (await fetch("/api/me", { cache: "no-store" })).json();
-  if (me.loggedIn) {
+  // A newer link (?s=) than the logged-in session means the cookie is stale (the bot cancels older links): log in again.
+  if (me.loggedIn && (!token || token === me.token)) {
     // The session token comes from the signed login cookie; keep it out of the address bar.
     window.history.replaceState(null, "", window.location.pathname);
     show(`Logged in as ${me.username}. Open the zkPassport app and scan the QR code. Your passport or ID never leaves your phone.`);
