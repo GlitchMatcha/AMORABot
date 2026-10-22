@@ -87,9 +87,18 @@ public class App {
                     Commands.slash("serverreport", "Director Only: Generate the AMORA Monthly Global Performance Report"), 
                     Commands.slash("rolepanel", "Admin: Spawn the aesthetic Welcome & Role Selection Panel"),
                     Commands.slash("agepanel", "Admin: Deploy the secure 18+ and Minor age selection panel"),
-                    Commands.slash("verify", "Self-attest that you are 18+ to unlock the Adult Zone (no ID is checked)"),
+                    Commands.slash("verify", "Verify you are 18+ (zero-knowledge ID proof or self-attestation) to unlock the Adult Zone"),
                     Commands.slash("unverify", "Admin: Reset a user's verification status for testing")
                             .addOption(OptionType.USER, "target", "The user to unverify (defaults to yourself)", false),
+                    Commands.slash("ageban", "Admin: Manage the 18+ verification ban list")
+                            .addSubcommands(
+                                new SubcommandData("add", "Ban a user from automatic 18+ verification (also removes their 18+ role)")
+                                    .addOption(OptionType.USER, "target", "The user to ban", true)
+                                    .addOption(OptionType.STRING, "reason", "Why (shown in the list and audit log)", false),
+                                new SubcommandData("remove", "Lift a user's age-verification ban")
+                                    .addOption(OptionType.USER, "target", "The user to unban", true),
+                                new SubcommandData("list", "Show the latest age-verification bans")
+                            ),
                     Commands.slash("gift", "Send a comforting treat or gift to M.IKU to lower her stress level!")
                         .addOptions(new OptionData(OptionType.STRING, "item", "Choose what to gift M.IKU", true)
                             .addChoice("🍵 Warm Matcha Latte (50 Sparks) [-1 Stress]", "matcha")

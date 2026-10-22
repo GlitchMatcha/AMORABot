@@ -108,6 +108,10 @@ public class CommandListener extends ListenerAdapter {
      * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback while ALLOW_SELF_ATTESTATION is not false.
      */
     private void replyAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
+        if (DatabaseManager.getInstance().isAgeBanned(user.getId())) {
+            event.reply("🚫 You can't use automatic age verification. Please contact staff.").setEphemeral(true).queue();
+            return;
+        }
         boolean attestAvailable = selfAttestationEnabled();
         String verifierUrl = verifierPublicUrl();
 
@@ -1920,6 +1924,67 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.reply("🔄 **Verification Reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed!").setEphemeral(true).queue();
+            return;
+        }
+
+        if (event.getName().equals("ageban")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Administrator permissions required.").setEphemeral(true).queue();
+                return;
+            }
+            String sub = event.getSubcommandName();
+
+            if ("add".equals(sub)) {
+                User target = event.getOption("target").getAsUser();
+                String reason = event.getOption("reason") != null ? event.getOption("reason").getAsString() : "No reason given";
+                if (reason.length() > 200) {
+                    reason = reason.substring(0, 200);
+                }
+                // Ban first: it records the user's current proof ID fingerprint, which setVerified(false) clears.
+                db.addAgeBan(target.getId(), reason, event.getUser().getId());
+                db.setVerified(target.getId(), false);
+                if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && event.getGuild() != null) {
+                    Role adultRole = event.getGuild().getRoleById(ADULT_ROLE_ID);
+                    if (adultRole != null) {
+                        event.getGuild().removeRoleFromMember(target, adultRole).queue(s -> { }, f -> { });
+                    }
+                }
+                sendAuditLog(event.getGuild(), "Age Verification Ban",
+                        target.getAsMention() + " was banned from 18+ verification by " + event.getUser().getAsMention() + ". Reason: " + reason,
+                        Color.decode("#E74C3C"));
+                event.reply("🚫 " + target.getAsMention() + " is banned from automatic 18+ verification, the 18+ role was removed, "
+                        + "and the ID they verified with (if any) can't be used on another account. Reason: " + reason)
+                     .setEphemeral(true).queue();
+                return;
+            }
+
+            if ("remove".equals(sub)) {
+                User target = event.getOption("target").getAsUser();
+                boolean removed = db.removeAgeBan(target.getId());
+                if (removed) {
+                    sendAuditLog(event.getGuild(), "Age Verification Ban Lifted",
+                            target.getAsMention() + " was unbanned from 18+ verification by " + event.getUser().getAsMention() + ".",
+                            Color.decode("#2ECC71"));
+                }
+                event.reply(removed
+                        ? "✅ " + target.getAsMention() + " can use automatic 18+ verification again."
+                        : "ℹ️ " + target.getAsMention() + " is not on the age-verification ban list.")
+                     .setEphemeral(true).queue();
+                return;
+            }
+
+            // list
+            List<DatabaseManager.AgeBanEntry> bans = db.listAgeBans(15);
+            if (bans.isEmpty()) {
+                event.reply("✅ The age-verification ban list is empty.").setEphemeral(true).queue();
+                return;
+            }
+            StringBuilder out = new StringBuilder("🚫 **Age-verification bans** (latest " + bans.size() + ")\n");
+            for (DatabaseManager.AgeBanEntry ban : bans) {
+                out.append("• <@").append(ban.userId()).append("> — ").append(ban.reason())
+                   .append(" (by <@").append(ban.bannedBy()).append(">, <t:").append(ban.bannedAt() / 1000).append(":R>)\n");
+            }
+            event.reply(out.toString()).setEphemeral(true).queue();
             return;
         }
 
@@ -3983,6 +4048,10 @@ public class CommandListener extends ListenerAdapter {
             }
             User user = event.getUser();
             Guild guild = event.getGuild();
+            if (db.isAgeBanned(user.getId())) {
+                event.reply("🚫 You can't use automatic age verification. Please contact staff.").setEphemeral(true).queue();
+                return;
+            }
             db.setVerified(user.getId(), true);
 
             String adultRoleId = System.getenv("ADULT_ROLE_ID");

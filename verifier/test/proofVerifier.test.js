@@ -100,10 +100,11 @@ test("bot client signs `${timestamp}.${body}` so the bot's HMAC check passes", a
     now: () => 1_700_000_000_000,
     fetchImpl: async (url, init) => {
       captured = { url, init };
-      return new Response(JSON.stringify({ live: true }), { status: 200 });
+      return new Response(JSON.stringify({ live: true, ownerMatches: true, banned: false }), { status: 200 });
     },
   });
-  assert.equal(await client.sessionLive(TOKEN), true);
+  assert.deepEqual(await client.sessionCheck(TOKEN, "123456789012345678"), { live: true, ownerMatches: true, banned: false });
+  assert.deepEqual(JSON.parse(captured.init.body), { token: TOKEN, discordUserId: "123456789012345678" });
   assert.equal(captured.url, "https://bot.test/internal/age/session-check");
   const { "X-Amora-Timestamp": ts, "X-Amora-Signature": sig } = captured.init.headers;
   assert.equal(ts, "1700000000000");

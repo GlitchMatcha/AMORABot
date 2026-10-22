@@ -22,14 +22,23 @@ export function loadConfig(env = process.env) {
     throw new Error("ZK_DEV_MODE accepts mock passports and must not be enabled with NODE_ENV=production");
   }
 
+  // Host the portal is served from (no scheme). Must equal the origin users open: the proof is bound to it.
+  const domain = required(env, "VERIFIER_DOMAIN");
+  const baseUrl = (env.VERIFIER_BASE_URL?.trim() || `${/^localhost(:\d+)?$/.test(domain) ? "http" : "https"}://${domain}`).replace(/\/+$/, "");
+
   return {
     port: Number(env.PORT || 8081),
-    // Host the portal is served from (no scheme). Must equal the origin users open: the proof is bound to it.
-    domain: required(env, "VERIFIER_DOMAIN"),
+    domain,
+    baseUrl,
+    // Must be registered exactly in the Discord developer portal (OAuth2 -> Redirects).
+    redirectUri: `${baseUrl}/auth/callback`,
+    secureCookies: baseUrl.startsWith("https://"),
     // Base URL of the bot's internal API, e.g. https://amora-bot.onrender.com
     botUrl: required(env, "BOT_INTERNAL_URL").replace(/\/+$/, ""),
     sharedSecret: requiredSecret(env, "VERIFIER_SHARED_SECRET"),
     idHashPepper: requiredSecret(env, "ID_HASH_PEPPER"),
+    discordClientId: required(env, "DISCORD_CLIENT_ID"),
+    discordClientSecret: required(env, "DISCORD_CLIENT_SECRET"),
     scope: (env.ZK_SCOPE || "amora-discord-18plus").trim(),
     devMode,
     maxConcurrentVerifications: Number(env.MAX_CONCURRENT_VERIFICATIONS || 2),

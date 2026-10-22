@@ -63,7 +63,7 @@ D:/Discord/amora-bot/
   - `ActivityMonitor.start(jda)` (12-hour activity and rank scheduler)
   - `InternalApiServer.startServer(webPort, jda)` (HTTP server for the verifier callbacks)
 - Registers all Slash Commands & Context Menu commands with Discord:
-  - Slash: `/forcesweep`, `/syncschedule`, `/taskbank`, `/toggleapps`, `/amorahub`, `/help`, `/serverreport`, `/rolepanel`, `/agepanel`, `/verify`, `/unverify`, `/gift`, `/eventsetup`, `/pull`, `/balance`, `/inventory`, `/forge`, `/transcript`, `/leaderboard`, `/shop evaluate`, `/addsparks`, `/award`, `/trade`, `/payout`, `/publish`, `/activitycheck`, `/profile`, `/song [add|importplaylist|remove|list|suggest|postnow]`.
+  - Slash: `/forcesweep`, `/syncschedule`, `/taskbank`, `/toggleapps`, `/amorahub`, `/help`, `/serverreport`, `/rolepanel`, `/agepanel`, `/verify`, `/unverify`, `/ageban [add|remove|list]`, `/gift`, `/eventsetup`, `/pull`, `/balance`, `/inventory`, `/forge`, `/transcript`, `/leaderboard`, `/shop evaluate`, `/addsparks`, `/award`, `/trade`, `/payout`, `/publish`, `/activitycheck`, `/profile`, `/song [add|importplaylist|remove|list|suggest|postnow]`.
   - Context Menu: `🛒 Order This` (Message Context Command).
 - **Daily Song Scheduler**: `startDailySongScheduler(jda)` runs every 60s, checking if UTC hour >= `DAILY_SONG_POST_HOUR_UTC`. If not posted today (`daily_song_last_post_date` in `bot_state`), picks a community song from `song_suggestions`, fetches artwork, embeds it in `DAILY_SONG_CHANNEL_ID`, and alerts `LOUNGE_CHANNEL_ID`.
 
@@ -73,7 +73,7 @@ D:/Discord/amora-bot/
 - **Database Tables Managed**:
   1. `users`: Stores user ID, Sparks, Points, comma-separated inventory, gacha pity counter, bounties cleared, urgent bounties cleared, active check wins (`ac_wins`), strikes (`activity_strikes`), compensation flag (`is_comp`), and `last_task_date`.
   2. `shop_items`: Secret links mapped to asset names.
-  3. `user_verifications`: Verification flag, timestamp, `method` (`attestation`/`zkpassport`) and `proof_id_hash` (unique, one-way fingerprint of the zkPassport ID). Plus `age_sessions` (SHA-256 of single-use token, user, expiry, used_at).
+  3. `user_verifications`: Verification flag, timestamp, `method` (`attestation`/`zkpassport`) and `proof_id_hash` (unique, one-way fingerprint of the zkPassport ID). Plus `age_sessions` (SHA-256 of single-use token, owner user, expiry, used_at) and `age_bans` (user, reason, staff, time, banned `proof_id_hash`).
   4. `pending_trade_setups`: Staging trades during item selection before proposal.
   5. `active_trades`: Proposed trades waiting for recipient action.
   6. `pending_forges`: Staged items for craft/recycle synthesis.
@@ -171,7 +171,7 @@ D:/Discord/amora-bot/
 ### 3.11 `verifier/` (zero-knowledge age verifier, Node 20+)
 - Separate service (own `Dockerfile`). Serves the portal (`/verify?s=token`), `GET /config.json`, `POST /api/verify`.
 - Builds the query server-side (`age >= 18`, session token committed via `bind("custom_data")`), verifies with `@zkpassport/sdk` in `verifierMode: "local"`, then reports to the bot's internal API.
-- Stateless: no database access; the bot owns sessions and roles.
+- Stateless: no database access; the bot owns sessions, bans and roles. Requires `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `https://VERIFIER_DOMAIN/auth/callback`), so only the Discord account that owns a session can complete it.
 
 ### 3.12 `YouTubePlaylistImporter.java`
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
@@ -256,11 +256,12 @@ sequenceDiagram
     User->>Discord: /verify or 18+ Adult Zone button
     Discord->>DB: createAgeSession(sha256(token), userId, +15min)
     Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify?s=token
-    User->>V: Open portal, scan QR with zkPassport app
+    User->>V: Open portal, "Log in with Discord" (OAuth2 identify), signed session cookie
+    User->>V: scan QR with zkPassport app
     App-->>V: proofs + queryResult (age >= 18, token bound into proof)
-    V->>Discord: POST /internal/age/session-check (HMAC)
+    V->>Discord: POST /internal/age/session-check {token, discordUserId} (HMAC): live + ownerMatches + not banned
     V->>V: Rebuild query server-side, zkPassport.verify(local)
-    V->>Discord: POST /internal/age/complete {token, HMAC(pepper, uniqueIdentifier)}
+    V->>Discord: POST /internal/age/complete {token, HMAC(pepper, uniqueIdentifier), discordUserId}
     Discord->>DB: burn session, store proof_id_hash (unique), verified=1
     Discord->>Discord: Remove MINOR_ROLE_ID, add ADULT_ROLE_ID
     Note over User,Discord: Fallback: button verify_attest_18 -> setVerified(userId, true), method=attestation
