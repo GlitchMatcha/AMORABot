@@ -65,19 +65,29 @@ public class InternalApiServer {
         Reply handle(JSONObject body);
     }
 
+    private static final Pattern SNOWFLAKE = Pattern.compile("^\\d{15,25}$");
+
+    /** Describes a session without consuming it: live, owned by the given Discord user, owner banned. */
     private static Reply handleSessionCheck(JSONObject body) {
         String token = body.optString("token", "");
-        if (!HEX_64.matcher(token).matches()) {
-            return new Reply(400, new JSONObject().put("error", "bad_token"));
+        String claimedUser = body.optString("discordUserId", "");
+        if (!HEX_64.matcher(token).matches() || (!claimedUser.isEmpty() && !SNOWFLAKE.matcher(claimedUser).matches())) {
+            return new Reply(400, new JSONObject().put("error", "bad_request"));
         }
-        boolean live = DatabaseManager.getInstance().isAgeSessionLive(sha256Hex(token));
-        return new Reply(200, new JSONObject().put("live", live));
+        DatabaseManager db = DatabaseManager.getInstance();
+        String owner = db.liveAgeSessionOwner(sha256Hex(token));
+        boolean live = owner != null;
+        return new Reply(200, new JSONObject()
+                .put("live", live)
+                .put("ownerMatches", live && owner.equals(claimedUser))
+                .put("banned", live && db.isAgeBanned(owner)));
     }
 
     private static Reply handleComplete(JSONObject body, JDA jda) {
         String token = body.optString("token", "");
         String idFingerprint = body.optString("idFingerprint", "");
-        if (!HEX_64.matcher(token).matches() || !HEX_64.matcher(idFingerprint).matches()) {
+        String discordUserId = body.optString("discordUserId", "");
+        if (!HEX_64.matcher(token).matches() || !HEX_64.matcher(idFingerprint).matches() || !SNOWFLAKE.matcher(discordUserId).matches()) {
             return new Reply(400, new JSONObject().put("error", "bad_request"));
         }
 
@@ -87,8 +97,14 @@ public class InternalApiServer {
             return new Reply(403, new JSONObject().put("status", "dev_proof_not_allowed"));
         }
 
-        DatabaseManager.AgeProofOutcome outcome =
-                DatabaseManager.getInstance().completeProofVerification(sha256Hex(token), idFingerprint);
+        // Banned accounts, and ID fingerprints that belong to a banned account, can never verify.
+        DatabaseManager db = DatabaseManager.getInstance();
+        if (db.isAgeBanned(discordUserId) || db.isProofIdBanned(idFingerprint)) {
+            System.out.println("🚫 Age proof refused: account or ID is on the age-verification ban list (requested by " + discordUserId + ")");
+            return new Reply(403, new JSONObject().put("status", "banned"));
+        }
+
+        DatabaseManager.AgeProofOutcome outcome = db.completeProofVerification(sha256Hex(token), idFingerprint, discordUserId);
 
         switch (outcome.status()) {
             case OK:

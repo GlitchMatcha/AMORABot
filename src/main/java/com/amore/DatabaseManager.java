@@ -271,6 +271,8 @@ public class DatabaseManager {
             try { stmt.execute("ALTER TABLE user_verifications ADD COLUMN proof_id_hash TEXT;"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_user_verifications_proof_id ON user_verifications (proof_id_hash) WHERE proof_id_hash IS NOT NULL;"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS age_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at BIGINT NOT NULL, used_at BIGINT);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS age_bans (user_id TEXT PRIMARY KEY, reason TEXT, banned_by TEXT, banned_at BIGINT, proof_id_hash TEXT);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS ix_age_bans_proof_id ON age_bans (proof_id_hash) WHERE proof_id_hash IS NOT NULL;"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -1405,18 +1407,18 @@ public class DatabaseManager {
         }
     }
 
-    /** True if the session exists, is unused and unexpired. Does not consume it. */
-    public boolean isAgeSessionLive(String tokenHash) {
+    /** Owner (Discord user ID) of an unused, unexpired session, or null. Does not consume the session. */
+    public String liveAgeSessionOwner(String tokenHash) {
         ensureConnected();
-        try (PreparedStatement pstmt = prepare("SELECT 1 FROM age_sessions WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?;")) {
+        try (PreparedStatement pstmt = prepare("SELECT user_id FROM age_sessions WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?;")) {
             pstmt.setString(1, tokenHash);
             pstmt.setLong(2, System.currentTimeMillis());
             try (ResultSet rs = pstmt.executeQuery()) {
-                return rs.next();
+                return rs.next() ? rs.getString(1) : null;
             }
         } catch (SQLException e) {
             e.printStackTrace();
-            return false;
+            return null;
         }
     }
 
@@ -1424,14 +1426,16 @@ public class DatabaseManager {
      * Atomically consumes the session and marks its owner verified, storing the one-way proof ID hash.
      * One passport/ID (same hash) can verify only one Discord account.
      */
-    public AgeProofOutcome completeProofVerification(String tokenHash, String proofIdHash) {
+    public AgeProofOutcome completeProofVerification(String tokenHash, String proofIdHash, String discordUserId) {
         ensureConnected();
         String userId = null;
         long now = System.currentTimeMillis();
-        try (PreparedStatement burn = prepare("UPDATE age_sessions SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ? RETURNING user_id;")) {
+        // The session is only consumed when it belongs to the Discord account that logged in on the portal.
+        try (PreparedStatement burn = prepare("UPDATE age_sessions SET used_at = ? WHERE token_hash = ? AND user_id = ? AND used_at IS NULL AND expires_at >= ? RETURNING user_id;")) {
             burn.setLong(1, now);
             burn.setString(2, tokenHash);
-            burn.setLong(3, now);
+            burn.setString(3, discordUserId);
+            burn.setLong(4, now);
             try (ResultSet rs = burn.executeQuery()) {
                 if (rs.next()) {
                     userId = rs.getString(1);
@@ -1461,6 +1465,85 @@ public class DatabaseManager {
             e.printStackTrace();
             return new AgeProofOutcome(AgeProofStatus.ERROR, userId);
         }
+    }
+
+    public record AgeBanEntry(String userId, String reason, String bannedBy, long bannedAt) { }
+
+    /**
+     * Bans a user from automatic 18+ verification. If they currently hold a zero-knowledge proof ID, that ID
+     * fingerprint is banned too, so it can't be reused on another account. Call before clearing verification.
+     */
+    public void addAgeBan(String userId, String reason, String bannedBy) {
+        ensureConnected();
+        String query = "INSERT INTO age_bans (user_id, reason, banned_by, banned_at, proof_id_hash) "
+                + "SELECT ?, ?, ?, ?, (SELECT proof_id_hash FROM user_verifications WHERE user_id = ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET reason = EXCLUDED.reason, banned_by = EXCLUDED.banned_by, "
+                + "banned_at = EXCLUDED.banned_at, proof_id_hash = COALESCE(EXCLUDED.proof_id_hash, age_bans.proof_id_hash);";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, userId);
+            pstmt.setString(2, reason);
+            pstmt.setString(3, bannedBy);
+            pstmt.setLong(4, System.currentTimeMillis());
+            pstmt.setString(5, userId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** Removes the ban (and the ID fingerprint ban with it). Returns false if the user was not banned. */
+    public boolean removeAgeBan(String userId) {
+        ensureConnected();
+        try (PreparedStatement pstmt = prepare("DELETE FROM age_bans WHERE user_id = ?;")) {
+            pstmt.setString(1, userId);
+            return pstmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public boolean isAgeBanned(String userId) {
+        ensureConnected();
+        try (PreparedStatement pstmt = prepare("SELECT 1 FROM age_bans WHERE user_id = ?;")) {
+            pstmt.setString(1, userId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /** True if this proof ID fingerprint belongs to a banned account. */
+    public boolean isProofIdBanned(String proofIdHash) {
+        ensureConnected();
+        try (PreparedStatement pstmt = prepare("SELECT 1 FROM age_bans WHERE proof_id_hash = ?;")) {
+            pstmt.setString(1, proofIdHash);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public List<AgeBanEntry> listAgeBans(int limit) {
+        ensureConnected();
+        List<AgeBanEntry> entries = new ArrayList<>();
+        try (PreparedStatement pstmt = prepare("SELECT user_id, reason, banned_by, banned_at FROM age_bans ORDER BY banned_at DESC LIMIT ?;")) {
+            pstmt.setInt(1, limit);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    entries.add(new AgeBanEntry(rs.getString("user_id"), rs.getString("reason"), rs.getString("banned_by"), rs.getLong("banned_at")));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return entries;
     }
 
    public void addTaskToBank(String rankTarget, String content) {

@@ -3,6 +3,9 @@ body { font-family: system-ui, sans-serif; background: #23272a; color: #fff; mar
 h1 { margin-top: 0; }
 p { line-height: 1.5; color: #dcddde; }
 #zkpassport { margin: 24px 0; display: flex; justify-content: center; }
+.btn { display: inline-block; margin: 16px 0 0; padding: 12px 24px; background: #5865f2; color: #fff; border-radius: 8px; font-weight: 600; text-decoration: none; }
+.btn:hover { background: #4752c4; }
+.btn[hidden] { display: none; }
 .status { font-weight: 600; color: #7289da; }
 .status[data-kind="success"] { color: #43b581; }
 .status[data-kind="error"] { color: #ff6b6b; }

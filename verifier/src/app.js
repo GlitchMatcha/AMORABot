@@ -1,7 +1,13 @@
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fingerprint } from "./hmac.js";
+import { clearCookie, deriveKey, parseCookies, readPayload, serializeCookie, signPayload } from "./cookies.js";
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+const SESSION_COOKIE = "amora_session";
+const OAUTH_COOKIE = "amora_oauth";
+const OAUTH_TTL_MS = 10 * 60_000;
+const SESSION_TTL_MS = 15 * 60_000;
 
 const SECURITY_HEADERS = {
   "Cache-Control": "no-store",
@@ -58,8 +64,10 @@ function clientAddress(req) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now }) {
+export function createApp({ config, verifyAgeProof, bot, discordAuth, rootDir, now = Date.now }) {
   const allow = createRateLimiter(config.rateLimitPerMinute, now);
+  const sessionKey = deriveKey(config.sharedSecret, "amora-session-cookie-v1");
+  const oauthKey = deriveKey(config.sharedSecret, "amora-oauth-state-v1");
   let inFlight = 0;
 
   function send(res, status, body, headers = {}) {
@@ -72,6 +80,11 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
     res.end(isJson ? JSON.stringify(body) : body);
   }
 
+  function redirect(res, location, cookies = []) {
+    res.writeHead(302, { ...SECURITY_HEADERS, Location: location, "Set-Cookie": cookies });
+    res.end();
+  }
+
   async function serveStatic(res, entry) {
     try {
       const content = await readFile(new URL(entry.file, rootDir));
@@ -82,8 +95,75 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
     }
   }
 
+  function currentLogin(req) {
+    return readPayload(sessionKey, parseCookies(req.headers.cookie)[SESSION_COOKIE], now());
+  }
+
+  /** Step 1: remember which session this browser is logging in for, then send the user to Discord. */
+  async function handleAuthStart(req, res, url) {
+    if (!allow(clientAddress(req))) return send(res, 429, "Too many attempts. Try again in a minute.");
+    const token = url.searchParams.get("s");
+    if (!TOKEN_PATTERN.test(token ?? "")) return redirect(res, "/verify?error=invalid");
+
+    const nonce = randomBytes(16).toString("hex");
+    const pending = signPayload(oauthKey, { t: token, n: nonce, exp: now() + OAUTH_TTL_MS });
+    return redirect(res, discordAuth.authorizeUrl(nonce), [
+      serializeCookie(OAUTH_COOKIE, pending, { maxAgeSeconds: OAUTH_TTL_MS / 1000, secure: config.secureCookies }),
+    ]);
+  }
+
+  /** Step 2: Discord sends the user back. Only a login for the account that owns the session is accepted. */
+  async function handleAuthCallback(req, res, url) {
+    if (!allow(clientAddress(req))) return send(res, 429, "Too many attempts. Try again in a minute.");
+    const clear = [clearCookie(OAUTH_COOKIE, config.secureCookies)];
+    const fail = (code) => redirect(res, `/verify?error=${code}`, clear);
+
+    const pending = readPayload(oauthKey, parseCookies(req.headers.cookie)[OAUTH_COOKIE], now());
+    const code = url.searchParams.get("code");
+    if (!pending || !code || url.searchParams.get("state") !== pending.n) {
+      return fail(url.searchParams.get("error") === "access_denied" ? "denied" : "login_failed");
+    }
+
+    let user;
+    try {
+      user = await discordAuth.exchange(code);
+    } catch (err) {
+      console.error("discord login failed:", err.message);
+      return fail("login_failed");
+    }
+
+    let check;
+    try {
+      check = await bot.sessionCheck(pending.t, user.id);
+    } catch (err) {
+      console.error("bot session-check failed:", err.message);
+      return fail("unavailable");
+    }
+    if (check.banned) return fail("banned");
+    if (!check.live) return fail("expired");
+    if (!check.ownerMatches) return fail("wrong_account");
+
+    const login = signPayload(sessionKey, { t: pending.t, u: user.id, name: user.username, exp: now() + SESSION_TTL_MS });
+    return redirect(res, "/verify", [
+      clearCookie(OAUTH_COOKIE, config.secureCookies),
+      serializeCookie(SESSION_COOKIE, login, { maxAgeSeconds: SESSION_TTL_MS / 1000, secure: config.secureCookies }),
+    ]);
+  }
+
+  function handleMe(req, res) {
+    const login = currentLogin(req);
+    if (!login) return send(res, 200, { loggedIn: false });
+    return send(res, 200, { loggedIn: true, username: login.name, token: login.t });
+  }
+
   async function handleVerify(req, res) {
     if (!allow(clientAddress(req))) return send(res, 429, { ok: false, message: "Too many attempts. Try again in a minute." });
+
+    const login = currentLogin(req);
+    if (!login) return send(res, 401, { ok: false, message: "Log in with Discord first." });
+    if (!String(req.headers["content-type"] ?? "").startsWith("application/json")) {
+      return send(res, 415, { ok: false, message: "Unsupported request." });
+    }
 
     let payload;
     try {
@@ -92,21 +172,23 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
       if (err instanceof BodyTooLarge) return send(res, 413, { ok: false, message: "Request too large." });
       return send(res, 400, { ok: false, message: "Malformed request." });
     }
+    // The session token and Discord identity come from the signed login cookie, never from the request body.
+    const token = login.t;
+    const discordUserId = login.u;
+    const { proofs, queryResult } = payload ?? {};
 
-    const { token, proofs, queryResult } = payload ?? {};
-    if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) {
-      return send(res, 400, { ok: false, message: "Invalid verification link." });
-    }
-
-    // Cheap session check first so random tokens can't make us run the expensive proof verification.
-    let live;
+    // Cheap check first so we only run the expensive proof verification for a live session of this very user.
+    let check;
     try {
-      live = await bot.sessionLive(token);
+      check = await bot.sessionCheck(token, discordUserId);
     } catch (err) {
       console.error("bot session-check failed:", err.message);
       return send(res, 502, { ok: false, message: "Verification is temporarily unavailable." });
     }
-    if (!live) return send(res, 410, { ok: false, message: "This link has expired or was already used. Run /verify again." });
+    if (check.banned) return send(res, 403, { ok: false, message: "You can't use automatic age verification. Contact staff." });
+    if (!check.live || !check.ownerMatches) {
+      return send(res, 410, { ok: false, message: "This link has expired or was already used. Run /verify again." });
+    }
 
     if (inFlight >= config.maxConcurrentVerifications) {
       return send(res, 503, { ok: false, message: "Verifier is busy. Try again in a moment." });
@@ -125,12 +207,15 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
 
     let outcome;
     try {
-      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.uniqueIdentifier), config.devMode);
+      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.uniqueIdentifier), config.devMode, discordUserId);
     } catch (err) {
       console.error("bot complete failed:", err.message);
       return send(res, 502, { ok: false, message: "Verification is temporarily unavailable." });
     }
     if (outcome === "ok") return send(res, 200, { ok: true, message: "Verified. You can return to Discord." });
+    if (outcome === "banned") {
+      return send(res, 403, { ok: false, message: "You can't use automatic age verification. Contact staff." });
+    }
     if (outcome === "dev_proof_not_allowed") {
       return send(res, 403, { ok: false, message: "Test-mode proofs are not accepted on this server." });
     }
@@ -142,12 +227,16 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
 
   return async function handle(req, res) {
     try {
-      const path = new URL(req.url, "http://localhost").pathname;
+      const url = new URL(req.url, "http://localhost");
+      const path = url.pathname;
 
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
       if (req.method === "GET" && path === "/config.json") {
         return send(res, 200, { scope: config.scope, devMode: config.devMode });
       }
+      if (req.method === "GET" && path === "/auth/discord") return handleAuthStart(req, res, url);
+      if (req.method === "GET" && path === "/auth/callback") return handleAuthCallback(req, res, url);
+      if (req.method === "GET" && path === "/api/me") return handleMe(req, res);
       if (req.method === "GET" && STATIC_FILES[path]) return serveStatic(res, STATIC_FILES[path]);
       if (path === "/api/verify") {
         if (req.method !== "POST") return send(res, 405, "Method not allowed", { Allow: "POST" });
