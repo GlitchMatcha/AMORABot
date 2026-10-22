@@ -1,0 +1,49 @@
+name: Deploy age portal to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "verifier/site/**"
+      - "verifier/src/client.js"
+      - "verifier/scripts/build.js"
+      - "verifier/package-lock.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: verifier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: verifier/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          # Repository variable: public origin of the verifier API (the Render service), no trailing slash.
+          API_BASE_URL: ${{ vars.VERIFIER_API_URL }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: verifier/dist/site
+      - id: deployment
+        uses: actions/deploy-pages@v4

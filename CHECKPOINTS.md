@@ -169,9 +169,9 @@ D:/Discord/amora-bot/
 - Auth: `X-Amora-Signature` = hex HMAC-SHA256(`VERIFIER_SHARED_SECRET`, `{X-Amora-Timestamp}.{rawBody}`), timestamp within 60s, 16 KiB body cap.
 
 ### 3.11 `verifier/` (zero-knowledge age verifier, Node 20+)
-- Separate service (own `Dockerfile`). Serves the portal (`/verify?s=token`), `GET /config.json`, `POST /api/verify`.
+- Separate service (own `Dockerfile`), JSON API only: `GET /config.json`, `GET /api/discord-url`, `POST /api/login`, `POST /api/verify` (CORS limited to the portal origin, bearer auth, no cookies). The user-facing portal is a static site (`verifier/site/`, built to `verifier/dist/site` and deployed to GitHub Pages by `.github/workflows/pages.yml`), so the Render API host is never opened in a browser tab (Google Safe Browsing was flagging it).
 - Builds the query server-side (`age >= 18`, session token committed via `bind("custom_data")`), verifies with `@zkpassport/sdk` in `verifierMode: "local"`, then reports to the bot's internal API.
-- Stateless: no database access; the bot owns sessions, bans and roles. Requires `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `https://VERIFIER_DOMAIN/auth/callback`), so only the Discord account that owns a session can complete it.
+- Stateless: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL` and `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`), so only the Discord account that owns a session can complete it.
 
 ### 3.12 `YouTubePlaylistImporter.java`
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
@@ -233,7 +233,7 @@ D:/Discord/amora-bot/
 | `PING_LYRICS` | Creator ping role ID for lyric assets | `ChatListener.java` |
 | `PING_FACES` | Creator ping role ID for face assets | `ChatListener.java` |
 | `PING_BUILDS` | Creator ping role ID for build assets | `ChatListener.java` |
-| `VERIFIER_PUBLIC_URL` | Public base URL of the verifier portal (e.g. `https://amora-verifier.onrender.com`). Unset = ZK option hidden | `CommandListener.java` |
+| `VERIFIER_PUBLIC_URL` | Public base URL of the static portal on GitHub Pages (e.g. `https://glitchmatcha.github.io/AMORABot`). Same value as the verifier's `SITE_URL`. Unset = ZK option hidden | `CommandListener.java` |
 | `VERIFIER_SHARED_SECRET` | >= 32 chars; HMAC key shared by bot and verifier for `/internal/age/*`. Unset/short = endpoints disabled | `InternalApiServer.java`, `verifier/` |
 | `ALLOW_SELF_ATTESTATION` | `false` disables the self-attestation button (default enabled) | `CommandListener.java` |
 | `ZK_ALLOW_DEV_PROOFS` | `true` lets the bot accept mock-passport (dev-mode) proofs. Leave unset in production: a verifier accidentally left in `ZK_DEV_MODE` is then refused (403) | `InternalApiServer.java` |
@@ -255,8 +255,8 @@ sequenceDiagram
 
     User->>Discord: /verify or 18+ Adult Zone button
     Discord->>DB: createAgeSession(sha256(token), userId, +15min)
-    Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify?s=token
-    User->>V: Open portal, "Log in with Discord" (OAuth2 identify), signed session cookie
+    Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify.html#s=token
+    User->>V: Static portal (GitHub Pages) -> Discord login (OAuth2 identify) -> POST /api/login, bearer token
     User->>V: scan QR with zkPassport app
     App-->>V: proofs + queryResult (age >= 18, token bound into proof)
     V->>Discord: POST /internal/age/session-check {token, discordUserId} (HMAC): live + ownerMatches + not banned
