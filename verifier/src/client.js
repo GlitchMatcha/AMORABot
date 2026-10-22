@@ -24,7 +24,8 @@ if (!token || !/^[a-f0-9]{64}$/.test(token)) {
     purpose: "Prove you are 18 or older for the AMORA Adult Zone. Only a yes/no result is shared.",
     service: { scope: config.scope, devMode: config.devMode },
     query: { age: { min: 18 } },
-    bind: { custom_data: token },
+    // The button's bind option is { data }, which the SDK maps to custom_data; the server checks the same value.
+    bind: { data: token },
     onSuccess: async ({ proofs, result }) => {
       show("Checking your proof...");
       try {
