@@ -19,7 +19,7 @@ export function createProofVerifier({ domain, scope, devMode, zkPassport = new Z
 
     const gte = queryResult.age?.gte;
     if (gte?.expected !== MIN_AGE || gte?.result !== true) {
-      return { ok: false, reason: "age_not_proven" };
+      return { ok: false, reason: "age_not_proven", detail: JSON.stringify(gte ?? null).slice(0, 200) };
     }
 
     const { query } = zkPassport.createQuery().gte("age", MIN_AGE).bind("custom_data", token).done();
@@ -34,11 +34,13 @@ export function createProofVerifier({ domain, scope, devMode, zkPassport = new Z
         devMode,
         verifierMode: "local",
       });
-    } catch {
-      return { ok: false, reason: "proof_error" };
+    } catch (err) {
+      return { ok: false, reason: "proof_error", detail: String(err?.stack ?? err?.message ?? err).slice(0, 800) };
     }
 
-    if (!outcome.verified) return { ok: false, reason: "proof_invalid" };
+    if (!outcome.verified) {
+      return { ok: false, reason: "proof_invalid", detail: JSON.stringify(outcome.queryResultErrors ?? null).slice(0, 800) };
+    }
     if (!outcome.uniqueIdentifier) return { ok: false, reason: "no_unique_identifier" };
     return { ok: true, uniqueIdentifier: outcome.uniqueIdentifier };
   };
