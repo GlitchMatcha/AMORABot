@@ -105,7 +105,7 @@ D:/Discord/amora-bot/
   - `/taskbank`: Adds tasks to the randomized monthly bank for ranks (Flare, Spark, Neon, Pulse, Prism, Supernova).
   - `/toggleapps`: Opens/closes applications modal UI.
   - `/amorahub`: Director dashboard with interactive buttons for applications (Member, Seller, Staff).
-  - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a zkPassport proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (accounts >= 90 days, unless `ALLOW_SELF_ATTESTATION=false`). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
+  - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a zkPassport proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (unless `ALLOW_SELF_ATTESTATION=false`; Discord account age is not checked). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
 - **M.IKU Stress System**:
   - `/gift`: Allows members to gift matcha, plushies, spa vouchers, or energy drinks to reduce M.IKU's stress level.
 

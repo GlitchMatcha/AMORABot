@@ -89,7 +89,6 @@ public class CommandListener extends ListenerAdapter {
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> ticketPingCooldowns = new ConcurrentHashMap<>(); 
     private static final Map<String, Long> transcriptCooldowns = new ConcurrentHashMap<>(); 
-    private static final int ATTESTATION_MIN_ACCOUNT_AGE_DAYS = 90;
     private static final long AGE_SESSION_TTL_MINUTES = 15;
     private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
 
@@ -106,12 +105,10 @@ public class CommandListener extends ListenerAdapter {
 
     /**
      * 18+ gate. Offers a zero-knowledge age proof (zkPassport, verified by /verifier) when
-     * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback for accounts at least
-     * {@link #ATTESTATION_MIN_ACCOUNT_AGE_DAYS} days old while ALLOW_SELF_ATTESTATION is not false.
+     * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback while ALLOW_SELF_ATTESTATION is not false.
      */
     private void replyAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
-        long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
-        boolean attestAvailable = selfAttestationEnabled() && accountAgeDays >= ATTESTATION_MIN_ACCOUNT_AGE_DAYS;
+        boolean attestAvailable = selfAttestationEnabled();
         String verifierUrl = verifierPublicUrl();
 
         String portalUrl = null;
@@ -124,7 +121,7 @@ public class CommandListener extends ListenerAdapter {
             portalUrl = verifierUrl + "/verify?s=" + token;
         }
 
-        StringBuilder description = new StringBuilder("🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n");
+        StringBuilder description = new StringBuilder();
         if (portalUrl != null) {
             description.append("**Zero-knowledge proof (strongest):** prove you are 18+ with the chip in your passport or ID card using the free zkPassport app. ")
                        .append("The proof is made on your phone — AMORA only learns \"18 or older\" plus a one-way fingerprint that stops one ID from verifying several accounts. ")
@@ -133,12 +130,9 @@ public class CommandListener extends ListenerAdapter {
         if (attestAvailable) {
             description.append("**Self-attestation:** the green button is a declaration that you are 18 or older. ")
                        .append("AMORA does **not** check any ID for this option, and false declarations lead to removal.\n\n");
-        } else if (selfAttestationEnabled()) {
-            description.append("⚠️ Self-attestation needs an account at least ").append(ATTESTATION_MIN_ACCOUNT_AGE_DAYS)
-                       .append(" days old (this blocks throwaway alts).\n\n");
         }
         if (portalUrl == null && !attestAvailable) {
-            description.append("No automatic verification is available for your account right now. Please contact staff.\n\n");
+            description.append("No automatic verification is available right now. Please contact staff.\n\n");
         }
         description.append("*AMORA stores only your Discord ID, a verified flag and the method used — no names, photos or documents.*");
 
@@ -3989,13 +3983,6 @@ public class CommandListener extends ListenerAdapter {
             }
             User user = event.getUser();
             Guild guild = event.getGuild();
-            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
-
-            if (accountAgeDays < 90) {
-                event.reply("❌ **Verification Blocked:** Your Discord account is only " + accountAgeDays + " days old. Automated age verification requires an account age of at least 90 days to prevent throwaway alt accounts. Please contact staff for assistance.").setEphemeral(true).queue();
-                return;
-            }
-
             db.setVerified(user.getId(), true);
 
             String adultRoleId = System.getenv("ADULT_ROLE_ID");
@@ -4017,8 +4004,8 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your self-attestation has been recorded (account age: " + accountAgeDays + " days). Enjoy the Adult Zone! ✨").queue();
-                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " self-verified as 18+ (Account Age: " + accountAgeDays + " days).", Color.decode("#FF5FA2"));
+                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your self-attestation has been recorded. Enjoy the Adult Zone! ✨").queue();
+                        sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " self-attested as 18+.", Color.decode("#FF5FA2"));
                     },
                     error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
