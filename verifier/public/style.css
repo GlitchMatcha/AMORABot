@@ -1,0 +1,8 @@
+body { font-family: system-ui, sans-serif; background: #23272a; color: #fff; margin: 0; min-height: 100vh; display: grid; place-items: center; }
+.card { background: #2c2f33; padding: 32px; border-radius: 12px; max-width: 480px; margin: 16px; text-align: center; }
+h1 { margin-top: 0; }
+p { line-height: 1.5; color: #dcddde; }
+#zkpassport { margin: 24px 0; display: flex; justify-content: center; }
+.status { font-weight: 600; color: #7289da; }
+.status[data-kind="success"] { color: #43b581; }
+.status[data-kind="error"] { color: #ff6b6b; }

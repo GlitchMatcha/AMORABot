@@ -70,7 +70,7 @@ public class App {
             RoleManager.start(jda);
             ActivityMonitor.start(jda);
             int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
-            ZkpWebServer.startServer(webPort, jda);
+            InternalApiServer.startServer(webPort, jda);
             
             
             jda.updateCommands()
@@ -87,7 +87,7 @@ public class App {
                     Commands.slash("serverreport", "Director Only: Generate the AMORA Monthly Global Performance Report"), 
                     Commands.slash("rolepanel", "Admin: Spawn the aesthetic Welcome & Role Selection Panel"),
                     Commands.slash("agepanel", "Admin: Deploy the secure 18+ and Minor age selection panel"),
-                    Commands.slash("verify", "Securely verify your age using Zero-Knowledge Cryptography (No IDs required)"),
+                    Commands.slash("verify", "Self-attest that you are 18+ to unlock the Adult Zone (no ID is checked)"),
                     Commands.slash("unverify", "Admin: Reset a user's verification status for testing")
                             .addOption(OptionType.USER, "target", "The user to unverify (defaults to yourself)", false),
                     Commands.slash("gift", "Send a comforting treat or gift to M.IKU to lower her stress level!")

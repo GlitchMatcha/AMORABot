@@ -157,12 +157,6 @@ public class DatabaseManager {
                 + "verified_at BIGINT"
                 + ");";
 
-        String createZkpSessionsTable = "CREATE TABLE IF NOT EXISTS zkp_sessions ("
-        + "session_id TEXT PRIMARY KEY, "
-        + "user_id TEXT NOT NULL, "
-        + "expires_at BIGINT NOT NULL"
-        + ");";
-
         String createUsersTable = "CREATE TABLE IF NOT EXISTS users ("
                 + "user_id TEXT PRIMARY KEY, "
                 + "sparks INTEGER DEFAULT 0, "
@@ -252,7 +246,6 @@ public class DatabaseManager {
             stmt.execute(createUsersTable);
             stmt.execute(createShopTable);
             stmt.execute(createVerificationsTable);
-            stmt.execute(createZkpSessionsTable);
             stmt.execute(createPendingTradeSetupsTable);
             stmt.execute(createActiveTradesTable);
             stmt.execute(createPendingForgesTable);
@@ -274,6 +267,10 @@ public class DatabaseManager {
             try { stmt.execute("ALTER TABLE users ADD COLUMN activity_strikes INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE users ADD COLUMN is_comp INTEGER DEFAULT 0;"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE users ADD COLUMN last_task_date BIGINT DEFAULT 0;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE user_verifications ADD COLUMN method TEXT;"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE user_verifications ADD COLUMN proof_id_hash TEXT;"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_user_verifications_proof_id ON user_verifications (proof_id_hash) WHERE proof_id_hash IS NOT NULL;"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS age_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at BIGINT NOT NULL, used_at BIGINT);"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -1369,12 +1366,14 @@ public class DatabaseManager {
 
     public void setVerified(String userId, boolean verified) {
         ensureConnected();
-        String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, ?, ?) "
-                + "ON CONFLICT (user_id) DO UPDATE SET verified = EXCLUDED.verified, verified_at = EXCLUDED.verified_at;";
+        String query = "INSERT INTO user_verifications (user_id, verified, verified_at, method, proof_id_hash) VALUES (?, ?, ?, ?, NULL) "
+                + "ON CONFLICT (user_id) DO UPDATE SET verified = EXCLUDED.verified, verified_at = EXCLUDED.verified_at, "
+                + "method = EXCLUDED.method, proof_id_hash = NULL;";
         try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, userId);
             pstmt.setInt(2, verified ? 1 : 0);
             pstmt.setLong(3, verified ? System.currentTimeMillis() : 0);
+            pstmt.setString(4, verified ? "attestation" : null);
             pstmt.executeUpdate();
             System.out.println(" Set verification status for user " + userId + " to " + verified);
         } catch (SQLException e) {
@@ -1382,52 +1381,84 @@ public class DatabaseManager {
         }
     }
 
-    public void markUserVerified(String userId) {
+    public enum AgeProofStatus { OK, INVALID_SESSION, DUPLICATE_ID, ERROR }
+
+    public record AgeProofOutcome(AgeProofStatus status, String userId) { }
+
+    /** Stores a single-use age-proof session. Only the SHA-256 of the token is persisted. */
+    public void createAgeSession(String tokenHash, String userId, long expiresAt) {
         ensureConnected();
-        String query = "INSERT INTO user_verifications (user_id, verified, verified_at) VALUES (?, 1, ?) "
-                + "ON CONFLICT (user_id) DO UPDATE SET verified = 1, verified_at = EXCLUDED.verified_at;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, userId);
+        try (PreparedStatement purge = prepare("DELETE FROM age_sessions WHERE expires_at < ?;");
+             PreparedStatement insert = prepare("INSERT INTO age_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?);")) {
+            purge.setLong(1, System.currentTimeMillis());
+            purge.executeUpdate();
+            insert.setString(1, tokenHash);
+            insert.setString(2, userId);
+            insert.setLong(3, expiresAt);
+            insert.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** True if the session exists, is unused and unexpired. Does not consume it. */
+    public boolean isAgeSessionLive(String tokenHash) {
+        ensureConnected();
+        try (PreparedStatement pstmt = prepare("SELECT 1 FROM age_sessions WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?;")) {
+            pstmt.setString(1, tokenHash);
             pstmt.setLong(2, System.currentTimeMillis());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void createZkpSession(String sessionId, String userId, long expiresAt) {
-        ensureConnected();
-        String query = "INSERT INTO zkp_sessions (session_id, user_id, expires_at) VALUES (?, ?, ?) "
-                + "ON CONFLICT (session_id) DO UPDATE SET user_id = EXCLUDED.user_id, expires_at = EXCLUDED.expires_at;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, sessionId);
-            pstmt.setString(2, userId);
-            pstmt.setLong(3, expiresAt);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public String verifyZkpSession(String sessionId) {
-        ensureConnected();
-        String query = "SELECT user_id, expires_at FROM zkp_sessions WHERE session_id = ?;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, sessionId);
             try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Atomically consumes the session and marks its owner verified, storing the one-way proof ID hash.
+     * One passport/ID (same hash) can verify only one Discord account.
+     */
+    public AgeProofOutcome completeProofVerification(String tokenHash, String proofIdHash) {
+        ensureConnected();
+        String userId = null;
+        long now = System.currentTimeMillis();
+        try (PreparedStatement burn = prepare("UPDATE age_sessions SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ? RETURNING user_id;")) {
+            burn.setLong(1, now);
+            burn.setString(2, tokenHash);
+            burn.setLong(3, now);
+            try (ResultSet rs = burn.executeQuery()) {
                 if (rs.next()) {
-                    long expiresAt = rs.getLong("expires_at");
-                    if (expiresAt < System.currentTimeMillis()) {
-                        return null; // Expired
-                    }
-                    return rs.getString("user_id");
+                    userId = rs.getString(1);
                 }
             }
         } catch (SQLException e) {
             e.printStackTrace();
+            return new AgeProofOutcome(AgeProofStatus.ERROR, null);
         }
-        return null;
+        if (userId == null) {
+            return new AgeProofOutcome(AgeProofStatus.INVALID_SESSION, null);
+        }
+
+        String upsert = "INSERT INTO user_verifications (user_id, verified, verified_at, method, proof_id_hash) VALUES (?, 1, ?, 'zkpassport', ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET verified = 1, verified_at = EXCLUDED.verified_at, "
+                + "method = 'zkpassport', proof_id_hash = EXCLUDED.proof_id_hash;";
+        try (PreparedStatement pstmt = prepare(upsert)) {
+            pstmt.setString(1, userId);
+            pstmt.setLong(2, now);
+            pstmt.setString(3, proofIdHash);
+            pstmt.executeUpdate();
+            return new AgeProofOutcome(AgeProofStatus.OK, userId);
+        } catch (SQLException e) {
+            if ("23505".equals(e.getSQLState())) {
+                return new AgeProofOutcome(AgeProofStatus.DUPLICATE_ID, userId);
+            }
+            e.printStackTrace();
+            return new AgeProofOutcome(AgeProofStatus.ERROR, userId);
+        }
     }
+
    public void addTaskToBank(String rankTarget, String content) {
         ensureConnected();
         String query = "INSERT INTO task_bank (rank_target, content) VALUES (?, ?);";
