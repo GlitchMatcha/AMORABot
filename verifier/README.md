@@ -6,7 +6,7 @@ Two parts:
 
 | Part | What | Where it runs |
 |---|---|---|
-| `site/` + `src/client.js` | Static portal (home, `verify.html`, about, privacy) | GitHub Pages, built by `.github/workflows/pages.yml` |
+| `site/` + `src/client.js` | Static portal (home, `verify.html`, about, privacy) | Netlify, configured by the repo-root `netlify.toml` |
 | `src/` (rest) | JSON API: Discord login check + proof verification | Render (this folder's `Dockerfile`) |
 
 The API host is only ever called with `fetch`, never opened as a page. Browsers (Google Safe Browsing) judge the page people actually open, and that is the static site.
@@ -27,7 +27,7 @@ Verifier API (`verifier/`, on Render):
 
 | Variable | Meaning |
 |---|---|
-| `SITE_URL` | Public URL of the static portal without a trailing slash, e.g. `https://glitchmatcha.github.io/AMORABot`. Its hostname is the zkPassport proof domain, its origin is the only CORS origin allowed, and `SITE_URL/verify.html` is the Discord OAuth redirect. |
+| `SITE_URL` | Public URL of the static portal without a trailing slash, e.g. `https://amora-verify.netlify.app`. Its hostname is the zkPassport proof domain, its origin is the only CORS origin allowed, and `SITE_URL/verify.html` is the Discord OAuth redirect. |
 | `BOT_INTERNAL_URL` | Bot base URL, e.g. `https://amora-bot.onrender.com` |
 | `VERIFIER_SHARED_SECRET` | >= 32 chars, identical on the bot |
 | `ID_HASH_PEPPER` | >= 32 chars, **verifier only**. Changing it makes previously stored fingerprints unmatchable. |
@@ -38,10 +38,10 @@ Verifier API (`verifier/`, on Render):
 
 Bot: `VERIFIER_PUBLIC_URL` (same value as `SITE_URL`), `VERIFIER_SHARED_SECRET`, optional `ALLOW_SELF_ATTESTATION=false`, and `ZK_ALLOW_DEV_PROOFS=true` **only on test servers** (the bot refuses mock-passport proofs without it, even if the verifier is left in dev mode). See `CHECKPOINTS.md`.
 
-### Deploying the portal to GitHub Pages
-1. Repository **Settings -> Pages -> Source: GitHub Actions**. (Pages from a private repo needs a paid GitHub plan; otherwise make the repo public or use a separate public repo for `verifier/site` + `src/client.js`.)
-2. Repository **Settings -> Secrets and variables -> Actions -> Variables**: add `VERIFIER_API_URL` = the Render API origin, e.g. `https://amora-verifier.onrender.com` (no trailing slash).
-3. Push to `main` (or run the workflow manually). The page URL printed by the job is your `SITE_URL`.
+### Deploying the portal to Netlify
+1. Netlify -> **Add new site -> Import an existing project -> GitHub** -> pick this repo. Build settings come from `netlify.toml` (base `verifier`, publish `dist/site`); it also sends the CSP / `X-Frame-Options` headers.
+2. Site configuration -> **Environment variables**: add `API_BASE_URL` = the Render API origin, e.g. `https://amora-verifier.onrender.com` (no trailing slash). Redeploy after changing it.
+3. Site configuration -> **Change site name** to a neutral subdomain. The resulting address is your `SITE_URL`.
 
 ### Discord login setup (required)
 1. Discord Developer Portal -> your application (any application works; it does not need to be the bot) -> **OAuth2**.
@@ -69,4 +69,4 @@ API_BASE_URL=https://... npm run build     # static portal -> dist/site
 - The default zkPassport unique identifier is not salted: anyone with the full chip data, including the issuing state, can recompute it. AMORA stores only a pepper-keyed HMAC of it, but the pepper protects against database leaks only, not against that party.
 - Not everyone has a supported document (see zkPassport's coverage map), hence the fallback options.
 - Trust is placed in zkPassport's circuits, registry and SDK. This service verifies; it does not audit them.
-- Not tested here: a genuine proof from a real passport/app (needs a physical document or dev-mode phone), and the cross-origin browser flow against a real GitHub Pages deployment. Unit tests cover the API; the build output was smoke-tested locally.
+- Not tested here: a genuine proof from a real passport/app (needs a physical document or dev-mode phone), and the cross-origin browser flow against a real Netlify deployment. Unit tests cover the API; the build output was smoke-tested locally.

@@ -22,7 +22,7 @@ export function loadConfig(env = process.env) {
     throw new Error("ZK_DEV_MODE accepts mock passports and must not be enabled with NODE_ENV=production");
   }
 
-  // Public URL the static portal (verify.html, about.html, ...) is served from, e.g. https://user.github.io/AMORABot.
+  // Public URL the static portal (verify.html, about.html, ...) is served from, e.g. https://amora-verify.netlify.app.
   // The zkPassport proof is bound to its hostname and Discord redirects back to it after login.
   const siteUrl = new URL(required(env, "SITE_URL"));
   if (siteUrl.protocol !== "https:" && siteUrl.hostname !== "localhost") throw new Error("SITE_URL must be https");

@@ -161,7 +161,7 @@ public class CommandListener extends ListenerAdapter {
         List<Button> buttons = new ArrayList<>();
         if (portalUrl != null) {
             buttons.add(Button.link(portalUrl, "Prove 18+ (zkPassport)"));
-            buttons.add(Button.link(verifierUrl + "/about", "Is my info safe?"));
+            buttons.add(Button.link(verifierUrl + "/about.html", "Is my info safe?"));
         }
         if (attestAvailable) {
             buttons.add(Button.success("verify_attest_18", "I am 18+ - Self-attest"));
