@@ -236,6 +236,7 @@ D:/Discord/amora-bot/
 | `VERIFIER_PUBLIC_URL` | Public base URL of the verifier portal (e.g. `https://amora-verifier.onrender.com`). Unset = ZK option hidden | `CommandListener.java` |
 | `VERIFIER_SHARED_SECRET` | >= 32 chars; HMAC key shared by bot and verifier for `/internal/age/*`. Unset/short = endpoints disabled | `InternalApiServer.java`, `verifier/` |
 | `ALLOW_SELF_ATTESTATION` | `false` disables the self-attestation button (default enabled) | `CommandListener.java` |
+| `ZK_ALLOW_DEV_PROOFS` | `true` lets the bot accept mock-passport (dev-mode) proofs. Leave unset in production: a verifier accidentally left in `ZK_DEV_MODE` is then refused (403) | `InternalApiServer.java` |
 | `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key | `YouTubePlaylistImporter.java` |
 
 ---

@@ -25,7 +25,7 @@ Verifier (`verifier/`):
 | `ZK_DEV_MODE` | `true` accepts zkPassport mock passports (all share unique id `1`). **Must be unset/false in production**: the verifier prints a warning at startup when it is on, and refuses it if `NODE_ENV=production` is set. |
 | `PORT`, `MAX_CONCURRENT_VERIFICATIONS`, `MAX_BODY_BYTES`, `RATE_LIMIT_PER_MINUTE` | Optional tuning |
 
-Bot: `VERIFIER_PUBLIC_URL`, `VERIFIER_SHARED_SECRET`, optional `ALLOW_SELF_ATTESTATION=false` (see `CHECKPOINTS.md`).
+Bot: `VERIFIER_PUBLIC_URL`, `VERIFIER_SHARED_SECRET`, optional `ALLOW_SELF_ATTESTATION=false`, and `ZK_ALLOW_DEV_PROOFS=true` **only on test servers** (the bot refuses mock-passport proofs without it, even if the verifier is left in dev mode). See `CHECKPOINTS.md`.
 
 ## Run / test
 

@@ -1385,12 +1385,16 @@ public class DatabaseManager {
 
     public record AgeProofOutcome(AgeProofStatus status, String userId) { }
 
-    /** Stores a single-use age-proof session. Only the SHA-256 of the token is persisted. */
+    /**
+     * Stores a single-use age-proof session. Only the SHA-256 of the token is persisted.
+     * Expired sessions and the user's earlier unused sessions are removed, so only the newest link works.
+     */
     public void createAgeSession(String tokenHash, String userId, long expiresAt) {
         ensureConnected();
-        try (PreparedStatement purge = prepare("DELETE FROM age_sessions WHERE expires_at < ?;");
+        try (PreparedStatement purge = prepare("DELETE FROM age_sessions WHERE expires_at < ? OR (user_id = ? AND used_at IS NULL);");
              PreparedStatement insert = prepare("INSERT INTO age_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?);")) {
             purge.setLong(1, System.currentTimeMillis());
+            purge.setString(2, userId);
             purge.executeUpdate();
             insert.setString(1, tokenHash);
             insert.setString(2, userId);

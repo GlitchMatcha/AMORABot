@@ -81,6 +81,12 @@ public class InternalApiServer {
             return new Reply(400, new JSONObject().put("error", "bad_request"));
         }
 
+        // Mock-passport proofs are only accepted when the bot itself opts in (test servers).
+        if (body.optBoolean("devMode", false) && !"true".equalsIgnoreCase(System.getenv("ZK_ALLOW_DEV_PROOFS"))) {
+            System.out.println("⚠️ Rejected a dev-mode (mock passport) age proof: ZK_ALLOW_DEV_PROOFS is not enabled on the bot.");
+            return new Reply(403, new JSONObject().put("status", "dev_proof_not_allowed"));
+        }
+
         DatabaseManager.AgeProofOutcome outcome =
                 DatabaseManager.getInstance().completeProofVerification(sha256Hex(token), idFingerprint);
 
