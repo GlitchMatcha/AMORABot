@@ -119,7 +119,7 @@ export function createApp({ config, verifyAgeProof, bot, rootDir, now = Date.now
       inFlight--;
     }
     if (!result.ok) {
-      console.warn(`proof rejected: ${result.reason}`);
+      console.warn(`proof rejected: ${result.reason}${result.detail ? ` | ${result.detail}` : ""}`);
       return send(res, 400, { ok: false, message: "The proof could not be verified." });
     }
 

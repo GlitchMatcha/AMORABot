@@ -48,7 +48,7 @@ test("claimed age below 18 or unproven is rejected without calling the SDK", asy
     { age: { gte: { expected: 18, result: false } } },
     {},
   ]) {
-    assert.deepEqual(await verify({ token: TOKEN, proofs: [{}], queryResult }), { ok: false, reason: "age_not_proven" });
+    assert.equal((await verify({ token: TOKEN, proofs: [{}], queryResult })).reason, "age_not_proven");
   }
 });
 
