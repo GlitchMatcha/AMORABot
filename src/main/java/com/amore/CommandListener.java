@@ -108,8 +108,18 @@ public class CommandListener extends ListenerAdapter {
      * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback while ALLOW_SELF_ATTESTATION is not false.
      */
     private void replyAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
+        // The caller has already acknowledged the interaction with deferReply(true).
+        try {
+            sendAgeGate(event, user);
+        } catch (Exception e) {
+            e.printStackTrace();
+            event.getHook().editOriginal("❌ Something went wrong starting age verification. Please try again.").queue();
+        }
+    }
+
+    private void sendAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
         if (DatabaseManager.getInstance().isAgeBanned(user.getId())) {
-            event.reply("🚫 You can't use automatic age verification. Please contact staff.").setEphemeral(true).queue();
+            event.getHook().editOriginal("🚫 You can't use automatic age verification. Please contact staff.").queue();
             return;
         }
         boolean attestAvailable = selfAttestationEnabled();
@@ -154,11 +164,11 @@ public class CommandListener extends ListenerAdapter {
             buttons.add(Button.success("verify_attest_18", "🥂 I am 18+ — Self-attest"));
         }
 
-        var reply = event.replyEmbeds(embed.build()).setEphemeral(true);
+        var edit = event.getHook().editOriginalEmbeds(embed.build());
         if (!buttons.isEmpty()) {
-            reply = reply.addActionRow(buttons);
+            edit = edit.setActionRow(buttons);
         }
-        reply.queue();
+        edit.queue();
     }
 
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
@@ -1991,8 +2001,10 @@ public class CommandListener extends ListenerAdapter {
         if (event.getName().equals("verify")) {
             User user = event.getUser();
             
+            // Acknowledge at once: the database lookups below can exceed Discord's 3-second reply window.
+            event.deferReply(true).queue();
             if (db.isUserVerified(user.getId())) {
-                event.reply(" You are already verified as 18+!").setEphemeral(true).queue();
+                event.getHook().sendMessage(" You are already verified as 18+!").queue();
                 return;
             }
 
@@ -4006,6 +4018,8 @@ public class CommandListener extends ListenerAdapter {
             User user = event.getUser();
             Guild guild = event.getGuild();
             
+            // Acknowledge at once: the database lookups below can exceed Discord's 3-second reply window.
+            event.deferReply(true).queue();
             boolean isVerified = db.isUserVerified(user.getId());
 
             if (!isVerified) {
@@ -4017,11 +4031,10 @@ public class CommandListener extends ListenerAdapter {
             String minorRoleId = System.getenv("MINOR_ROLE_ID");
 
             if (adultRoleId == null || adultRoleId.isBlank()) {
-                event.reply("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                event.getHook().sendMessage("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").queue();
                 return;
             }
 
-            event.deferReply(true).queue();
             Role adultRole = guild.getRoleById(adultRoleId);
             Role minorRole = minorRoleId != null ? guild.getRoleById(minorRoleId) : null;
 
