@@ -1,11 +1,14 @@
 package com.amore;
 
 import com.sun.net.httpserver.HttpExchange;
+import java.awt.Color;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Role;
+import net.dv8tion.jda.api.entities.User;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -16,7 +19,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.HexFormat;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 
@@ -94,13 +99,17 @@ public class InternalApiServer {
         }
     }
 
-    /** Swaps the minor role for the adult role in every guild the user is a member of. */
+    /**
+     * Swaps the minor role for the adult role in every guild the user is a member of, then sends one
+     * confirmation DM (best effort: closed DMs are ignored).
+     */
     private static void grantAdultRole(JDA jda, String userId) {
         String adultRoleId = System.getenv("ADULT_ROLE_ID");
         if (jda == null || adultRoleId == null || adultRoleId.isBlank()) {
             return;
         }
         String minorRoleId = System.getenv("MINOR_ROLE_ID");
+        AtomicBoolean confirmationSent = new AtomicBoolean(false);
         for (Guild guild : jda.getGuilds()) {
             Role adultRole = guild.getRoleById(adultRoleId);
             if (adultRole == null) {
@@ -113,13 +122,45 @@ public class InternalApiServer {
                         guild.removeRoleFromMember(member, minorRole).queue();
                     }
                     guild.addRoleToMember(member, adultRole).queue(
-                        s -> System.out.println("✦ Assigned 18+ role to " + member.getUser().getName()),
+                        s -> {
+                            System.out.println("✦ Assigned 18+ role to " + member.getUser().getName());
+                            if (confirmationSent.compareAndSet(false, true)) {
+                                sendConfirmationDm(member.getUser(), guild, adultRole);
+                            }
+                        },
                         err -> System.err.println("❌ Failed to assign 18+ role: " + err.getMessage())
                     );
                 },
                 failure -> { } // user is not in this guild
             );
         }
+    }
+
+    private static void sendConfirmationDm(User user, Guild guild, Role adultRole) {
+        String adultChannelId = System.getenv("ADULT_CHANNEL_ID");
+        String unlocked = "🔓 " + adultRole.getAsMention()
+                + ((adultChannelId != null && !adultChannelId.isBlank()) ? "\n🚪 <#" + adultChannelId + ">" : "");
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .setColor(Color.decode("#FF5FA2"))
+            .setTitle("🔐 AGE PROOF ACCEPTED — 18+ ZONE UNLOCKED")
+            .setDescription("✦ Your zero-knowledge proof checked out. **" + guild.getName() + "** now treats you as 18+.\n"
+                    + "━━━━━━━━━━━━━━━━━━━━━━")
+            .addField("🧪 What was proven", "That you are **18 or older**. Nothing else was requested.", false)
+            .addField("🕶️ What AMORA never received", "Your name, birthdate, nationality, document number or photo.", false)
+            .addField("🗄️ What AMORA stored", "Your Discord ID, a verified flag, and a one-way fingerprint of the proof ID "
+                    + "(it only stops one document from unlocking several accounts).", false)
+            .addField("🔓 Unlocked", unlocked, false)
+            .addField("🧾 Receipt", "Method: **zkPassport zero-knowledge proof**\nVerified: <t:" + Instant.now().getEpochSecond() + ":F> (<t:"
+                    + Instant.now().getEpochSecond() + ":R>)", false)
+            .setFooter("AMORA Safety • Questions or a mistake? Contact staff.", null);
+
+        user.openPrivateChannel()
+            .flatMap(channel -> channel.sendMessageEmbeds(embed.build()))
+            .queue(
+                ok -> System.out.println("✦ Sent age-proof confirmation DM to " + user.getName()),
+                err -> System.out.println("ℹ️ Could not DM confirmation to " + user.getName() + " (DMs closed?): " + err.getMessage())
+            );
     }
 
     private static final class SignedJsonHandler implements HttpHandler {
