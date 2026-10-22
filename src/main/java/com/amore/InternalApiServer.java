@@ -160,20 +160,19 @@ public class InternalApiServer {
 
     private static void sendConfirmationDm(User user, Guild guild, Role adultRole) {
         String adultChannelId = System.getenv("ADULT_CHANNEL_ID");
-        String unlocked = "🔓 " + adultRole.getAsMention()
-                + ((adultChannelId != null && !adultChannelId.isBlank()) ? "\n🚪 <#" + adultChannelId + ">" : "");
+        String unlocked = adultRole.getAsMention()
+                + ((adultChannelId != null && !adultChannelId.isBlank()) ? "\n<#" + adultChannelId + ">" : "");
 
         EmbedBuilder embed = new EmbedBuilder()
             .setColor(Color.decode("#FF5FA2"))
-            .setTitle("🔐 AGE PROOF ACCEPTED — 18+ ZONE UNLOCKED")
-            .setDescription("✦ Your zero-knowledge proof checked out. **" + guild.getName() + "** now treats you as 18+.\n"
-                    + "━━━━━━━━━━━━━━━━━━━━━━")
-            .addField("🧪 What was proven", "That you are **18 or older**. Nothing else was requested.", false)
-            .addField("🕶️ What AMORA never received", "Your name, birthdate, nationality, document number or photo.", false)
-            .addField("🗄️ What AMORA stored", "Your Discord ID, a verified flag, and a one-way fingerprint of the proof ID "
+            .setTitle("AGE PROOF ACCEPTED: 18+ ZONE UNLOCKED")
+            .setDescription("Your zero-knowledge proof checked out. **" + guild.getName() + "** now treats you as 18+.")
+            .addField("What was proven", "That you are **18 or older**. Nothing else was requested.", false)
+            .addField("What AMORA never received", "Your name, birthdate, nationality, document number or photo.", false)
+            .addField("What AMORA stored", "Your Discord ID, a verified flag, and a one-way fingerprint of the proof ID "
                     + "(it only stops one document from unlocking several accounts).", false)
-            .addField("🔓 Unlocked", unlocked, false)
-            .addField("🧾 Receipt", "Method: **zkPassport zero-knowledge proof**\nVerified: <t:" + Instant.now().getEpochSecond() + ":F> (<t:"
+            .addField("Unlocked", unlocked, false)
+            .addField("Receipt", "Method: **zkPassport zero-knowledge proof**\nVerified: <t:" + Instant.now().getEpochSecond() + ":F> (<t:"
                     + Instant.now().getEpochSecond() + ":R>)", false)
             .setFooter("AMORA Safety • Questions or a mistake? Contact staff.", null);
 
