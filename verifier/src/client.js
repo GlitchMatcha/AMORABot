@@ -13,6 +13,38 @@ function show(message, kind = "info") {
   status.dataset.kind = kind;
 }
 
+// Before the zkPassport popup opens, the visitor reads a short summary and confirms they understood it
+// (remembered for this tab).
+const UNDERSTOOD_KEY = "amora_understood_zkp";
+const gate = document.getElementById("gate");
+let blockedButton = null;
+
+function installUnderstandGate() {
+  const understood = () => sessionStorage.getItem(UNDERSTOOD_KEY) === "1";
+
+  // Capture phase: runs before the zkPassport button's own click handler and can stop it.
+  mount.addEventListener(
+    "click",
+    (event) => {
+      if (understood()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      blockedButton = event.target.closest("button");
+      gate.showModal();
+    },
+    true,
+  );
+
+  document.getElementById("gate-cancel").addEventListener("click", () => gate.close());
+  document.getElementById("gate-yes").addEventListener("click", () => {
+    sessionStorage.setItem(UNDERSTOOD_KEY, "1");
+    gate.close();
+    blockedButton?.click(); // still inside the user's click, so the popup is not blocked
+  });
+}
+
+installUnderstandGate();
+
 const ERRORS = {
   invalid: "That verification link is not valid. Run /verify in Discord for a fresh one.",
   expired: "This link has expired or was already used. Run /verify in Discord for a fresh one.",

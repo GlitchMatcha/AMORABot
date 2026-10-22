@@ -22,3 +22,18 @@ a { color: #8ea1ff; }
 .status { font-weight: 600; color: #7289da; }
 .status[data-kind="success"] { color: #43b581; }
 .status[data-kind="error"] { color: #ff6b6b; }
+.btn.secondary { background: #3a3e44; border: 0; font: inherit; font-weight: 600; cursor: pointer; color: #fff; }
+.btn.secondary:hover:not(:disabled) { background: #4b5058; }
+.btn.secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+.gate { max-width: 460px; background: #2c2f33; color: #fff; border: 1px solid #3a3e44; border-radius: 12px; padding: 24px; }
+.gate::backdrop { background: rgba(0, 0, 0, 0.7); }
+.gate h2 { margin-top: 0; }
+.gate-actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: center; margin: 18px 0 0; }
+.gate-actions .btn { margin: 0; }
+.gate { max-height: 90vh; overflow-y: auto; }
+.gate-points { padding-left: 20px; margin: 8px 0; }
+.gate-points li { margin: 8px 0; }
+.joke { margin: 14px 0 4px; padding: 10px 12px; border-left: 3px solid #43b581; background: #23272a; border-radius: 4px; font-style: italic; }
+.gate-question { margin: 18px 0 0; font-size: 1.05rem; }
+a.btn.secondary { background: #3a3e44; color: #fff; }
+button.btn { border: 0; font: inherit; font-weight: 600; cursor: pointer; }
