@@ -22,7 +22,7 @@ Verifier (`verifier/`):
 | `VERIFIER_SHARED_SECRET` | >= 32 chars, identical on the bot |
 | `ID_HASH_PEPPER` | >= 32 chars, **verifier only**. Changing it makes previously stored fingerprints unmatchable. |
 | `ZK_SCOPE` | Default `amora-discord-18plus`. The unique identifier is scoped to it. |
-| `ZK_DEV_MODE` | `true` accepts zkPassport mock passports (all share unique id `1`). Refused when `NODE_ENV=production`. |
+| `ZK_DEV_MODE` | `true` accepts zkPassport mock passports (all share unique id `1`). **Must be unset/false in production**: the verifier prints a warning at startup when it is on, and refuses it if `NODE_ENV=production` is set. |
 | `PORT`, `MAX_CONCURRENT_VERIFICATIONS`, `MAX_BODY_BYTES`, `RATE_LIMIT_PER_MINUTE` | Optional tuning |
 
 Bot: `VERIFIER_PUBLIC_URL`, `VERIFIER_SHARED_SECRET`, optional `ALLOW_SELF_ATTESTATION=false` (see `CHECKPOINTS.md`).
