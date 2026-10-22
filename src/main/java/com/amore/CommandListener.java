@@ -113,13 +113,13 @@ public class CommandListener extends ListenerAdapter {
             sendAgeGate(event, user);
         } catch (Exception e) {
             e.printStackTrace();
-            event.getHook().editOriginal("❌ Something went wrong starting age verification. Please try again.").queue();
+            event.getHook().editOriginal("Something went wrong starting age verification. Please try again.").queue();
         }
     }
 
     private void sendAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
         if (DatabaseManager.getInstance().isAgeBanned(user.getId())) {
-            event.getHook().editOriginal("🚫 You can't use automatic age verification. Please contact staff.").queue();
+            event.getHook().editOriginal("You can't use automatic age verification. Please contact staff.").queue();
             return;
         }
         boolean attestAvailable = selfAttestationEnabled();
@@ -139,7 +139,7 @@ public class CommandListener extends ListenerAdapter {
         if (portalUrl != null) {
             description.append("**Zero-knowledge proof (strongest):** prove you are 18+ using the chip in your passport or ID card. ")
                        .append("Your phone checks it privately and AMORA only gets a \"yes, 18 or older\" — your name, photo and birthday never leave your phone.\n")
-                       .append("📱 New to this? Get the free app first: [iPhone](https://apps.apple.com/us/app/zkpassport/id6477371975) · [Android](https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport)\n")
+                       .append("New to this? Get the free app first: [iPhone](https://apps.apple.com/us/app/zkpassport/id6477371975) · [Android](https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport)\n")
                        .append("The link works once and expires in ").append(AGE_SESSION_TTL_MINUTES).append(" minutes.\n\n");
         }
         if (attestAvailable) {
@@ -153,17 +153,17 @@ public class CommandListener extends ListenerAdapter {
 
         EmbedBuilder embed = new EmbedBuilder()
             .setColor(Color.decode("#FF5FA2"))
-            .setTitle("✦ 18+ ZONE: AGE VERIFICATION ✦")
+            .setTitle("18+ ZONE: AGE VERIFICATION")
             .setDescription(description.toString())
             .setFooter("AMORA Safety", null);
 
         List<Button> buttons = new ArrayList<>();
         if (portalUrl != null) {
-            buttons.add(Button.link(portalUrl, "🔐 Prove 18+ (zkPassport)"));
-            buttons.add(Button.link(verifierUrl + "/about", "ℹ️ Is my info safe?"));
+            buttons.add(Button.link(portalUrl, "Prove 18+ (zkPassport)"));
+            buttons.add(Button.link(verifierUrl + "/about", "Is my info safe?"));
         }
         if (attestAvailable) {
-            buttons.add(Button.success("verify_attest_18", "🥂 I am 18+ — Self-attest"));
+            buttons.add(Button.success("verify_attest_18", "I am 18+ - Self-attest"));
         }
 
         var edit = event.getHook().editOriginalEmbeds(embed.build());
@@ -1935,13 +1935,13 @@ public class CommandListener extends ListenerAdapter {
                 }
             }
 
-            event.reply("🔄 **Verification Reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed!").setEphemeral(true).queue();
+            event.reply("**Verification reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed.").setEphemeral(true).queue();
             return;
         }
 
         if (event.getName().equals("ageban")) {
             if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Administrator permissions required.").setEphemeral(true).queue();
+                event.reply("Administrator permissions required.").setEphemeral(true).queue();
                 return;
             }
             String sub = event.getSubcommandName();
@@ -1964,7 +1964,7 @@ public class CommandListener extends ListenerAdapter {
                 sendAuditLog(event.getGuild(), "Age Verification Ban",
                         target.getAsMention() + " was banned from 18+ verification by " + event.getUser().getAsMention() + ". Reason: " + reason,
                         Color.decode("#E74C3C"));
-                event.reply("🚫 " + target.getAsMention() + " is banned from automatic 18+ verification, the 18+ role was removed, "
+                event.reply(target.getAsMention() + " is banned from automatic 18+ verification, the 18+ role was removed, "
                         + "and the ID they verified with (if any) can't be used on another account. Reason: " + reason)
                      .setEphemeral(true).queue();
                 return;
@@ -1979,8 +1979,8 @@ public class CommandListener extends ListenerAdapter {
                             Color.decode("#2ECC71"));
                 }
                 event.reply(removed
-                        ? "✅ " + target.getAsMention() + " can use automatic 18+ verification again."
-                        : "ℹ️ " + target.getAsMention() + " is not on the age-verification ban list.")
+                        ? target.getAsMention() + " can use automatic 18+ verification again."
+                        : target.getAsMention() + " is not on the age-verification ban list.")
                      .setEphemeral(true).queue();
                 return;
             }
@@ -1988,10 +1988,10 @@ public class CommandListener extends ListenerAdapter {
             // list
             List<DatabaseManager.AgeBanEntry> bans = db.listAgeBans(15);
             if (bans.isEmpty()) {
-                event.reply("✅ The age-verification ban list is empty.").setEphemeral(true).queue();
+                event.reply("The age-verification ban list is empty.").setEphemeral(true).queue();
                 return;
             }
-            StringBuilder out = new StringBuilder("🚫 **Age-verification bans** (latest " + bans.size() + ")\n");
+            StringBuilder out = new StringBuilder("**Age-verification bans** (latest " + bans.size() + ")\n");
             for (DatabaseManager.AgeBanEntry ban : bans) {
                 out.append("• <@").append(ban.userId()).append("> — ").append(ban.reason())
                    .append(" (by <@").append(ban.bannedBy()).append(">, <t:").append(ban.bannedAt() / 1000).append(":R>)\n");
@@ -4047,10 +4047,10 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **Identity Confirmed!** The **Adult Zone (18+)** has been successfully unlocked for you! ✨").queue();
+                        event.getHook().sendMessage("**Identity confirmed.** The **Adult Zone (18+)** is now unlocked for you.").queue();
                         sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " claimed the 18+ role.", Color.decode("#FF5FA2"));
                     },
-                    error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
+                    error -> event.getHook().sendMessage("Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
             }
             return;
@@ -4058,13 +4058,13 @@ public class CommandListener extends ListenerAdapter {
 
         if (componentId.equals("verify_attest_18")) {
             if (!selfAttestationEnabled()) {
-                event.reply("❌ Self-attestation is disabled on this server. Please use the zero-knowledge proof option via `/verify`, or contact staff.").setEphemeral(true).queue();
+                event.reply("Self-attestation is disabled on this server. Please use the zero-knowledge proof option via `/verify`, or contact staff.").setEphemeral(true).queue();
                 return;
             }
             User user = event.getUser();
             Guild guild = event.getGuild();
             if (db.isAgeBanned(user.getId())) {
-                event.reply("🚫 You can't use automatic age verification. Please contact staff.").setEphemeral(true).queue();
+                event.reply("You can't use automatic age verification. Please contact staff.").setEphemeral(true).queue();
                 return;
             }
             db.setVerified(user.getId(), true);
@@ -4073,7 +4073,7 @@ public class CommandListener extends ListenerAdapter {
             String minorRoleId = System.getenv("MINOR_ROLE_ID");
 
             if (adultRoleId == null || adultRoleId.isBlank()) {
-                event.reply("⚠️ `ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
+                event.reply("`ADULT_ROLE_ID` is not configured in environment variables.").setEphemeral(true).queue();
                 return;
             }
 
@@ -4088,13 +4088,13 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your self-attestation has been recorded. Enjoy the Adult Zone! ✨").queue();
+                        event.getHook().sendMessage("**18+ access granted.** Your self-attestation has been recorded. Welcome to the Adult Zone.").queue();
                         sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " self-attested as 18+.", Color.decode("#FF5FA2"));
                     },
-                    error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()
+                    error -> event.getHook().sendMessage("Failed to assign role. Check bot permissions and role hierarchy.").queue()
                 );
             } else {
-                event.getHook().sendMessage("❌ Adult role not found on this server. Check configuration!").queue();
+                event.getHook().sendMessage("Adult role not found on this server. Check configuration!").queue();
             }
             return;
         }

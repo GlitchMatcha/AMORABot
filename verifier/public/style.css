@@ -19,8 +19,6 @@ a { color: #8ea1ff; }
 .store-btn:hover { background: #4b5058; }
 .info-btn { display: block; margin-top: 22px; padding: 12px 16px; border: 1px solid #5865f2; border-radius: 8px; color: #c9d1ff; text-decoration: none; font-size: 0.95rem; line-height: 1.4; }
 .info-btn:hover { background: #343a6b; }
-ul.good li::marker { content: "\2705  "; }
-ul.bad li::marker { content: "\274C  "; }
 .status { font-weight: 600; color: #7289da; }
 .status[data-kind="success"] { color: #43b581; }
 .status[data-kind="error"] { color: #ff6b6b; }
