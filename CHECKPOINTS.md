@@ -8,13 +8,13 @@
 ## 1. Project High-Level Overview
 
 - **Name**: AMORA Bot (`com.amore:amore-bot:1.0-SNAPSHOT`)
-- **Primary Function**: Multi-functional community, economy, marketplace, staff governance, event synchronization, and zero-knowledge age verification Discord bot for the AMORA community.
+- **Primary Function**: Multi-functional community, economy, marketplace, staff governance, event synchronization, and zero-knowledge (zkPassport) 18+ age gate Discord bot for the AMORA community.
 - **Language / Runtime**: Java 17 (Eclipse Temurin)
 - **Build System**: Apache Maven (`pom.xml` with `maven-shade-plugin` packaging `app.jar` with `com.amore.App` as Main-Class)
 - **Deployment**: Docker container (`Dockerfile` multistage build from `maven:3.9.8-eclipse-temurin-17` to `eclipse-temurin:17-jre`), hosted on Render/Cloud.
 - **Discord Framework**: JDA (`net.dv8tion:JDA:5.0.0-beta.24`) with `MESSAGE_CONTENT` gateway intent enabled.
 - **Database**: Neon PostgreSQL via `org.postgresql:postgresql:42.7.3` (`DATABASE_URL`), connection health recovery with `ensureConnected()`.
-- **Web / Verification**: Embedded HTTP server (`com.sun.net.httpserver.HttpServer`) on port `PORT` (default 8080) hosting ZKP verification and Stripe Webhooks.
+- **Web / Verification**: Embedded HTTP server (`com.sun.net.httpserver.HttpServer`) on port `PORT` (default 8080) for the internal verifier API; zero-knowledge age proofs are verified by the separate `verifier/` service.
 
 ---
 
@@ -29,7 +29,7 @@ D:/Discord/amora-bot/
 └── src/
     ├── main/
     │   ├── resources/
-    │   │   └── index.html                # Client-side Zero-Knowledge proof simulation page
+    │   │   └── (empty)
     │   └── java/com/amore/
     │       ├── App.java                  # Main entry point, JDA startup, slash command registration, song cron
     │       ├── DatabaseManager.java      # Singleton DB manager, Neon Postgres reconnection, schema DDL, CRUD
@@ -40,8 +40,7 @@ D:/Discord/amora-bot/
     │       ├── LoungeManager.java        # 2h periodic quote drop in lounge, auto-deletes prior quote message
     │       ├── StatusRotator.java        # 5m periodic rich presence rotator
     │       ├── RoleManager.java          # 5m periodic expired temporary role revocation sweep
-    │       ├── StripeService.java        # Stripe Identity API client for document/selfie verification
-    │       ├── ZkpWebServer.java         # Embedded HTTP server: /verify, /verify-proof, /stripe-webhook
+    │       ├── InternalApiServer.java    # Embedded HTTP server: /health, /internal/age/*
     │       └── YouTubePlaylistImporter.java # YouTube Data API v3 playlist scraper & song parser
     └── test/                             # Test root (currently empty)
 ```
@@ -62,7 +61,7 @@ D:/Discord/amora-bot/
   - `LoungeManager.start(jda)` (2-hour lounge quote cycle)
   - `RoleManager.start(jda)` (5-minute role expiration sweep)
   - `ActivityMonitor.start(jda)` (12-hour activity and rank scheduler)
-  - `ZkpWebServer.startServer(webPort, jda)` (HTTP server for ZKP & Stripe)
+  - `InternalApiServer.startServer(webPort, jda)` (HTTP server for the verifier callbacks)
 - Registers all Slash Commands & Context Menu commands with Discord:
   - Slash: `/forcesweep`, `/syncschedule`, `/taskbank`, `/toggleapps`, `/amorahub`, `/help`, `/serverreport`, `/rolepanel`, `/agepanel`, `/verify`, `/unverify`, `/gift`, `/eventsetup`, `/pull`, `/balance`, `/inventory`, `/forge`, `/transcript`, `/leaderboard`, `/shop evaluate`, `/addsparks`, `/award`, `/trade`, `/payout`, `/publish`, `/activitycheck`, `/profile`, `/song [add|importplaylist|remove|list|suggest|postnow]`.
   - Context Menu: `🛒 Order This` (Message Context Command).
@@ -74,20 +73,19 @@ D:/Discord/amora-bot/
 - **Database Tables Managed**:
   1. `users`: Stores user ID, Sparks, Points, comma-separated inventory, gacha pity counter, bounties cleared, urgent bounties cleared, active check wins (`ac_wins`), strikes (`activity_strikes`), compensation flag (`is_comp`), and `last_task_date`.
   2. `shop_items`: Secret links mapped to asset names.
-  3. `user_verifications`: Verification flag and timestamp.
-  4. `zkp_sessions`: Active verification sessions with expiration timestamps.
-  5. `pending_trade_setups`: Staging trades during item selection before proposal.
-  6. `active_trades`: Proposed trades waiting for recipient action.
-  7. `pending_forges`: Staged items for craft/recycle synthesis.
-  8. `song_suggestions`: Pool of suggested songs with title, artist, link, source, active status, creation time, and last featured timestamp.
-  9. `bot_state`: Key-value state store for timestamps (e.g. `last_task_drop`, `last_activity_sweep`, `last_quote_msg_id`, `daily_song_last_post_date`, `global_commands_used`).
-  10. `role_timers`: Temporary roles scheduled for removal `(user_id, role_id, expires_at)`.
-  11. `creator_stats`: Monthly and all-time shop sales, items listed, total ratings, and total stars.
-  12. `staff_stats`: Metrics for staff members (tickets, events hosted, payouts).
-  13. `creator_prompts`: Tracks prompt messages in shop forum showcase threads.
-  14. `task_bank`: Pool of monthly tasks divided by rank (`rank_target`, `content`).
-  15. `event_sync`: Maps event schedule message IDs to thread IDs, RSVP emojis, and audiences.
-  16. `staff_schedule`: Day of week (1–7) mapped to duty task names and assigned user IDs.
+  3. `user_verifications`: Verification flag, timestamp, `method` (`attestation`/`zkpassport`) and `proof_id_hash` (unique, one-way fingerprint of the zkPassport ID). Plus `age_sessions` (SHA-256 of single-use token, user, expiry, used_at).
+  4. `pending_trade_setups`: Staging trades during item selection before proposal.
+  5. `active_trades`: Proposed trades waiting for recipient action.
+  6. `pending_forges`: Staged items for craft/recycle synthesis.
+  7. `song_suggestions`: Pool of suggested songs with title, artist, link, source, active status, creation time, and last featured timestamp.
+  8. `bot_state`: Key-value state store for timestamps (e.g. `last_task_drop`, `last_activity_sweep`, `last_quote_msg_id`, `daily_song_last_post_date`, `global_commands_used`).
+  9. `role_timers`: Temporary roles scheduled for removal `(user_id, role_id, expires_at)`.
+  10. `creator_stats`: Monthly and all-time shop sales, items listed, total ratings, and total stars.
+  11. `staff_stats`: Metrics for staff members (tickets, events hosted, payouts).
+  12. `creator_prompts`: Tracks prompt messages in shop forum showcase threads.
+  13. `task_bank`: Pool of monthly tasks divided by rank (`rank_target`, `content`).
+  14. `event_sync`: Maps event schedule message IDs to thread IDs, RSVP emojis, and audiences.
+  15. `staff_schedule`: Day of week (1–7) mapped to duty task names and assigned user IDs.
 
 ### 3.3 `CommandListener.java` (Commands, Interactions, Economy, Modals)
 - Handles `onSlashCommandInteraction`, `onModalInteraction`, `onStringSelectInteraction`, `onEntitySelectInteraction`, `onButtonInteraction`, and `onMessageReceived`.
@@ -107,7 +105,7 @@ D:/Discord/amora-bot/
   - `/taskbank`: Adds tasks to the randomized monthly bank for ranks (Flare, Spark, Neon, Pulse, Prism, Supernova).
   - `/toggleapps`: Opens/closes applications modal UI.
   - `/amorahub`: Director dashboard with interactive buttons for applications (Member, Seller, Staff).
-  - `/verify` & `/unverify`: Generates single-use ZKP session links pointing to the web server portal.
+  - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a zkPassport proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (accounts >= 90 days, unless `ALLOW_SELF_ATTESTATION=false`). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
 - **M.IKU Stress System**:
   - `/gift`: Allows members to gift matcha, plushies, spa vouchers, or energy drinks to reduce M.IKU's stress level.
 
@@ -163,14 +161,17 @@ D:/Discord/amora-bot/
 - Runs every 2 hours.
 - Selects a quote from `QUOTES`, deletes the previous quote message (using message ID saved in `bot_state.last_quote_msg_id`), and posts the new quote embed in `LOUNGE_CHANNEL_ID`.
 
-### 3.10 `ZkpWebServer.java` & `src/main/resources/index.html` (Web Endpoints)
-- Starts embedded `HttpServer` on port `PORT` backed by a multi-threaded fixed thread pool (`Executors.newFixedThreadPool(4)`):
-  - `GET /verify?session=<ID>`: Serves `index.html` for client-side cryptographic proof generation simulation.
-  - `POST /verify-proof`: Validates session ID, marks user verified in DB, strips `minorRole` if present, and automatically assigns `ADULT_ROLE_ID`.
-  - `POST /stripe-webhook`: Verifies Stripe webhook cryptographic signature (when `STRIPE_WEBHOOK_SECRET` is set), processes `identity.verification_session.verified`, marks user verified in DB, and grants `ADULT_ROLE_ID`.
-### 3.11 `StripeService.java`
-- Wraps Stripe Identity API (`com.stripe:stripe-java`).
-- `createVerificationSession(String discordUserId)`: Creates a Stripe VerificationSession requiring document and selfie match, embedding the `discord_user_id` in metadata.
+### 3.10 `InternalApiServer.java` (Internal Endpoints)
+- Starts embedded `HttpServer` on port `PORT` (`Executors.newFixedThreadPool(4)`):
+  - `GET /health`.
+  - `POST /internal/age/session-check`: HMAC-authenticated; reports whether a token's session is live (unused, unexpired). Does not consume it.
+  - `POST /internal/age/complete`: HMAC-authenticated; atomically burns the session, stores the unique-ID fingerprint (one ID = one Discord account; 409 on reuse), marks the user verified, and swaps `MINOR_ROLE_ID` for `ADULT_ROLE_ID`.
+- Auth: `X-Amora-Signature` = hex HMAC-SHA256(`VERIFIER_SHARED_SECRET`, `{X-Amora-Timestamp}.{rawBody}`), timestamp within 60s, 16 KiB body cap.
+
+### 3.11 `verifier/` (zero-knowledge age verifier, Node 20+)
+- Separate service (own `Dockerfile`). Serves the portal (`/verify?s=token`), `GET /config.json`, `POST /api/verify`.
+- Builds the query server-side (`age >= 18`, session token committed via `bind("custom_data")`), verifies with `@zkpassport/sdk` in `verifierMode: "local"`, then reports to the bot's internal API.
+- Stateless: no database access; the bot owns sessions and roles.
 
 ### 3.12 `YouTubePlaylistImporter.java`
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
@@ -183,7 +184,7 @@ D:/Discord/amora-bot/
 |---|---|---|
 | `DISCORD_TOKEN` | Discord Bot application secret token | `App.java` |
 | `DATABASE_URL` | PostgreSQL connection URI (Neon PostgreSQL) | `DatabaseManager.java` |
-| `PORT` | Port for embedded HTTP web server (default 8080) | `App.java`, `ZkpWebServer.java` |
+| `PORT` | Port for embedded HTTP server (default 8080) | `App.java`, `InternalApiServer.java` |
 | `DAILY_SONG_CHANNEL_ID` | Channel where daily songs are recommended | `App.java`, `CommandListener.java` |
 | `DAILY_SONG_POST_HOUR_UTC` | UTC hour (0–23) to trigger daily song post | `App.java` |
 | `LOUNGE_CHANNEL_ID` | Main community lounge channel (quotes & music pings) | `App.java`, `LoungeManager.java`, `AnnouncementListener.java` |
@@ -205,7 +206,7 @@ D:/Discord/amora-bot/
 | `SELLER_APP_CATEGORY_ID` | Category ID where seller application tickets spawn | `CommandListener.java` |
 | `MINOR_CHANNEL_ID` | Minor channel ID (routed via age selection panel) | `CommandListener.java` |
 | `ADULT_CHANNEL_ID` | 18+ channel ID (routed via age selection panel) | `CommandListener.java` |
-| `ADULT_ROLE_ID` | 18+ verified role ID (assigned on ZKP/Stripe success) | `ZkpWebServer.java`, `CommandListener.java` |
+| `ADULT_ROLE_ID` | 18+ verified role ID (assigned on ZK proof or attestation) | `InternalApiServer.java`, `CommandListener.java` |
 | `MEMBER_ROLE_ID` | Official Member role ID | `AnnouncementListener.java`, `CommandListener.java` |
 | `AMORIX_ROLE_ID` | AMORIX sub-team role ID | `AnnouncementListener.java`, `CommandListener.java` |
 | `AMORA_ROLE_ID` | Explicit AMORA Official Member role ID override | `CommandListener.java` |
@@ -232,36 +233,36 @@ D:/Discord/amora-bot/
 | `PING_LYRICS` | Creator ping role ID for lyric assets | `ChatListener.java` |
 | `PING_FACES` | Creator ping role ID for face assets | `ChatListener.java` |
 | `PING_BUILDS` | Creator ping role ID for build assets | `ChatListener.java` |
-| `STRIPE_SECRET_KEY` / `STRIPE_API_KEY` | Stripe API Secret Key for Identity verification | `StripeService.java` |
+| `VERIFIER_PUBLIC_URL` | Public base URL of the verifier portal (e.g. `https://amora-verifier.onrender.com`). Unset = ZK option hidden | `CommandListener.java` |
+| `VERIFIER_SHARED_SECRET` | >= 32 chars; HMAC key shared by bot and verifier for `/internal/age/*`. Unset/short = endpoints disabled | `InternalApiServer.java`, `verifier/` |
+| `ALLOW_SELF_ATTESTATION` | `false` disables the self-attestation button (default enabled) | `CommandListener.java` |
 | `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key | `YouTubePlaylistImporter.java` |
-| `BASE_WEB_URL` | Base public URL of the bot (e.g. `https://amora-bot.onrender.com`) for ZKP verification links | `CommandListener.java` |
-| `STRIPE_WEBHOOK_SECRET` | Secret key used to verify incoming Stripe webhook signatures | `ZkpWebServer.java` |
 
 ---
 
 ## 5. Key Workflows & Operational Lifecycles
 
-### 5.1 Verification Flow (Zero-Knowledge & Stripe)
+### 5.1 Age Gate Flow (Zero-Knowledge Proof via zkPassport, or self-attestation)
+> Real zero-knowledge proofs: the verifier checks zkPassport proofs of a passport/ID chip locally (`verifierMode: "local"`). The earlier fake portal (hard-coded proof) was removed. Self-attestation remains a fallback unless `ALLOW_SELF_ATTESTATION=false`. See `verifier/README.md` for the threat model.
 ```mermaid
 sequenceDiagram
     participant User
     participant Discord as Discord Client / Bot
-    participant Web as ZkpWebServer (:8080)
     participant DB as Neon PostgreSQL
-    participant Stripe as Stripe Identity API
+    participant V as Verifier (verifier/, Node)
+    participant App as zkPassport app
 
-    User->>Discord: /verify
-    Discord->>DB: createZkpSession(sessionId, userId, expiry)
-    Discord-->>User: Ephemeral embed with /verify?session=... link
-    User->>Web: Opens browser at /verify?session=...
-    Web-->>User: index.html (Client ZKP Simulation)
-    User->>Web: POST /verify-proof (session ID + publicSignals)
-    Web->>DB: verifyZkpSession() & markUserVerified(userId)
-    Web-->>User: "ZKP Verified Cryptographically!"
-    Note over User,Stripe: Alternate route via Stripe Webhook:
-    Stripe->>Web: POST /stripe-webhook (identity.verification_session.verified)
-    Web->>DB: setVerified(discordUserId, true)
-    Web->>Discord: Add ADULT_ROLE_ID to Guild Member
+    User->>Discord: /verify or 18+ Adult Zone button
+    Discord->>DB: createAgeSession(sha256(token), userId, +15min)
+    Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify?s=token
+    User->>V: Open portal, scan QR with zkPassport app
+    App-->>V: proofs + queryResult (age >= 18, token bound into proof)
+    V->>Discord: POST /internal/age/session-check (HMAC)
+    V->>V: Rebuild query server-side, zkPassport.verify(local)
+    V->>Discord: POST /internal/age/complete {token, HMAC(pepper, uniqueIdentifier)}
+    Discord->>DB: burn session, store proof_id_hash (unique), verified=1
+    Discord->>Discord: Remove MINOR_ROLE_ID, add ADULT_ROLE_ID
+    Note over User,Discord: Fallback: button verify_attest_18 -> setVerified(userId, true), method=attestation
 ```
 
 ### 5.2 Active Check Minigame & Role Ladder Flow

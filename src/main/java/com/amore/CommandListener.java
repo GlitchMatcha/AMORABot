@@ -89,6 +89,80 @@ public class CommandListener extends ListenerAdapter {
     private static final Set<String> movingCarts = ConcurrentHashMap.newKeySet();
     private static final Map<String, Long> ticketPingCooldowns = new ConcurrentHashMap<>(); 
     private static final Map<String, Long> transcriptCooldowns = new ConcurrentHashMap<>(); 
+    private static final int ATTESTATION_MIN_ACCOUNT_AGE_DAYS = 90;
+    private static final long AGE_SESSION_TTL_MINUTES = 15;
+    private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
+
+    /** Public base URL of the zero-knowledge verifier portal (see /verifier). Unset disables the ZK option. */
+    private static String verifierPublicUrl() {
+        String url = System.getenv("VERIFIER_PUBLIC_URL");
+        return (url == null || url.isBlank()) ? null : url.trim().replaceAll("/+$", "");
+    }
+
+    /** Self-attestation is on unless ALLOW_SELF_ATTESTATION=false. */
+    private static boolean selfAttestationEnabled() {
+        return !"false".equalsIgnoreCase(System.getenv("ALLOW_SELF_ATTESTATION"));
+    }
+
+    /**
+     * 18+ gate. Offers a zero-knowledge age proof (zkPassport, verified by /verifier) when
+     * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback for accounts at least
+     * {@link #ATTESTATION_MIN_ACCOUNT_AGE_DAYS} days old while ALLOW_SELF_ATTESTATION is not false.
+     */
+    private void replyAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
+        long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
+        boolean attestAvailable = selfAttestationEnabled() && accountAgeDays >= ATTESTATION_MIN_ACCOUNT_AGE_DAYS;
+        String verifierUrl = verifierPublicUrl();
+
+        String portalUrl = null;
+        if (verifierUrl != null) {
+            byte[] raw = new byte[32];
+            SECURE_RANDOM.nextBytes(raw);
+            String token = java.util.HexFormat.of().formatHex(raw);
+            DatabaseManager.getInstance().createAgeSession(InternalApiServer.sha256Hex(token), user.getId(),
+                    System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(AGE_SESSION_TTL_MINUTES));
+            portalUrl = verifierUrl + "/verify?s=" + token;
+        }
+
+        StringBuilder description = new StringBuilder("🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n");
+        if (portalUrl != null) {
+            description.append("**Zero-knowledge proof (strongest):** prove you are 18+ with the chip in your passport or ID card using the free zkPassport app. ")
+                       .append("The proof is made on your phone — AMORA only learns \"18 or older\" plus a one-way fingerprint that stops one ID from verifying several accounts. ")
+                       .append("The link works once and expires in ").append(AGE_SESSION_TTL_MINUTES).append(" minutes.\n\n");
+        }
+        if (attestAvailable) {
+            description.append("**Self-attestation:** the green button is a declaration that you are 18 or older. ")
+                       .append("AMORA does **not** check any ID for this option, and false declarations lead to removal.\n\n");
+        } else if (selfAttestationEnabled()) {
+            description.append("⚠️ Self-attestation needs an account at least ").append(ATTESTATION_MIN_ACCOUNT_AGE_DAYS)
+                       .append(" days old (this blocks throwaway alts).\n\n");
+        }
+        if (portalUrl == null && !attestAvailable) {
+            description.append("No automatic verification is available for your account right now. Please contact staff.\n\n");
+        }
+        description.append("*AMORA stores only your Discord ID, a verified flag and the method used — no names, photos or documents.*");
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .setColor(Color.decode("#FF5FA2"))
+            .setTitle("✦ 18+ ZONE: AGE VERIFICATION ✦")
+            .setDescription(description.toString())
+            .setFooter("AMORA Safety", null);
+
+        List<Button> buttons = new ArrayList<>();
+        if (portalUrl != null) {
+            buttons.add(Button.link(portalUrl, "🔐 Prove 18+ (zkPassport)"));
+        }
+        if (attestAvailable) {
+            buttons.add(Button.success("verify_attest_18", "🥂 I am 18+ — Self-attest"));
+        }
+
+        var reply = event.replyEmbeds(embed.build()).setEphemeral(true);
+        if (!buttons.isEmpty()) {
+            reply = reply.addActionRow(buttons);
+        }
+        reply.queue();
+    }
+
     private void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
@@ -1863,40 +1937,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
-
-            String sessionId = UUID.randomUUID().toString();
-            db.createZkpSession(sessionId, user.getId(), System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(30));
-
-            String baseWebUrl = System.getenv("BASE_WEB_URL");
-            if (baseWebUrl == null || baseWebUrl.isBlank()) {
-                baseWebUrl = System.getenv("RENDER_EXTERNAL_URL");
-            }
-            if (baseWebUrl == null || baseWebUrl.isBlank()) {
-                baseWebUrl = "http://localhost:" + (System.getenv("PORT") != null ? System.getenv("PORT") : "8080");
-            }
-            String portalUrl = baseWebUrl.replaceAll("/+$", "") + "/verify?session=" + sessionId;
-
-            EmbedBuilder zkpEmbed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2"))
-                .setTitle("✦ AUTOMATED 18+ AGE VERIFICATION ✦")
-                .setDescription("Choose an automated verification method below to unlock the 18+ Adult Zone without waiting for staff tickets!\n\n" +
-                                "🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n" +
-                                "• **Instant Attestation**: If your account is over 90 days old, confirm the 18+ compliance terms directly below.\n" +
-                                "• **Zero-Knowledge Portal**: Open the browser portal to complete your cryptographic proof.\n" +
-                                "• **Zero Data Stored**: No ID uploads, photos, or documents are ever retained.")
-                .setFooter("AMORA Automated Privacy Engine • Free & Instant", null);
-
-            List<Button> buttons = new ArrayList<>();
-            if (accountAgeDays >= 90) {
-                buttons.add(Button.success("verify_attest_18", "🥂 Confirm 18+ Terms & Unlock"));
-            }
-            buttons.add(Button.link(portalUrl, "🌐 Open ZKP Web Portal"));
-
-            event.replyEmbeds(zkpEmbed.build())
-                 .addActionRow(buttons)
-                 .setEphemeral(true)
-                 .queue();
+            replyAgeGate(event, user);
             return;
         }
 
@@ -3909,43 +3950,7 @@ public class CommandListener extends ListenerAdapter {
             boolean isVerified = db.isUserVerified(user.getId());
 
             if (!isVerified) {
-                long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
-
-                String sessionId = UUID.randomUUID().toString();
-                db.createZkpSession(sessionId, user.getId(), System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(30));
-
-                String baseWebUrl = System.getenv("BASE_WEB_URL");
-                if (baseWebUrl == null || baseWebUrl.isBlank()) {
-                    baseWebUrl = System.getenv("RENDER_EXTERNAL_URL");
-                }
-                if (baseWebUrl == null || baseWebUrl.isBlank()) {
-                    baseWebUrl = "http://localhost:" + (System.getenv("PORT") != null ? System.getenv("PORT") : "8080");
-                }
-                String portalUrl = baseWebUrl.replaceAll("/+$", "") + "/verify?session=" + sessionId;
-
-                EmbedBuilder verifyEmbed = new EmbedBuilder()
-                    .setColor(Color.decode("#FF5FA2"))
-                    .setTitle("✦ 18+ ZONE: AUTOMATED AGE VERIFICATION ✦")
-                    .setDescription("To access the **Adult Zone**, please confirm your age through our automated gate (no tickets or manual wait times!):\n\n" +
-                                    "🛡️ **Discord Account Age:** `" + accountAgeDays + " days old`\n\n" +
-                                    "**Options to Verify:**\n" +
-                                    (accountAgeDays >= 90 
-                                        ? "1. **Instant Attestation**: Click the green button below to legally attest that you are 18+ and accept adult zone terms.\n" 
-                                        : "1. ⚠️ **Account Under 90 Days**: Your account is too new for instant 1-click verification. Please use the Web Portal.\n") +
-                                    "2. **Zero-Knowledge Portal**: Open our web portal to verify cryptographically without uploading any ID.\n\n" +
-                                    "*Zero personal data, real names, or photos are ever seen or stored by AMORA staff.*")
-                    .setFooter("AMORA Automated Safety Engine • Fee-Free & Secure", null);
-
-                List<Button> buttons = new ArrayList<>();
-                if (accountAgeDays >= 90) {
-                    buttons.add(Button.success("verify_attest_18", "🥂 Confirm 18+ Terms & Unlock"));
-                }
-                buttons.add(Button.link(portalUrl, "🌐 Open ZKP Web Portal"));
-
-                event.replyEmbeds(verifyEmbed.build())
-                     .addActionRow(buttons)
-                     .setEphemeral(true)
-                     .queue();
+                replyAgeGate(event, user);
                 return;
             }
 
@@ -3978,6 +3983,10 @@ public class CommandListener extends ListenerAdapter {
         }
 
         if (componentId.equals("verify_attest_18")) {
+            if (!selfAttestationEnabled()) {
+                event.reply("❌ Self-attestation is disabled on this server. Please use the zero-knowledge proof option via `/verify`, or contact staff.").setEphemeral(true).queue();
+                return;
+            }
             User user = event.getUser();
             Guild guild = event.getGuild();
             long accountAgeDays = java.time.temporal.ChronoUnit.DAYS.between(user.getTimeCreated(), java.time.OffsetDateTime.now());
@@ -4008,7 +4017,7 @@ public class CommandListener extends ListenerAdapter {
             if (adultRole != null) {
                 guild.addRoleToMember(user, adultRole).queue(
                     success -> {
-                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your account age (" + accountAgeDays + " days) and terms attestation have been verified. Enjoy the Adult Zone! ✨").queue();
+                        event.getHook().sendMessage("🥂 **18+ Access Granted!** Your self-attestation has been recorded (account age: " + accountAgeDays + " days). Enjoy the Adult Zone! ✨").queue();
                         sendAuditLog(guild, "18+ Zone Unlocked", user.getAsMention() + " self-verified as 18+ (Account Age: " + accountAgeDays + " days).", Color.decode("#FF5FA2"));
                     },
                     error -> event.getHook().sendMessage("❌ Failed to assign role. Check bot permissions and role hierarchy.").queue()

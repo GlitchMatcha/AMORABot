@@ -105,3 +105,6 @@ $RECYCLE.BIN/
 *~
 .fuse_hidden*
 .directory
+
+# Node (verifier/)
+node_modules/
