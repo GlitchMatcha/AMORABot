@@ -52,9 +52,15 @@ public class ChatListener extends ListenerAdapter {
     public static final String DEFAULT_FACE_HALL_ID = "1563091559346479134";
     public static final String DEFAULT_COMMISSION_HALL_ID = "1563092892048687104";
 
-    private static String getEnvOrDefault(String key, String def) {
+    private static String getValidSnowflake(String key, String def) {
         String val = System.getenv(key);
-        return (val != null && !val.isBlank()) ? val : def;
+        if (val != null) {
+            val = val.trim().replaceAll("^\"|\"$", "");
+            if (val.matches("\\d{17,20}")) {
+                return val;
+            }
+        }
+        return def;
     }
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
@@ -886,11 +892,11 @@ public class ChatListener extends ListenerAdapter {
         
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
         String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
-        String outfitHallId = getEnvOrDefault("OUTFIT_HALL_ID", DEFAULT_OUTFIT_HALL_ID);
-        String lyricsHallId = getEnvOrDefault("LYRICS_HALL_ID", DEFAULT_LYRICS_HALL_ID);
-        String faceHallId = getEnvOrDefault("FACE_HALL_ID", DEFAULT_FACE_HALL_ID);
-        String buildHallId = getEnvOrDefault("BUILD_HALL_ID", DEFAULT_BUILD_HALL_ID);
-        String commissionHallId = getEnvOrDefault("COMMISSION_HALL_ID", DEFAULT_COMMISSION_HALL_ID);
+        String outfitHallId = getValidSnowflake("OUTFIT_HALL_ID", DEFAULT_OUTFIT_HALL_ID);
+        String lyricsHallId = getValidSnowflake("LYRICS_HALL_ID", DEFAULT_LYRICS_HALL_ID);
+        String faceHallId = getValidSnowflake("FACE_HALL_ID", DEFAULT_FACE_HALL_ID);
+        String buildHallId = getValidSnowflake("BUILD_HALL_ID", DEFAULT_BUILD_HALL_ID);
+        String commissionHallId = getValidSnowflake("COMMISSION_HALL_ID", DEFAULT_COMMISSION_HALL_ID);
         
         boolean isThread = channel.getType().isThread();
         DatabaseManager db = DatabaseManager.getInstance();
@@ -1029,8 +1035,20 @@ public class ChatListener extends ListenerAdapter {
                 if (canPingBuilds && buildHallId != null) targetHallIds.add(buildHallId);
 
                 for (String targetHallId : targetHallIds) {
-                    if (message.getGuild() == null) continue;
-                    net.dv8tion.jda.api.entities.channel.concrete.TextChannel targetHall = message.getGuild().getTextChannelById(targetHallId);
+                    if (targetHallId == null || !targetHallId.matches("\\d{17,20}")) continue;
+
+                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel targetHall = null;
+                    if (message.getGuild() != null) {
+                        targetHall = message.getGuild().getTextChannelById(targetHallId);
+                        if (targetHall == null) targetHall = message.getGuild().getNewsChannelById(targetHallId);
+                        if (targetHall == null) targetHall = message.getGuild().getThreadChannelById(targetHallId);
+                    }
+                    if (targetHall == null) {
+                        targetHall = message.getJDA().getTextChannelById(targetHallId);
+                        if (targetHall == null) targetHall = message.getJDA().getNewsChannelById(targetHallId);
+                        if (targetHall == null) targetHall = message.getJDA().getThreadChannelById(targetHallId);
+                    }
+
                     if (targetHall != null) {
                         StringBuilder relayText = new StringBuilder();
                         relayText.append("✦ **New Drop by** ").append(author.getAsMention())
@@ -1050,12 +1068,22 @@ public class ChatListener extends ListenerAdapter {
                         }
                         hallButtons.add(Button.link(thread.getJumpUrl(), "🛍️ Visit Shop"));
 
+                        final String finalHallId = targetHall.getId();
                         targetHall.sendMessage(relayText.toString().trim())
                                 .addActionRow(hallButtons)
-                                .queue(relayedMsg -> {
-                                    db.saveShopRelay(channel.getId(), message.getId(), targetHall.getId(), relayedMsg.getId());
-                                    db.saveCreatorPrompt(author.getId(), targetHall.getId(), relayedMsg.getId(), message.getId());
-                                });
+                                .queue(
+                                    relayedMsg -> {
+                                        System.out.println("✦ Successfully relayed drop to hall " + finalHallId);
+                                        db.saveShopRelay(channel.getId(), message.getId(), finalHallId, relayedMsg.getId());
+                                        db.saveCreatorPrompt(author.getId(), finalHallId, relayedMsg.getId(), message.getId());
+                                    },
+                                    err -> {
+                                        System.err.println("❌ Failed to send relay message to hall " + finalHallId + ": " + err.getMessage());
+                                        err.printStackTrace();
+                                    }
+                                );
+                    } else {
+                        System.err.println("❌ Target hall channel ID " + targetHallId + " not found! Ensure Amora Bot has 'View Channel' and 'Send Messages' permissions in this channel.");
                     }
                 }
             }
