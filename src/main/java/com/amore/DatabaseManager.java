@@ -276,6 +276,7 @@ public class DatabaseManager {
             try { stmt.execute("CREATE TABLE IF NOT EXISTS shop_relays (source_channel_id TEXT NOT NULL, source_msg_id TEXT NOT NULL, target_channel_id TEXT NOT NULL, target_msg_id TEXT NOT NULL, PRIMARY KEY (source_msg_id, target_msg_id));"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS creator_shop_threads (creator_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL);"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN commissions_enabled INTEGER DEFAULT 1;"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS creator_commission_threads (creator_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, status_msg_id TEXT);"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -1378,6 +1379,31 @@ public class DatabaseManager {
             pstmt.setInt(2, enabled ? 1 : 0);
             pstmt.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+    }
+    public void saveCreatorCommissionThread(String creatorId, String threadId, String statusMsgId) {
+        ensureConnected();
+        String query = "INSERT INTO creator_commission_threads (creator_id, thread_id, status_msg_id) VALUES (?, ?, ?) "
+                + "ON CONFLICT (creator_id) DO UPDATE SET thread_id = EXCLUDED.thread_id, status_msg_id = EXCLUDED.status_msg_id;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            pstmt.setString(2, threadId);
+            pstmt.setString(3, statusMsgId != null ? statusMsgId : "");
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public String[] getCreatorCommissionThread(String creatorId) {
+        ensureConnected();
+        String query = "SELECT thread_id, status_msg_id FROM creator_commission_threads WHERE creator_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new String[]{rs.getString("thread_id"), rs.getString("status_msg_id")};
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return null;
     }
 
 

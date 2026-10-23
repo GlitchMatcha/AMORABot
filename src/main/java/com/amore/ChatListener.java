@@ -46,6 +46,16 @@ public class ChatListener extends ListenerAdapter {
     private static final String CHAT_ACTIVITY_CHANNEL_ID = System.getenv("CHAT_ACTIVITY_CHANNEL_ID");
     private static final String ACTIVE_CHECK_CHANNEL_ID = System.getenv("ACTIVE_CHECK_CHANNEL_ID");
 
+    public static final String DEFAULT_OUTFIT_HALL_ID = "1563091441918414900";
+    public static final String DEFAULT_BUILD_HALL_ID = "1563091476286668890";
+    public static final String DEFAULT_LYRICS_HALL_ID = "1563091518330503228";
+    public static final String DEFAULT_FACE_HALL_ID = "1563091559346479134";
+    public static final String DEFAULT_COMMISSION_HALL_ID = "1563092892048687104";
+
+    private static String getEnvOrDefault(String key, String def) {
+        String val = System.getenv(key);
+        return (val != null && !val.isBlank()) ? val : def;
+    }
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
@@ -876,10 +886,11 @@ public class ChatListener extends ListenerAdapter {
         
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
         String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
-        String outfitHallId = System.getenv("OUTFIT_HALL_ID");
-        String lyricsHallId = System.getenv("LYRICS_HALL_ID");
-        String faceHallId = System.getenv("FACE_HALL_ID");
-        String buildHallId = System.getenv("BUILD_HALL_ID");
+        String outfitHallId = getEnvOrDefault("OUTFIT_HALL_ID", DEFAULT_OUTFIT_HALL_ID);
+        String lyricsHallId = getEnvOrDefault("LYRICS_HALL_ID", DEFAULT_LYRICS_HALL_ID);
+        String faceHallId = getEnvOrDefault("FACE_HALL_ID", DEFAULT_FACE_HALL_ID);
+        String buildHallId = getEnvOrDefault("BUILD_HALL_ID", DEFAULT_BUILD_HALL_ID);
+        String commissionHallId = getEnvOrDefault("COMMISSION_HALL_ID", DEFAULT_COMMISSION_HALL_ID);
         
         boolean isThread = channel.getType().isThread();
         DatabaseManager db = DatabaseManager.getInstance();
