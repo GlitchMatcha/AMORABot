@@ -1685,74 +1685,6 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-        if (event.getName().equals("testrelay")) {
-            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
-                event.reply("❌ Administrator clearance required.").setEphemeral(true).queue();
-                return;
-            }
-
-            event.deferReply(true).queue();
-
-            String[][] testHalls = {
-                {"Outfit Hall", ChatListener.DEFAULT_OUTFIT_HALL_ID, "OUTFIT_HALL_ID"},
-                {"Build Hall", ChatListener.DEFAULT_BUILD_HALL_ID, "BUILD_HALL_ID"},
-                {"Lyrics Hall", ChatListener.DEFAULT_LYRICS_HALL_ID, "LYRICS_HALL_ID"},
-                {"Face Hall", ChatListener.DEFAULT_FACE_HALL_ID, "FACE_HALL_ID"},
-                {"Commission Hall", ChatListener.DEFAULT_COMMISSION_HALL_ID, "COMMISSION_HALL_ID"}
-            };
-
-            StringBuilder report = new StringBuilder("**🔍 AMORA RELAY DIAGNOSTIC REPORT**\n\n");
-            int tested = 0;
-            int passed = 0;
-
-            for (String[] hallInfo : testHalls) {
-                String name = hallInfo[0];
-                String defaultId = hallInfo[1];
-                String envKey = hallInfo[2];
-                String activeId = System.getenv(envKey) != null && System.getenv(envKey).matches("\\d{17,20}")
-                        ? System.getenv(envKey)
-                        : defaultId;
-
-                tested++;
-                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = null;
-                if (event.getGuild() != null) {
-                    ch = event.getGuild().getTextChannelById(activeId);
-                    if (ch == null) ch = event.getGuild().getNewsChannelById(activeId);
-                    if (ch == null) ch = event.getGuild().getThreadChannelById(activeId);
-                }
-                if (ch == null) {
-                    ch = event.getJDA().getTextChannelById(activeId);
-                    if (ch == null) ch = event.getJDA().getNewsChannelById(activeId);
-                    if (ch == null) ch = event.getJDA().getThreadChannelById(activeId);
-                }
-
-                if (ch == null) {
-                    report.append("❌ **").append(name).append("** (`").append(activeId).append("`)\n")
-                          .append("   • **Error:** Channel not found in Bot's Cache!\n")
-                          .append("   • **Fix:** The bot does NOT have access. Add Amora Bot under 'Add members or roles' with View Channel permission.\n\n");
-                } else {
-                    final String chMention = ch.getAsMention();
-                    final String hName = name;
-                    try {
-                        ch.sendMessage("✦ **AMORA Connection Test:** Channel verified for cross-posting! (Auto-deleting)")
-                               .queue(
-                                   testMsg -> testMsg.delete().queueAfter(10, TimeUnit.SECONDS, s -> {}, e -> {}),
-                                   err -> System.err.println("❌ Send error in " + hName + ": " + err.getMessage())
-                               );
-                        passed++;
-                        report.append("✅ **").append(name).append("** (").append(chMention).append(")\n")
-                              .append("   • **Status:** Connected! Test message sent successfully.\n\n");
-                    } catch (Exception e) {
-                        report.append("⚠️ **").append(name).append("** (").append(chMention).append(")\n")
-                              .append("   • **Permission Error:** ").append(e.getMessage()).append("\n\n");
-                    }
-                }
-            }
-
-            report.append("📊 **Result:** ").append(passed).append("/").append(tested).append(" halls fully accessible.");
-            event.getHook().sendMessage(report.toString()).queue();
-            return;
-        }
 
             String type = event.getOption("type").getAsString().toLowerCase();
             event.deferReply(true).queue();
@@ -1826,6 +1758,74 @@ public class CommandListener extends ListenerAdapter {
                 event.getHook().sendMessage("❌ Invalid type! Please choose either `tasks` or `sweep`.").queue();
                 return;
             }
+        }
+        if (event.getName().equals("testrelay")) {
+            if (event.getMember() == null || !event.getMember().hasPermission(Permission.ADMINISTRATOR)) {
+                event.reply("❌ Administrator clearance required.").setEphemeral(true).queue();
+                return;
+            }
+
+            event.deferReply(true).queue();
+
+            String[][] testHalls = {
+                {"Outfit Hall", ChatListener.DEFAULT_OUTFIT_HALL_ID, "OUTFIT_HALL_ID"},
+                {"Build Hall", ChatListener.DEFAULT_BUILD_HALL_ID, "BUILD_HALL_ID"},
+                {"Lyrics Hall", ChatListener.DEFAULT_LYRICS_HALL_ID, "LYRICS_HALL_ID"},
+                {"Face Hall", ChatListener.DEFAULT_FACE_HALL_ID, "FACE_HALL_ID"},
+                {"Commission Hall", ChatListener.DEFAULT_COMMISSION_HALL_ID, "COMMISSION_HALL_ID"}
+            };
+
+            StringBuilder report = new StringBuilder("**🔍 AMORA RELAY DIAGNOSTIC REPORT**\n\n");
+            int tested = 0;
+            int passed = 0;
+
+            for (String[] hallInfo : testHalls) {
+                String name = hallInfo[0];
+                String defaultId = hallInfo[1];
+                String envKey = hallInfo[2];
+                String activeId = System.getenv(envKey) != null && System.getenv(envKey).matches("\\d{17,20}")
+                        ? System.getenv(envKey)
+                        : defaultId;
+
+                tested++;
+                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = null;
+                if (event.getGuild() != null) {
+                    ch = event.getGuild().getTextChannelById(activeId);
+                    if (ch == null) ch = event.getGuild().getNewsChannelById(activeId);
+                    if (ch == null) ch = event.getGuild().getThreadChannelById(activeId);
+                }
+                if (ch == null) {
+                    ch = event.getJDA().getTextChannelById(activeId);
+                    if (ch == null) ch = event.getJDA().getNewsChannelById(activeId);
+                    if (ch == null) ch = event.getJDA().getThreadChannelById(activeId);
+                }
+
+                if (ch == null) {
+                    report.append("❌ **").append(name).append("** (`").append(activeId).append("`)\n")
+                          .append("   • **Error:** Channel not found in Bot's Cache!\n")
+                          .append("   • **Fix:** The bot does NOT have access. Add Amora Bot under 'Add members or roles' with View Channel permission.\n\n");
+                } else {
+                    final String chMention = ch.getAsMention();
+                    final String hName = name;
+                    try {
+                        ch.sendMessage("✦ **AMORA Connection Test:** Channel verified for cross-posting! (Auto-deleting)")
+                               .queue(
+                                   testMsg -> testMsg.delete().queueAfter(10, TimeUnit.SECONDS, s -> {}, e -> {}),
+                                   err -> System.err.println("❌ Send error in " + hName + ": " + err.getMessage())
+                               );
+                        passed++;
+                        report.append("✅ **").append(name).append("** (").append(chMention).append(")\n")
+                              .append("   • **Status:** Connected! Test message sent successfully.\n\n");
+                    } catch (Exception e) {
+                        report.append("⚠️ **").append(name).append("** (").append(chMention).append(")\n")
+                              .append("   • **Permission Error:** ").append(e.getMessage()).append("\n\n");
+                    }
+                }
+            }
+
+            report.append("📊 **Result:** ").append(passed).append("/").append(tested).append(" halls fully accessible.");
+            event.getHook().sendMessage(report.toString()).queue();
+            return;
         }
 
         if (event.getName().equals("syncschedule")) {
