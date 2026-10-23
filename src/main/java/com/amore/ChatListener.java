@@ -72,6 +72,20 @@ public class ChatListener extends ListenerAdapter {
         return def;
     }
 
+    /** "robux" anywhere (covers custom emojis like <:RobuxGold:id>); other words only as whole words ("costume" ≠ "cost"). */
+    private static final Pattern LISTING_PRICE_SIGNAL =
+            Pattern.compile("robux|(?<![a-z])(prices?|costs?|rbx|wts|selling|for sale|on sale)(?![a-z])");
+
+    /**
+     * A post is a sale listing only when its text carries a price signal (or 🛒/🏷️).
+     * Pictures alone (banners, intros, showcases) never count.
+     */
+    static boolean isShopListing(String rawContent) {
+        if (rawContent == null || rawContent.isBlank()) return false;
+        String normalized = Normalizer.normalize(rawContent, Normalizer.Form.NFKC).toLowerCase();
+        return normalized.contains("🛒") || normalized.contains("🏷") || LISTING_PRICE_SIGNAL.matcher(normalized).find();
+    }
+
     /**
      * Builds a relay message that never exceeds Discord's 2000-char limit.
      * JDA rejects longer content synchronously, which previously aborted the relay silently.
@@ -1242,26 +1256,7 @@ public class ChatListener extends ListenerAdapter {
                 return; 
             }
 
-            String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
-            boolean hasImage = !message.getAttachments().isEmpty();
-            
-            boolean isExplicitListing = ultraCleanContent.contains("price") 
-                                     || ultraCleanContent.contains("cost") 
-                                     || ultraCleanContent.contains("selling")
-                                     || ultraCleanContent.contains("rbx") 
-                                     || ultraCleanContent.contains("robux") 
-                                     || ultraCleanContent.contains("combo")
-                                     || ultraCleanContent.contains("pack")
-                                     || ultraCleanContent.contains("order")
-                                     || ultraCleanContent.contains("buy")
-                                     || ultraCleanContent.contains("outfit")
-                                     || ultraCleanContent.contains("build")
-                                     || ultraCleanContent.contains("face")
-                                     || ultraCleanContent.contains("lyrics")
-                                     || ultraCleanContent.contains("wts")
-                                     || normalizedContent.contains("🛒") 
-                                     || normalizedContent.contains("🏷️")
-                                     || hasImage; 
+            boolean isExplicitListing = isShopListing(rawContent);
             
             if (isExplicitListing) {
                 long msgId = message.getIdLong();
@@ -1379,27 +1374,7 @@ public class ChatListener extends ListenerAdapter {
             if (alreadyLogged) return;
 
             String rawContent = message.getContentRaw();
-            String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
-            String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
-            boolean hasImage = !message.getAttachments().isEmpty();
-            
-            boolean isExplicitListing = ultraCleanContent.contains("price") 
-                                     || ultraCleanContent.contains("cost") 
-                                     || ultraCleanContent.contains("selling")
-                                     || ultraCleanContent.contains("rbx") 
-                                     || ultraCleanContent.contains("robux") 
-                                     || ultraCleanContent.contains("combo")
-                                     || ultraCleanContent.contains("pack")
-                                     || ultraCleanContent.contains("order")
-                                     || ultraCleanContent.contains("buy")
-                                     || ultraCleanContent.contains("outfit")
-                                     || ultraCleanContent.contains("build")
-                                     || ultraCleanContent.contains("face")
-                                     || ultraCleanContent.contains("lyrics")
-                                     || ultraCleanContent.contains("wts")
-                                     || normalizedContent.contains("🛒") 
-                                     || normalizedContent.contains("🏷️")
-                                     || hasImage;
+            boolean isExplicitListing = isShopListing(rawContent);
 
             if (isExplicitListing) {
                 long msgId = message.getIdLong();

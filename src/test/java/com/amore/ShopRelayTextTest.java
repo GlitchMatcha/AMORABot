@@ -41,4 +41,23 @@ public class ShopRelayTextTest {
         assertEquals("drop_3.png", ChatListener.relayFileName(3, null, false));
         assertEquals("drop_4.png", ChatListener.relayFileName(4, "../evil name", false));
     }
+
+    @Test
+    @DisplayName("Picture-only and price-less posts are not listings")
+    public void nonListingsAreIgnored() {
+        assertFalse(ChatListener.isShopListing(""), "image-only post has empty text");
+        assertFalse(ChatListener.isShopListing("🐒 welcome to rami's lyrics shop 🤎 take a look at my work"));
+        assertFalse(ChatListener.isShopListing("Fit Showcase **Below!**"));
+        assertFalse(ChatListener.isShopListing("new costume on the surface, click ORDER below"));
+    }
+
+    @Test
+    @DisplayName("Posts with a price signal are listings, including fancy fonts and robux emojis")
+    public void priceSignalsAreListings() {
+        assertTrue(ChatListener.isShopListing("Velvet Eclipse ⤹ **20** <:RobuxGold:1206361013054611466>"));
+        assertTrue(ChatListener.isShopListing("𝙿𝚛𝚒𝚌𝚎: 15"));
+        assertTrue(ChatListener.isShopListing("lyrics pack 20rbx"));
+        assertTrue(ChatListener.isShopListing("WTS cute face decal"));
+        assertTrue(ChatListener.isShopListing("new drop 🛒"));
+    }
 }
