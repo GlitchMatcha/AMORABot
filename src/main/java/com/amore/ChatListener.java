@@ -66,24 +66,17 @@ public class ChatListener extends ListenerAdapter {
     /**
      * Builds a relay message that never exceeds Discord's 2000-char limit.
      * JDA rejects longer content synchronously, which previously aborted the relay silently.
-     * Header and footer are always kept; attachment URLs are kept while they fit; the listing
-     * text gets whatever space remains and is cut with "..." when needed.
+     * Header and footer are always kept; the listing text gets the remaining space and is cut
+     * with "..." when needed. Images travel as re-uploaded files, never as URLs in the text.
      */
-    static String buildRelayText(String header, String content, List<String> attachmentUrls, String footer) {
+    static String buildRelayText(String header, String content, String footer) {
         final int max = net.dv8tion.jda.api.entities.Message.MAX_CONTENT_LENGTH;
         final String ellipsis = "...";
         String safeHeader = header == null ? "" : header;
         String safeFooter = footer == null ? "" : footer;
-        int fixed = safeHeader.length() + safeFooter.length();
-
-        StringBuilder attachments = new StringBuilder();
-        for (String url : attachmentUrls) {
-            if (fixed + attachments.length() + url.length() + 1 > max) break;
-            attachments.append(url).append('\n');
-        }
 
         String body = content == null ? "" : content.strip();
-        int budget = max - fixed - attachments.length() - 2; // "\n\n" separator after the body
+        int budget = max - safeHeader.length() - safeFooter.length() - 2; // "\n\n" separator after the body
         if (body.length() > budget) {
             int cut = Math.max(0, budget - ellipsis.length());
             if (cut > 0 && Character.isHighSurrogate(body.charAt(cut - 1))) cut--;
@@ -92,8 +85,58 @@ public class ChatListener extends ListenerAdapter {
 
         StringBuilder out = new StringBuilder(max).append(safeHeader);
         if (!body.isEmpty()) out.append(body).append("\n\n");
-        out.append(attachments).append(safeFooter);
+        out.append(safeFooter);
         return out.toString().trim();
+    }
+
+    /** Neutral upload name so relays never expose the seller's original file name. */
+    static String relayFileName(int index, String extension, boolean spoiler) {
+        String ext = (extension == null || !extension.matches("[A-Za-z0-9]{1,8}")) ? "png" : extension.toLowerCase();
+        return (spoiler ? "SPOILER_" : "") + "drop_" + index + "." + ext;
+    }
+
+    private record RelayImage(byte[] data, String name) {
+        FileUpload toUpload() {
+            return FileUpload.fromData(data, name);
+        }
+    }
+
+    private static List<FileUpload> toUploads(List<RelayImage> images) {
+        return images.stream().map(RelayImage::toUpload).toList();
+    }
+
+    /**
+     * Downloads the message's attachments once so every relay can re-upload them as files.
+     * Attachments that fail to download or would push the upload past the guild's file limit are skipped.
+     */
+    private static java.util.concurrent.CompletableFuture<List<RelayImage>> downloadRelayImages(net.dv8tion.jda.api.entities.Message message) {
+        long maxTotal = message.getGuild().getMaxFileSize();
+        long total = 0;
+        List<java.util.concurrent.CompletableFuture<RelayImage>> downloads = new ArrayList<>();
+        List<net.dv8tion.jda.api.entities.Message.Attachment> attachments = message.getAttachments();
+        for (int i = 0; i < attachments.size(); i++) {
+            net.dv8tion.jda.api.entities.Message.Attachment att = attachments.get(i);
+            if (total + att.getSize() > maxTotal) {
+                System.err.println("⚠️ Skipping relay attachment " + att.getId() + ": exceeds upload limit (" + maxTotal + " bytes)");
+                continue;
+            }
+            total += att.getSize();
+            String name = relayFileName(downloads.size() + 1, att.getFileExtension(), att.isSpoiler());
+            downloads.add(att.getProxy().download()
+                    .thenApply(in -> {
+                        try (in) {
+                            return new RelayImage(in.readAllBytes(), name);
+                        } catch (java.io.IOException e) {
+                            throw new java.io.UncheckedIOException(e);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        System.err.println("⚠️ Failed to download relay attachment " + att.getId() + ": " + e.getMessage());
+                        return null;
+                    }));
+        }
+        return java.util.concurrent.CompletableFuture.allOf(downloads.toArray(new java.util.concurrent.CompletableFuture[0]))
+                .thenApply(v -> downloads.stream().map(java.util.concurrent.CompletableFuture::join).filter(java.util.Objects::nonNull).toList());
     }
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
@@ -1077,6 +1120,9 @@ public class ChatListener extends ListenerAdapter {
                 if (canPingFaces && faceHallId != null) targetHallIds.add(faceHallId);
                 if (canPingBuilds && buildHallId != null) targetHallIds.add(buildHallId);
 
+                java.util.concurrent.CompletableFuture<List<RelayImage>> relayImages = targetHallIds.isEmpty()
+                        ? java.util.concurrent.CompletableFuture.completedFuture(List.of())
+                        : downloadRelayImages(message);
                 for (String targetHallId : targetHallIds) {
                     if (targetHallId == null || !targetHallId.matches("\\d{17,20}")) continue;
 
@@ -1096,8 +1142,7 @@ public class ChatListener extends ListenerAdapter {
                         String header = "✦ **New Drop by** " + author.getAsMention() + " (from " + thread.getAsMention() + "):\n\n";
                         String footer = "\n🔗 [**Click here to visit shop thread**](" + thread.getJumpUrl() + ")\n"
                                 + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
-                        List<String> attachmentUrls = message.getAttachments().stream()
-                                .map(net.dv8tion.jda.api.entities.Message.Attachment::getUrl).toList();
+                        String relayText = buildRelayText(header, rawContent, footer);
 
                         List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
                         hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
@@ -1105,8 +1150,10 @@ public class ChatListener extends ListenerAdapter {
                             hallButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
                         }
 
+                        final net.dv8tion.jda.api.entities.channel.middleman.MessageChannel finalHall = targetHall;
                         final String finalHallId = targetHall.getId();
-                        targetHall.sendMessage(buildRelayText(header, rawContent, attachmentUrls, footer))
+                        relayImages.thenAccept(images -> finalHall.sendMessage(relayText)
+                                .addFiles(toUploads(images))
                                 .addActionRow(hallButtons)
                                 .queue(
                                     relayedMsg -> {
@@ -1118,7 +1165,10 @@ public class ChatListener extends ListenerAdapter {
                                         System.err.println("❌ Failed to send relay message to hall " + finalHallId + ": " + err.getMessage());
                                         err.printStackTrace();
                                     }
-                                );
+                                )).exceptionally(e -> {
+                                    System.err.println("❌ Relay to hall " + finalHallId + " aborted: " + e.getMessage());
+                                    return null;
+                                });
                     } else {
                         System.err.println("❌ Target hall channel ID " + targetHallId + " not found! Ensure Amora Bot has 'View Channel' and 'Send Messages' permissions in this channel.");
                     }
@@ -1223,21 +1273,26 @@ public class ChatListener extends ListenerAdapter {
                     String header = "✦ **New Drop by** " + author.getAsMention() + " (via <#" + channel.getId() + ">):\n\n";
                     String footer = "\n🔗 [**Click here to view hall post**](" + message.getJumpUrl() + ")\n"
                             + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
-                    List<String> attachmentUrls = message.getAttachments().stream()
-                            .map(net.dv8tion.jda.api.entities.Message.Attachment::getUrl).toList();
+                    String relayText = buildRelayText(header, rawContent, footer);
 
                     List<net.dv8tion.jda.api.interactions.components.buttons.Button> threadButtons = new ArrayList<>();
                     threadButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
                     if (acceptsCommissions) {
                         threadButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
                     }
+                    final net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel finalThread = creatorThread;
                     final String targetThreadId = creatorThread.getId();
-                    creatorThread.sendMessage(buildRelayText(header, rawContent, attachmentUrls, footer))
+                    downloadRelayImages(message).thenAccept(images -> finalThread.sendMessage(relayText)
+                            .addFiles(toUploads(images))
                             .addActionRow(threadButtons)
                             .queue(relayedMsg -> {
                                 db.saveShopRelay(channel.getId(), message.getId(), targetThreadId, relayedMsg.getId());
                                 db.saveCreatorPrompt(author.getId(), targetThreadId, relayedMsg.getId(), message.getId());
-                            }, err -> System.err.println("❌ Failed to relay hall post to shop thread " + targetThreadId + ": " + err.getMessage()));
+                            }, err -> System.err.println("❌ Failed to relay hall post to shop thread " + targetThreadId + ": " + err.getMessage())))
+                            .exceptionally(e -> {
+                                System.err.println("❌ Relay to shop thread " + targetThreadId + " aborted: " + e.getMessage());
+                                return null;
+                            });
                 }
 
                 // Ping subscribers for this specific hall

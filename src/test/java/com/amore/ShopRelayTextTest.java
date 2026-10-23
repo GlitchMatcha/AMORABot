@@ -4,9 +4,6 @@ import net.dv8tion.jda.api.entities.Message;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ShopRelayTextTest {
@@ -16,37 +13,32 @@ public class ShopRelayTextTest {
             + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ★★★★★ 4.5/5 `(4 reviews)`";
 
     @Test
-    @DisplayName("Long shop template with several images stays within Discord's limit and keeps the footer")
+    @DisplayName("Long shop template stays within Discord's limit and keeps header and footer")
     public void longTemplateIsBoundedAndKeepsFooter() {
         String template = "COMBOS :4A: 15 <:robux:111111111111111111> PACK\n".repeat(80);
-        String url = "https://cdn.discordapp.com/attachments/1563091441918414900/1563091441918414901/image.png"
-                + "?ex=68f9a1b2&is=68f85032&hm=" + "a".repeat(64) + "&";
-        List<String> attachments = Collections.nCopies(4, url);
 
-        String relay = ChatListener.buildRelayText(HEADER, template, attachments, FOOTER);
+        String relay = ChatListener.buildRelayText(HEADER, template, FOOTER);
 
         assertTrue(relay.length() <= Message.MAX_CONTENT_LENGTH, "relay length " + relay.length());
         assertTrue(relay.startsWith(HEADER.trim()));
         assertTrue(relay.endsWith(FOOTER.trim()));
-        assertTrue(relay.contains("...\n\n" + url), "truncated body must be followed by the attachments");
-    }
-
-    @Test
-    @DisplayName("Attachments that cannot fit are dropped instead of overflowing")
-    public void excessAttachmentsAreDropped() {
-        List<String> attachments = Collections.nCopies(10, "https://cdn.discordapp.com/" + "x".repeat(300));
-
-        String relay = ChatListener.buildRelayText(HEADER, "price: 25 rbx", attachments, FOOTER);
-
-        assertTrue(relay.length() <= Message.MAX_CONTENT_LENGTH, "relay length " + relay.length());
-        assertTrue(relay.endsWith(FOOTER.trim()));
+        assertTrue(relay.contains("...\n\n" + FOOTER), "truncated body must be marked and followed by the footer");
     }
 
     @Test
     @DisplayName("Short listing is relayed verbatim")
     public void shortListingUnchanged() {
-        String relay = ChatListener.buildRelayText(HEADER, "price: 25 rbx", List.of("https://cdn/a.png"), FOOTER);
+        String relay = ChatListener.buildRelayText(HEADER, "price: 25 rbx", FOOTER);
 
-        assertEquals(HEADER + "price: 25 rbx\n\nhttps://cdn/a.png\n" + FOOTER, relay);
+        assertEquals(HEADER + "price: 25 rbx\n\n" + FOOTER, relay);
+    }
+
+    @Test
+    @DisplayName("Relayed files use a neutral name, keep the extension and spoiler flag")
+    public void relayFileNameHidesOriginalName() {
+        assertEquals("drop_1.png", ChatListener.relayFileName(1, "PNG", false));
+        assertEquals("SPOILER_drop_2.gif", ChatListener.relayFileName(2, "gif", true));
+        assertEquals("drop_3.png", ChatListener.relayFileName(3, null, false));
+        assertEquals("drop_4.png", ChatListener.relayFileName(4, "../evil name", false));
     }
 }
