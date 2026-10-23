@@ -937,6 +937,15 @@ public class ChatListener extends ListenerAdapter {
                                      || ultraCleanContent.contains("selling")
                                      || ultraCleanContent.contains("rbx") 
                                      || ultraCleanContent.contains("robux") 
+                                     || ultraCleanContent.contains("combo")
+                                     || ultraCleanContent.contains("pack")
+                                     || ultraCleanContent.contains("order")
+                                     || ultraCleanContent.contains("buy")
+                                     || ultraCleanContent.contains("outfit")
+                                     || ultraCleanContent.contains("build")
+                                     || ultraCleanContent.contains("face")
+                                     || ultraCleanContent.contains("lyrics")
+                                     || ultraCleanContent.contains("wts")
                                      || normalizedContent.contains("🛒") 
                                      || normalizedContent.contains("🏷️")
                                      || hasImage; 
@@ -1055,19 +1064,23 @@ public class ChatListener extends ListenerAdapter {
                         relayText.append("✦ **New Drop by** ").append(author.getAsMention())
                                  .append(" (from ").append(thread.getAsMention()).append("):\n\n");
                         if (!rawContent.isBlank()) {
-                            relayText.append(rawContent).append("\n\n");
+                            String trimmedContent = rawContent;
+                            if (trimmedContent.length() > 1500) {
+                                trimmedContent = trimmedContent.substring(0, 1500) + "...";
+                            }
+                            relayText.append(trimmedContent).append("\n\n");
                         }
                         for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
                             relayText.append(att.getUrl()).append("\n");
                         }
-                        relayText.append("\n-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
+                        relayText.append("\n🔗 [**Click here to visit shop thread**](").append(thread.getJumpUrl()).append(")\n");
+                        relayText.append("-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
 
                         List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
                         hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
                         if (acceptsCommissions) {
                             hallButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
                         }
-                        hallButtons.add(Button.link(thread.getJumpUrl(), "🛍️ Visit Shop"));
 
                         final String finalHallId = targetHall.getId();
                         targetHall.sendMessage(relayText.toString().trim())
@@ -1114,6 +1127,15 @@ public class ChatListener extends ListenerAdapter {
                                      || ultraCleanContent.contains("selling")
                                      || ultraCleanContent.contains("rbx") 
                                      || ultraCleanContent.contains("robux") 
+                                     || ultraCleanContent.contains("combo")
+                                     || ultraCleanContent.contains("pack")
+                                     || ultraCleanContent.contains("order")
+                                     || ultraCleanContent.contains("buy")
+                                     || ultraCleanContent.contains("outfit")
+                                     || ultraCleanContent.contains("build")
+                                     || ultraCleanContent.contains("face")
+                                     || ultraCleanContent.contains("lyrics")
+                                     || ultraCleanContent.contains("wts")
                                      || normalizedContent.contains("🛒") 
                                      || normalizedContent.contains("🏷️")
                                      || hasImage;
@@ -1179,20 +1201,23 @@ public class ChatListener extends ListenerAdapter {
                     relayText.append("✦ **New Drop by** ").append(author.getAsMention())
                              .append(" (via <#").append(channel.getId()).append(">):\n\n");
                     if (!rawContent.isBlank()) {
-                        relayText.append(rawContent).append("\n\n");
+                        String trimmedContent = rawContent;
+                        if (trimmedContent.length() > 1500) {
+                            trimmedContent = trimmedContent.substring(0, 1500) + "...";
+                        }
+                        relayText.append(trimmedContent).append("\n\n");
                     }
                     for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
                         relayText.append(att.getUrl()).append("\n");
                     }
-                    relayText.append("\n-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
+                    relayText.append("\n🔗 [**Click here to view hall post**](").append(message.getJumpUrl()).append(")\n");
+                    relayText.append("-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
 
                     List<net.dv8tion.jda.api.interactions.components.buttons.Button> threadButtons = new ArrayList<>();
                     threadButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
                     if (acceptsCommissions) {
                         threadButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
                     }
-                    threadButtons.add(Button.link(message.getJumpUrl(), "📍 View Hall Post"));
-
                     final String targetThreadId = creatorThread.getId();
                     creatorThread.sendMessage(relayText.toString().trim())
                             .addActionRow(threadButtons)
