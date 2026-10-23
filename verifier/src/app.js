@@ -226,7 +226,9 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
     }
     if (!result.ok) {
       console.warn(`proof rejected: ${result.reason}${result.detail ? ` | ${result.detail}` : ""}`);
-      return fail("The proof could not be verified.", ticket);
+      // Only short identifier-like details (SDK issue types such as "InvalidRoot,InvalidScope") reach the page.
+      const safeDetail = /^[A-Za-z]{1,40}(,[A-Za-z]{1,40}){0,7}$/.test(result.detail ?? "") ? `: ${result.detail}` : "";
+      return fail(`The proof could not be verified (${result.reason}${safeDetail}).`, ticket);
     }
 
     let outcome;
