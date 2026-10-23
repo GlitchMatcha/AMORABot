@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createApp } from "../src/app.js";
 import { fingerprint } from "../src/hmac.js";
-import { deriveKey, signPayload, ticketUserId } from "../src/signedTokens.js";
+import { deriveKey, loginAssertionKey, signPayload, ticketUserId } from "../src/signedTokens.js";
 
 const TOKEN = "a".repeat(64);
 const USER = "123456789012345678";
@@ -40,7 +40,7 @@ const relayerBody = (overrides = {}) => ({
 });
 
 async function withServer(overrides, run) {
-  const calls = { verify: [], complete: [], checks: [], exchange: [] };
+  const calls = { verify: [], complete: [], checks: [] };
   const check = overrides.check ?? { live: true, ownerMatches: true, banned: false };
   const deps = {
     config: { ...config, ...overrides.config },
@@ -61,11 +61,6 @@ async function withServer(overrides, run) {
     },
     discordAuth: {
       authorizeUrl: (state) => `https://discord.test/authorize?state=${state}`,
-      exchange: async (code) => {
-        calls.exchange.push(code);
-        if (overrides.exchangeError) throw new Error("boom");
-        return overrides.discordUser ?? { id: USER, username: "tester" };
-      },
     },
   };
   const server = createServer(createApp(deps));
@@ -84,6 +79,8 @@ const relay = (base, payload = relayerBody(), headers = {}) =>
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(payload),
   });
+const assertion = (overrides = {}, key = loginAssertionKey(config.sharedSecret)) =>
+  signPayload(key, { u: USER, n: "tester", exp: Date.now() + 60_000, ...overrides });
 const login = (base, payload, headers = {}) =>
   fetch(`${base}/api/login`, {
     method: "POST",
@@ -361,12 +358,11 @@ test("/api/discord-url builds the authorize URL only for a well-formed state", a
 
 test("the account that owns the session gets a bearer that unlocks the QR parameters", async () => {
   await withServer({}, async (base, calls) => {
-    const res = await login(base, { token: TOKEN, code: "abc" });
+    const res = await login(base, { token: TOKEN, assertion: assertion() });
     assert.equal(res.status, 200);
     const out = await res.json();
     assert.equal(out.ok, true);
     assert.equal(out.username, "tester");
-    assert.deepEqual(calls.exchange, ["abc"]);
     assert.deepEqual(calls.checks.at(-1), { token: TOKEN, userId: USER });
 
     const app = await (await portalGet(base, "/api/self-app", `Bearer ${out.session}`)).json();
@@ -375,8 +371,8 @@ test("the account that owns the session gets a bearer that unlocks the QR parame
 });
 
 test("a different Discord account is refused and gets no session", async () => {
-  await withServer({ check: { live: true, ownerMatches: false, banned: false }, discordUser: { id: "555555555555555555", username: "friend" } }, async (base) => {
-    const res = await login(base, { token: TOKEN, code: "abc" });
+  await withServer({ check: { live: true, ownerMatches: false, banned: false } }, async (base) => {
+    const res = await login(base, { token: TOKEN, assertion: assertion({ u: "555555555555555555", n: "friend" }) });
     assert.equal(res.status, 403);
     assert.deepEqual(await res.json(), { ok: false, error: "wrong_account" });
   });
@@ -389,27 +385,44 @@ test("banned and expired sessions are refused at login", async () => {
   ];
   for (const [check, status, error] of cases) {
     await withServer({ check }, async (base) => {
-      const res = await login(base, { token: TOKEN, code: "abc" });
+      const res = await login(base, { token: TOKEN, assertion: assertion() });
       assert.equal(res.status, status);
       assert.deepEqual(await res.json(), { ok: false, error });
     });
   }
 });
 
-test("login rejects a malformed token or code without contacting Discord, and reports Discord/bot failures", async () => {
+test("login refuses forged, expired or malformed assertions without asking the bot", async () => {
   await withServer({}, async (base, calls) => {
-    assert.equal((await login(base, { token: "nope", code: "abc" })).status, 400);
-    assert.equal((await login(base, { token: TOKEN })).status, 400);
-    assert.equal((await login(base, { token: TOKEN, code: "x".repeat(600) })).status, 400);
-    assert.equal((await login(base, { token: TOKEN, code: "abc" }, { "Content-Type": "text/plain" })).status, 415);
-    assert.equal(calls.exchange.length, 0);
+    const otherKey = deriveKey("z".repeat(40), "amora-discord-assertion-v1");
+    const sessionKeyAssertion = signPayload(sessionKey, { u: USER, n: "x", exp: Date.now() + 60_000 });
+    for (const bad of [
+      undefined,
+      "",
+      "garbage",
+      "x".repeat(2000),
+      assertion({ exp: Date.now() - 1 }),
+      assertion({}, otherKey),
+      sessionKeyAssertion,
+      assertion({ u: "not-a-snowflake" }),
+      assertion({ u: undefined }),
+    ]) {
+      const res = await login(base, { token: TOKEN, assertion: bad });
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { ok: false, error: "login_failed" });
+    }
+    assert.equal(calls.checks.length, 0);
   });
-  await withServer({ exchangeError: true }, async (base) => {
-    const res = await login(base, { token: TOKEN, code: "abc" });
-    assert.equal(res.status, 400);
-    assert.deepEqual(await res.json(), { ok: false, error: "login_failed" });
+});
+
+test("login rejects a malformed token or content type, and reports a bot outage", async () => {
+  await withServer({}, async (base, calls) => {
+    assert.equal((await login(base, { token: "nope", assertion: assertion() })).status, 400);
+    assert.equal((await login(base, { assertion: assertion() })).status, 400);
+    assert.equal((await login(base, { token: TOKEN, assertion: assertion() }, { "Content-Type": "text/plain" })).status, 415);
+    assert.equal(calls.checks.length, 0);
   });
   await withServer({ checkError: true }, async (base) => {
-    assert.equal((await login(base, { token: TOKEN, code: "abc" })).status, 502);
+    assert.equal((await login(base, { token: TOKEN, assertion: assertion() })).status, 502);
   });
 });

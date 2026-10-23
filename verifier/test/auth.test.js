@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveKey, readPayload, signPayload, ticketMatches, ticketUserId } from "../src/signedTokens.js";
+import { deriveKey, loginAssertionKey, readPayload, signPayload, ticketMatches, ticketUserId } from "../src/signedTokens.js";
 import { createDiscordAuth } from "../src/discordAuth.js";
+import { createLoginHandler } from "../src/loginFunction.js";
 import { loadConfig } from "../src/config.js";
 
 const key = deriveKey("s".repeat(40), "label");
@@ -72,7 +73,6 @@ test("config derives the CORS origin, Discord redirect and Self relayer endpoint
     VERIFIER_SHARED_SECRET: "s".repeat(40),
     ID_HASH_PEPPER: "p".repeat(40),
     DISCORD_CLIENT_ID: "cid",
-    DISCORD_CLIENT_SECRET: "csecret",
   };
   const config = loadConfig(env);
   assert.equal(config.siteOrigin, "https://amora-verify.netlify.app");
@@ -89,8 +89,64 @@ test("config derives the CORS origin, Discord redirect and Self relayer endpoint
   assert.throws(() => loadConfig({ ...env, ZK_SCOPE: "x".repeat(31) }), /ZK_SCOPE/);
   assert.throws(() => loadConfig({ ...env, ZK_SCOPE: "has space" }), /ZK_SCOPE/);
   assert.throws(() => loadConfig({ ...env, ZK_DEV_MODE: "true", NODE_ENV: "production" }), /ZK_DEV_MODE/);
-  assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_SECRET: "" }), /DISCORD_CLIENT_SECRET/);
   assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_ID: undefined }), /DISCORD_CLIENT_ID/);
+});
+
+const FN_ENV = {
+  DISCORD_CLIENT_ID: "cid",
+  DISCORD_CLIENT_SECRET: "csecret",
+  VERIFIER_SHARED_SECRET: "s".repeat(40),
+  SITE_URL: "https://portal.test/",
+};
+const discordFetch = (user = { id: "123456789012345678", username: "u", global_name: "Display" }, calls = []) => async (url, init) => {
+  calls.push({ url: String(url), body: init?.body ? String(init.body) : undefined });
+  if (String(url).endsWith("/oauth2/token")) return new Response(JSON.stringify({ access_token: "tok" }), { status: 200 });
+  return new Response(JSON.stringify(user), { status: 200 });
+};
+const fnRequest = (body, headers = {}, method = "POST") =>
+  new Request("https://portal.test/.netlify/functions/discord-login", {
+    method,
+    headers: { "Content-Type": "application/json", ...headers },
+    body: method === "POST" ? JSON.stringify(body) : undefined,
+  });
+
+test("login function returns an assertion the API accepts, exchanging with the registered redirect", async () => {
+  const calls = [];
+  const handle = createLoginHandler({ env: FN_ENV, fetchImpl: discordFetch(undefined, calls), now: () => 1_000 });
+  const res = await handle(fnRequest({ code: "abc" }, { Origin: "https://portal.test" }));
+  assert.equal(res.status, 200);
+  const out = await res.json();
+  assert.equal(out.ok, true);
+
+  const payload = readPayload(loginAssertionKey(FN_ENV.VERIFIER_SHARED_SECRET), out.assertion, 1_000);
+  assert.deepEqual(payload, { u: "123456789012345678", n: "Display", exp: 1_000 + 120_000 });
+  assert.equal(readPayload(loginAssertionKey(FN_ENV.VERIFIER_SHARED_SECRET), out.assertion, 1_000 + 120_001), null);
+  assert.equal(new URLSearchParams(calls[0].body).get("redirect_uri"), "https://portal.test/verify.html");
+});
+
+test("login function refuses foreign origins, bad bodies and wrong methods without contacting Discord", async () => {
+  const calls = [];
+  const handle = createLoginHandler({ env: FN_ENV, fetchImpl: discordFetch(undefined, calls) });
+  assert.equal((await handle(fnRequest({ code: "abc" }, { Origin: "https://evil.test" }))).status, 403);
+  assert.equal((await handle(fnRequest({}))).status, 400);
+  assert.equal((await handle(fnRequest({ code: "x".repeat(600) }))).status, 400);
+  assert.equal((await handle(fnRequest({ code: "x".repeat(5000) }))).status, 413);
+  assert.equal((await handle(fnRequest(undefined, {}, "GET"))).status, 405);
+  assert.equal(calls.length, 0);
+});
+
+test("login function reports Discord failures and missing configuration", async () => {
+  const failing = createLoginHandler({ env: FN_ENV, fetchImpl: async () => new Response("blocked", { status: 429 }) });
+  const res = await failing(fnRequest({ code: "abc" }));
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), { ok: false, error: "login_failed" });
+
+  for (const missing of ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "VERIFIER_SHARED_SECRET", "SITE_URL"]) {
+    const handle = createLoginHandler({ env: { ...FN_ENV, [missing]: undefined }, fetchImpl: discordFetch() });
+    assert.equal((await handle(fnRequest({ code: "abc" }))).status, 500, missing);
+  }
+  const short = createLoginHandler({ env: { ...FN_ENV, VERIFIER_SHARED_SECRET: "short" }, fetchImpl: discordFetch() });
+  assert.equal((await short(fnRequest({ code: "abc" }))).status, 500);
 });
 
 test("ticket user ids are valid UUIDs, deterministic per input, and checked in constant shape", () => {

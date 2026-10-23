@@ -50,7 +50,6 @@ export function loadConfig(env = process.env) {
     sharedSecret: requiredSecret(env, "VERIFIER_SHARED_SECRET"),
     idHashPepper: requiredSecret(env, "ID_HASH_PEPPER"),
     discordClientId: required(env, "DISCORD_CLIENT_ID"),
-    discordClientSecret: required(env, "DISCORD_CLIENT_SECRET"),
     scope,
     devMode,
     maxConcurrentVerifications: Number(env.MAX_CONCURRENT_VERIFICATIONS || 2),
