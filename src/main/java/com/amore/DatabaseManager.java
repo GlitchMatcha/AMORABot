@@ -1449,9 +1449,9 @@ public class DatabaseManager {
             return new AgeProofOutcome(AgeProofStatus.INVALID_SESSION, null);
         }
 
-        String upsert = "INSERT INTO user_verifications (user_id, verified, verified_at, method, proof_id_hash) VALUES (?, 1, ?, 'zkpassport', ?) "
+        String upsert = "INSERT INTO user_verifications (user_id, verified, verified_at, method, proof_id_hash) VALUES (?, 1, ?, 'self', ?) "
                 + "ON CONFLICT (user_id) DO UPDATE SET verified = 1, verified_at = EXCLUDED.verified_at, "
-                + "method = 'zkpassport', proof_id_hash = EXCLUDED.proof_id_hash;";
+                + "method = 'self', proof_id_hash = EXCLUDED.proof_id_hash;";
         try (PreparedStatement pstmt = prepare(upsert)) {
             pstmt.setString(1, userId);
             pstmt.setLong(2, now);

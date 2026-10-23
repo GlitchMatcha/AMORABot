@@ -1,46 +1,44 @@
-import { mountVerifyButton } from "@zkpassport/ui/button";
+import { SelfAppBuilder, getUniversalLink } from "@selfxyz/sdk-common";
+import qrcode from "qrcode-generator";
 
 // Injected by scripts/build.js from API_BASE_URL (the verifier API, e.g. https://amora-verifier.onrender.com).
 const API = __API_BASE__;
 const STORAGE_KEY = "amora_login";
+const POLL_INTERVAL_MS = 3000;
+const CHECK_WINDOW_MS = 15 * 60_000;
 
 const status = document.getElementById("status");
-const mount = document.getElementById("zkpassport");
 const login = document.getElementById("login");
+const check = document.getElementById("check");
+const startButton = document.getElementById("start");
+const qrPanel = document.getElementById("qr-panel");
+const qrImage = document.getElementById("qr");
+const openApp = document.getElementById("open-app");
 
 function show(message, kind = "info") {
   status.textContent = message;
   status.dataset.kind = kind;
 }
 
-// Before the zkPassport popup opens, the visitor reads a short summary and confirms they understood it
+// Before the QR code appears, the visitor reads a short summary and confirms they understood it
 // (remembered for this tab).
 const UNDERSTOOD_KEY = "amora_understood_zkp";
 const gate = document.getElementById("gate");
-let blockedButton = null;
+let afterGate = null;
 
 function installUnderstandGate() {
-  const understood = () => sessionStorage.getItem(UNDERSTOOD_KEY) === "1";
-
-  // Capture phase: runs before the zkPassport button's own click handler and can stop it.
-  mount.addEventListener(
-    "click",
-    (event) => {
-      if (understood()) return;
-      event.preventDefault();
-      event.stopPropagation();
-      blockedButton = event.target.closest("button");
-      gate.showModal();
-    },
-    true,
-  );
-
   document.getElementById("gate-cancel").addEventListener("click", () => gate.close());
   document.getElementById("gate-yes").addEventListener("click", () => {
     sessionStorage.setItem(UNDERSTOOD_KEY, "1");
     gate.close();
-    blockedButton?.click(); // still inside the user's click, so the popup is not blocked
+    afterGate?.();
   });
+}
+
+function whenUnderstood(next) {
+  if (sessionStorage.getItem(UNDERSTOOD_KEY) === "1") return next();
+  afterGate = next;
+  gate.showModal();
 }
 
 installUnderstandGate();
@@ -70,42 +68,83 @@ async function api(path, init) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-function startZkPassport({ token, session }, config) {
-  mountVerifyButton(mount, {
-    purpose: "Prove you are 18 or older for the AMORA Adult Zone. Only a yes/no result is shared.",
-    service: { scope: config.scope, devMode: config.devMode },
-    query: { age: { min: 18 } },
-    // The button's bind option is { data }, which the SDK maps to custom_data; the server checks the same value.
-    bind: { data: token },
-    onSuccess: async ({ proofs, result }) => {
-      show("Checking your proof...");
-      try {
-        const { status: code, body } = await api("/api/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session}` },
-          body: JSON.stringify({ proofs, queryResult: result }),
-        });
-        const ok = code === 200;
-        show(body.message ?? (ok ? "Verified." : "Verification failed."), ok ? "success" : "error");
-        return ok;
-      } catch {
-        show("Could not reach the verifier. Try again.", "error");
-        return false;
-      }
-    },
-    onError: (err) => {
-      if (err.cancelled) {
-        show("Verification cancelled. Reload this page to try again.");
-        return;
-      }
-      show(`Verification failed (${err.kind}). Reload this page to try again.`, "error");
-    },
-  });
+const authed = (stored) => ({ headers: { Authorization: `Bearer ${stored.session}` } });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function drawQr(text) {
+  const qr = qrcode(0, "L");
+  qr.addData(text);
+  qr.make();
+  const svg = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+  qrImage.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** The proof goes phone -> Self relayer -> AMORA verifier, so this page only waits and asks the verifier for the result. */
+async function waitForResult(stored) {
+  const deadline = Date.now() + CHECK_WINDOW_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    let result;
+    try {
+      result = await api("/api/status", authed(stored));
+    } catch {
+      continue; // transient network error: keep waiting
+    }
+    if (result.status === 401) return show(ERRORS.expired, "error");
+    if (result.body.state === "verified") {
+      qrPanel.hidden = true;
+      return show(result.body.message ?? "Verified. You can return to Discord.", "success");
+    }
+    if (result.body.state === "rejected") show(`${result.body.message} You can scan the QR code again.`, "error");
+  }
+  show("This check timed out. Run /verify in Discord for a fresh link.", "error");
+}
+
+async function startCheck(stored, config) {
+  startButton.hidden = true;
+  show("Preparing your QR code...");
+
+  let app;
+  try {
+    const result = await api("/api/self-app", authed(stored));
+    if (result.status === 401) return show(ERRORS.expired, "error");
+    if (!result.body.ok) return show(ERRORS.unavailable, "error");
+    app = result.body;
+  } catch {
+    return show(ERRORS.unavailable, "error");
+  }
+
+  let link;
+  try {
+    const selfApp = new SelfAppBuilder({
+      version: 2,
+      appName: "AMORA 18+",
+      scope: config.scope,
+      endpoint: config.endpoint,
+      endpointType: config.devMode ? "staging_https" : "https",
+      userId: app.userId,
+      userIdType: "uuid",
+      // The verifier trusts this only because userId is a MAC over it (see /api/self/verify).
+      userDefinedData: app.userDefinedData,
+      disclosures: { minimumAge: 18 },
+    }).build();
+    link = getUniversalLink(selfApp);
+    drawQr(link);
+  } catch {
+    return show(ERRORS.unavailable, "error");
+  }
+
+  openApp.href = link;
+  qrPanel.hidden = false;
+  show("Open the Self app and scan this QR code (or tap the button if you are on your phone). Your passport or ID never leaves your phone.");
+  await waitForResult(stored);
 }
 
 function showReady(stored, config) {
-  show(`Logged in as ${stored.username}. Open the zkPassport app and scan the QR code. Your passport or ID never leaves your phone.`);
-  startZkPassport(stored, config);
+  show(`Logged in as ${stored.username}. Press the button when you have your passport or ID card and the Self app ready.`);
+  check.hidden = false;
+  startButton.hidden = false;
+  startButton.onclick = () => whenUnderstood(() => startCheck(stored, config));
 }
 
 /** The bot link carries the session token in the URL fragment, which is never sent to any server. */

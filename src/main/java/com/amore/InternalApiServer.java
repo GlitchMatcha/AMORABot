@@ -172,7 +172,7 @@ public class InternalApiServer {
             .addField("What AMORA stored", "Your Discord ID, a verified flag, and a one-way fingerprint of the proof ID "
                     + "(it only stops one document from unlocking several accounts).", false)
             .addField("Unlocked", unlocked, false)
-            .addField("Receipt", "Method: **zkPassport zero-knowledge proof**\nVerified: <t:" + Instant.now().getEpochSecond() + ":F> (<t:"
+            .addField("Receipt", "Method: **Self zero-knowledge proof**\nVerified: <t:" + Instant.now().getEpochSecond() + ":F> (<t:"
                     + Instant.now().getEpochSecond() + ":R>)", false)
             .setFooter("AMORA Safety • Questions or a mistake? Contact staff.", null);
 

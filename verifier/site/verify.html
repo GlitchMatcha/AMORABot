@@ -13,19 +13,25 @@
     <p>Prove you are an adult using the chip in your passport or ID card. A zero-knowledge proof is generated on your phone; AMORA receives only "18 or older" and a one-way ID fingerprint that stops one document from verifying several accounts.</p>
 
     <section class="app-box">
-      <strong>New here? Get the free ZKPassport app first</strong>
+      <strong>New here? Get the free Self app first</strong>
       <p class="muted">You scan your passport or ID with it. Your details stay on your phone.</p>
       <p class="stores">
-        <a class="store-btn" href="https://apps.apple.com/us/app/zkpassport/id6477371975" target="_blank" rel="noopener noreferrer">iPhone: App Store</a>
-        <a class="store-btn" href="https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport" target="_blank" rel="noopener noreferrer">Android: Google Play</a>
+        <a class="store-btn" href="https://apps.apple.com/us/app/self-human-agent-identity/id6478563710" target="_blank" rel="noopener noreferrer">iPhone: App Store</a>
+        <a class="store-btn" href="https://play.google.com/store/apps/details?id=com.proofofpassportapp" target="_blank" rel="noopener noreferrer">Android: Google Play</a>
       </p>
     </section>
 
     <a id="login" class="btn" hidden>Log in with Discord</a>
-    <div id="zkpassport"></div>
+    <div id="check" hidden>
+      <button id="start" class="btn" type="button" hidden>Start the 18+ check</button>
+      <div id="qr-panel" hidden>
+        <img id="qr" alt="QR code to scan with the Self app" width="300" height="300">
+        <p><a id="open-app" class="btn">On this phone? Open the Self app</a></p>
+      </div>
+    </div>
     <p id="status" class="status" data-kind="info">Loading...</p>
 
-    <a class="info-btn" href="about.html" target="_blank" rel="noopener noreferrer">Want more info on the ZKPassport app? See how your private information stays private</a>
+    <a class="info-btn" href="about.html" target="_blank" rel="noopener noreferrer">Want more info on the Self app? See how your private information stays private</a>
     <p class="muted">This is the official AMORA Discord community's age check. We never ask for your Discord password. <a href="privacy.html" target="_blank" rel="noopener noreferrer">Privacy</a></p>
   </main>
 
@@ -33,7 +39,7 @@
     <h2 id="gate-title">Quick read first (30 seconds)</h2>
     <p class="muted">TL;DR for the "I will not read the long page" crowd:</p>
     <ul class="gate-points">
-      <li><strong>Is my private information shared? No.</strong> Your passport or ID is read by the ZKPassport app on your own phone. AMORA only receives "18 or older: yes" and a scrambled code that stops one document from unlocking many accounts.</li>
+      <li><strong>Is my private information shared? No.</strong> Your passport or ID is read by the Self app on your own phone. AMORA only receives "18 or older: yes" and a scrambled code that stops one document from unlocking many accounts.</li>
       <li><strong>What does AMORA never get?</strong> Your name, birthday, photo, nationality, address, document number, or a copy of your ID.</li>
       <li><strong>Why can you trust it?</strong> You don't have to take Matcha's word for it, you trust maths. The proof is checked cryptographically, and since we never receive your ID there is nothing for us to leak, sell or lose.</li>
     </ul>

@@ -104,7 +104,7 @@ public class CommandListener extends ListenerAdapter {
     }
 
     /**
-     * 18+ gate. Offers a zero-knowledge age proof (zkPassport, verified by /verifier) when
+     * 18+ gate. Offers a zero-knowledge age proof (Self app, verified by /verifier) when
      * VERIFIER_PUBLIC_URL is set, and a self-attestation fallback while ALLOW_SELF_ATTESTATION is not false.
      */
     private void replyAgeGate(net.dv8tion.jda.api.interactions.callbacks.IReplyCallback event, User user) {
@@ -140,7 +140,7 @@ public class CommandListener extends ListenerAdapter {
         if (portalUrl != null) {
             description.append("**Zero-knowledge proof (strongest):** prove you are 18+ using the chip in your passport or ID card. ")
                        .append("Your phone checks it privately and AMORA only gets a \"yes, 18 or older\" — your name, photo and birthday never leave your phone.\n")
-                       .append("New to this? Get the free app first: [iPhone](https://apps.apple.com/us/app/zkpassport/id6477371975) · [Android](https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport)\n")
+                       .append("New to this? Get the free Self app first: [iPhone](https://apps.apple.com/us/app/self-human-agent-identity/id6478563710) · [Android](https://play.google.com/store/apps/details?id=com.proofofpassportapp)\n")
                        .append("The link works once and expires in ").append(AGE_SESSION_TTL_MINUTES).append(" minutes.\n\n");
         }
         if (attestAvailable) {
@@ -160,7 +160,7 @@ public class CommandListener extends ListenerAdapter {
 
         List<Button> buttons = new ArrayList<>();
         if (portalUrl != null) {
-            buttons.add(Button.link(portalUrl, "Prove 18+ (zkPassport)"));
+            buttons.add(Button.link(portalUrl, "Prove 18+ (Self)"));
             buttons.add(Button.link(verifierUrl + "/about.html", "Is my info safe?"));
         }
         if (attestAvailable) {

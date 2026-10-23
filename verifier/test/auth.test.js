@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveKey, readPayload, signPayload } from "../src/signedTokens.js";
+import { deriveKey, readPayload, signPayload, ticketMatches, ticketUserId } from "../src/signedTokens.js";
 import { createDiscordAuth } from "../src/discordAuth.js";
 import { loadConfig } from "../src/config.js";
 
@@ -64,9 +64,10 @@ test("code exchange fails on Discord errors and on a malformed user id", async (
   await assert.rejects(() => badId.exchange("x"));
 });
 
-test("config derives the proof domain, CORS origin and Discord redirect from SITE_URL", () => {
+test("config derives the CORS origin, Discord redirect and Self relayer endpoint from the public URLs", () => {
   const env = {
     SITE_URL: "https://amora-verify.netlify.app/",
+    API_PUBLIC_URL: "https://amora-verifier.onrender.com/",
     BOT_INTERNAL_URL: "https://bot.test/",
     VERIFIER_SHARED_SECRET: "s".repeat(40),
     ID_HASH_PEPPER: "p".repeat(40),
@@ -74,14 +75,33 @@ test("config derives the proof domain, CORS origin and Discord redirect from SIT
     DISCORD_CLIENT_SECRET: "csecret",
   };
   const config = loadConfig(env);
-  assert.equal(config.domain, "amora-verify.netlify.app");
   assert.equal(config.siteOrigin, "https://amora-verify.netlify.app");
   assert.equal(config.redirectUri, "https://amora-verify.netlify.app/verify.html");
+  assert.equal(config.selfEndpoint, "https://amora-verifier.onrender.com/api/self/verify");
   assert.equal(config.botUrl, "https://bot.test");
+  assert.equal(config.scope, "amora-discord-18plus");
 
   assert.equal(loadConfig({ ...env, SITE_URL: "http://localhost:8082" }).redirectUri, "http://localhost:8082/verify.html");
   assert.throws(() => loadConfig({ ...env, SITE_URL: "http://portal.test" }), /https/);
   assert.throws(() => loadConfig({ ...env, SITE_URL: undefined }), /SITE_URL/);
+  assert.throws(() => loadConfig({ ...env, API_PUBLIC_URL: undefined }), /API_PUBLIC_URL/);
+  assert.throws(() => loadConfig({ ...env, API_PUBLIC_URL: "http://api.test" }), /https/);
+  assert.throws(() => loadConfig({ ...env, ZK_SCOPE: "x".repeat(31) }), /ZK_SCOPE/);
+  assert.throws(() => loadConfig({ ...env, ZK_SCOPE: "has space" }), /ZK_SCOPE/);
+  assert.throws(() => loadConfig({ ...env, ZK_DEV_MODE: "true", NODE_ENV: "production" }), /ZK_DEV_MODE/);
   assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_SECRET: "" }), /DISCORD_CLIENT_SECRET/);
   assert.throws(() => loadConfig({ ...env, DISCORD_CLIENT_ID: undefined }), /DISCORD_CLIENT_ID/);
+});
+
+test("ticket user ids are valid UUIDs, deterministic per input, and checked in constant shape", () => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const id = ticketUserId(key, "token.123");
+  assert.match(id, uuid);
+  assert.equal(ticketUserId(key, "token.123"), id);
+  assert.notEqual(ticketUserId(key, "token.124"), id);
+  assert.notEqual(ticketUserId(deriveKey("s".repeat(40), "other"), "token.123"), id);
+  assert.equal(ticketMatches(key, "token.123", id), true);
+  assert.equal(ticketMatches(key, "token.124", id), false);
+  assert.equal(ticketMatches(key, "token.123", id.slice(1)), false);
+  assert.equal(ticketMatches(key, "token.123", undefined), false);
 });

@@ -8,7 +8,7 @@
 ## 1. Project High-Level Overview
 
 - **Name**: AMORA Bot (`com.amore:amore-bot:1.0-SNAPSHOT`)
-- **Primary Function**: Multi-functional community, economy, marketplace, staff governance, event synchronization, and zero-knowledge (zkPassport) 18+ age gate Discord bot for the AMORA community.
+- **Primary Function**: Multi-functional community, economy, marketplace, staff governance, event synchronization, and zero-knowledge (Self) 18+ age gate Discord bot for the AMORA community.
 - **Language / Runtime**: Java 17 (Eclipse Temurin)
 - **Build System**: Apache Maven (`pom.xml` with `maven-shade-plugin` packaging `app.jar` with `com.amore.App` as Main-Class)
 - **Deployment**: Docker container (`Dockerfile` multistage build from `maven:3.9.8-eclipse-temurin-17` to `eclipse-temurin:17-jre`), hosted on Render/Cloud.
@@ -73,7 +73,7 @@ D:/Discord/amora-bot/
 - **Database Tables Managed**:
   1. `users`: Stores user ID, Sparks, Points, comma-separated inventory, gacha pity counter, bounties cleared, urgent bounties cleared, active check wins (`ac_wins`), strikes (`activity_strikes`), compensation flag (`is_comp`), and `last_task_date`.
   2. `shop_items`: Secret links mapped to asset names.
-  3. `user_verifications`: Verification flag, timestamp, `method` (`attestation`/`zkpassport`) and `proof_id_hash` (unique, one-way fingerprint of the zkPassport ID). Plus `age_sessions` (SHA-256 of single-use token, owner user, expiry, used_at) and `age_bans` (user, reason, staff, time, banned `proof_id_hash`).
+  3. `user_verifications`: Verification flag, timestamp, `method` (`attestation`/`self`; rows from before the provider switch keep `zkpassport`) and `proof_id_hash` (unique, one-way HMAC fingerprint of the Self nullifier; older rows hold zkPassport fingerprints that cannot be matched against Self). Plus `age_sessions` (SHA-256 of single-use token, owner user, expiry, used_at) and `age_bans` (user, reason, staff, time, banned `proof_id_hash`).
   4. `pending_trade_setups`: Staging trades during item selection before proposal.
   5. `active_trades`: Proposed trades waiting for recipient action.
   6. `pending_forges`: Staged items for craft/recycle synthesis.
@@ -105,7 +105,7 @@ D:/Discord/amora-bot/
   - `/taskbank`: Adds tasks to the randomized monthly bank for ranks (Flare, Spark, Neon, Pulse, Prism, Supernova).
   - `/toggleapps`: Opens/closes applications modal UI.
   - `/amorahub`: Director dashboard with interactive buttons for applications (Member, Seller, Staff).
-  - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a zkPassport proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (unless `ALLOW_SELF_ATTESTATION=false`; Discord account age is not checked). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
+  - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a Self proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (unless `ALLOW_SELF_ATTESTATION=false`; Discord account age is not checked). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
 - **M.IKU Stress System**:
   - `/gift`: Allows members to gift matcha, plushies, spa vouchers, or energy drinks to reduce M.IKU's stress level.
 
@@ -168,10 +168,10 @@ D:/Discord/amora-bot/
   - `POST /internal/age/complete`: HMAC-authenticated; atomically burns the session, stores the unique-ID fingerprint (one ID = one Discord account; 409 on reuse), marks the user verified, and swaps `MINOR_ROLE_ID` for `ADULT_ROLE_ID`.
 - Auth: `X-Amora-Signature` = hex HMAC-SHA256(`VERIFIER_SHARED_SECRET`, `{X-Amora-Timestamp}.{rawBody}`), timestamp within 60s, 16 KiB body cap.
 
-### 3.11 `verifier/` (zero-knowledge age verifier, Node 20+)
-- Separate service (own `Dockerfile`), JSON API only: `GET /config.json`, `GET /api/discord-url`, `POST /api/login`, `POST /api/verify` (CORS limited to the portal origin, bearer auth, no cookies). The user-facing portal is a static site (`verifier/site/`, built to `verifier/dist/site` and deployed on Netlify via the root `netlify.toml`), so the Render API host is never opened in a browser tab (Google Safe Browsing was flagging it).
-- Builds the query server-side (`age >= 18`, session token committed via `bind("custom_data")`), verifies with `@zkpassport/sdk` in `verifierMode: "local"`, then reports to the bot's internal API.
-- Stateless: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL` and `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`), so only the Discord account that owns a session can complete it.
+### 3.11 `verifier/` (zero-knowledge age verifier, Node 22)
+- Separate service (own `Dockerfile`), JSON API only: `GET /config.json`, `GET /api/discord-url`, `POST /api/login`, `GET /api/self-app` (bearer; QR parameters), `GET /api/status` (bearer; result of the scan), `POST /api/self/verify` (public; called by Self's relayer with the proof). CORS limited to the portal origin, bearer auth, no cookies. The user-facing portal is a static site (`verifier/site/`, built to `verifier/dist/site` and deployed on Netlify via the root `netlify.toml`), so the Render API host is never opened in a browser tab (Google Safe Browsing was flagging it).
+- Proofs come from the Self app (Self Pass SDK, `@selfxyz/core` `SelfBackendVerifier`, legacy but self-hosted). The QR commits `userDefinedData = "<token>.<discordUserId>"` and `userId = HMAC ticket` (UUID); the verifier only trusts the committed data when that MAC is valid, checks the session with the bot, verifies on Celo via public RPC (age >= 18, passport or biometric ID card only), then reports `HMAC(pepper, nullifier)` to the bot's internal API.
+- Stateless apart from a 15-minute in-memory result map for the portal's status poll: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL`, `API_PUBLIC_URL` (proofs are bound to its host and to `ZK_SCOPE`) and `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`), so only the Discord account that owns a session can obtain a QR the verifier accepts.
 
 ### 3.12 `YouTubePlaylistImporter.java`
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
@@ -236,34 +236,39 @@ D:/Discord/amora-bot/
 | `VERIFIER_PUBLIC_URL` | Public base URL of the static portal on Netlify (e.g. `https://amora-verify.netlify.app`). Same value as the verifier's `SITE_URL`. Unset = ZK option hidden | `CommandListener.java` |
 | `VERIFIER_SHARED_SECRET` | >= 32 chars; HMAC key shared by bot and verifier for `/internal/age/*`. Unset/short = endpoints disabled | `InternalApiServer.java`, `verifier/` |
 | `ALLOW_SELF_ATTESTATION` | `false` disables the self-attestation button (default enabled) | `CommandListener.java` |
-| `ZK_ALLOW_DEV_PROOFS` | `true` lets the bot accept mock-passport (dev-mode) proofs. Leave unset in production: a verifier accidentally left in `ZK_DEV_MODE` is then refused (403) | `InternalApiServer.java` |
+| `ZK_ALLOW_DEV_PROOFS` | `true` lets the bot accept Self mock-passport (dev-mode) proofs. Leave unset in production: a verifier accidentally left in `ZK_DEV_MODE` is then refused (403) | `InternalApiServer.java` |
 | `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key | `YouTubePlaylistImporter.java` |
 
 ---
 
 ## 5. Key Workflows & Operational Lifecycles
 
-### 5.1 Age Gate Flow (Zero-Knowledge Proof via zkPassport, or self-attestation)
-> Real zero-knowledge proofs: the verifier checks zkPassport proofs of a passport/ID chip locally (`verifierMode: "local"`). The earlier fake portal (hard-coded proof) was removed. Self-attestation remains a fallback unless `ALLOW_SELF_ATTESTATION=false`. See `verifier/README.md` for the threat model.
+### 5.1 Age Gate Flow (Zero-Knowledge Proof via Self, or self-attestation)
+> Real zero-knowledge proofs: the verifier checks Self proofs of a passport/ID chip (Groth16 on Celo via public RPC). The earlier zkPassport integration was replaced because its app's NFC scanning was unreliable. Self-attestation remains a fallback unless `ALLOW_SELF_ATTESTATION=false`. See `verifier/README.md` for the threat model.
 ```mermaid
 sequenceDiagram
     participant User
     participant Discord as Discord Client / Bot
     participant DB as Neon PostgreSQL
     participant V as Verifier (verifier/, Node)
-    participant App as zkPassport app
+    participant App as Self app
+    participant R as Self relayer
 
     User->>Discord: /verify or 18+ Adult Zone button
     Discord->>DB: createAgeSession(sha256(token), userId, +15min)
     Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify.html#s=token
     User->>V: Static portal (Netlify) -> Discord login (OAuth2 identify) -> POST /api/login, bearer token
-    User->>V: scan QR with zkPassport app
-    App-->>V: proofs + queryResult (age >= 18, token bound into proof)
+    User->>V: GET /api/self-app -> userDefinedData "token.discordId", userId = MAC ticket
+    User->>App: scan QR / open link (minimumAge 18, userId, userDefinedData)
+    App->>R: proof (commits to userId + userDefinedData)
+    R->>V: POST /api/self/verify {attestationId, proof, publicSignals, userContextData}
+    V->>V: Check ticket MAC over committed data
     V->>Discord: POST /internal/age/session-check {token, discordUserId} (HMAC): live + ownerMatches + not banned
-    V->>V: Rebuild query server-side, zkPassport.verify(local)
-    V->>Discord: POST /internal/age/complete {token, HMAC(pepper, uniqueIdentifier), discordUserId}
+    V->>V: SelfBackendVerifier.verify (Celo RPC): scope, age 18, document type
+    V->>Discord: POST /internal/age/complete {token, HMAC(pepper, nullifier), discordUserId}
     Discord->>DB: burn session, store proof_id_hash (unique), verified=1
     Discord->>Discord: Remove MINOR_ROLE_ID, add ADULT_ROLE_ID
+    User->>V: portal polls GET /api/status -> verified / reason
     Note over User,Discord: Fallback: button verify_attest_18 -> setVerified(userId, true), method=attestation
 ```
 
