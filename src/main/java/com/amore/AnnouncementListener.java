@@ -278,6 +278,15 @@ public class AnnouncementListener extends ListenerAdapter {
                 newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
                 
                 msg.editMessageEmbeds(newEmbed.build()).queue();
+
+                // Joining is reaction-driven: clear the kicked users' RSVP reaction so they can re-react later
+                String[] syncData = DatabaseManager.getInstance().getEventSync(msgId);
+                if (syncData != null && syncData[1] != null) {
+                    net.dv8tion.jda.api.entities.emoji.Emoji rsvpEmoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(syncData[1]);
+                    for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
+                        msg.removeReaction(rsvpEmoji, u).queue(s -> {}, e -> {});
+                    }
+                }
                 event.reply("✅ Successfully removed " + removedCount + " member(s) from the party!").setEphemeral(true).queue();
             });
             return;
@@ -498,7 +507,7 @@ public class AnnouncementListener extends ListenerAdapter {
                 .setTitle(displayTitle)
                 .setDescription("💰 **Bounty Reward:** `" + reward + " Points` _(Per Person)_\n" +
                                 (audience.equals("member") ? "\n⚠️ **Role Requirement:** Official Members Only!\n" : "") +
-                                "\n_Click **Join** below to claim your spot in the party!_")
+                                "\n-# use the ✋ emoji below to join or unreact to leave")
                 .addField(partyFieldTitle, partyField, false)
                 .setFooter("AMORA Event Directive • Reward embedded: " + reward + " • Min: " + minSlots + " • Max: " + maxSlots + " • Time: " + rawTime, null);
 
@@ -525,8 +534,6 @@ public class AnnouncementListener extends ListenerAdapter {
         builder.addEmbeds(questEmbed.build());
         
         builder.addActionRow(
-                Button.success("qjoin_" + audience, "✋ Join"),
-                Button.danger("qleave_button", "⭕ Leave"),
                 Button.secondary("alert_party", " Alert the Current Team "),
                 Button.primary("view_board", "📋 List of Active Events")
         );
@@ -937,112 +944,37 @@ public class AnnouncementListener extends ListenerAdapter {
             return;
         }
         
-        if (buttonId.startsWith("qjoin_") || buttonId.equals("qleave_button") || buttonId.equals("alert_party")) {
-            
-            MessageEmbed embed = event.getMessage().getEmbeds().get(0);
-            String partyField = "";
-            int currentSlots = 0;
-            int fieldIndex = -1;
+        if (buttonId.equals("alert_party")) {
+            if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+                event.reply(" **Access Denied:** Only Staff can manually alert the team!").setEphemeral(true).queue();
+                return;
+            }
 
-            for (int i = 0; i < embed.getFields().size(); i++) {
-                MessageEmbed.Field field = embed.getFields().get(i);
+            String partyField = null;
+            for (MessageEmbed.Field field : event.getMessage().getEmbeds().get(0).getFields()) {
                 if (field.getName() != null && field.getName().startsWith("👥 Party")) {
                     partyField = field.getValue();
-                    fieldIndex = i;
                     break;
                 }
             }
 
-            if (fieldIndex == -1) {
+            if (partyField == null) {
                 event.reply(" Error: Could not read party data.").setEphemeral(true).queue();
                 return;
             }
-
-            int minSlots = 0;
-            int maxSlots = 0;
-            if (embed.getFooter() != null && embed.getFooter().getText() != null) {
-                Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(embed.getFooter().getText());
-                if (mMin.find()) minSlots = Integer.parseInt(mMin.group(1));
-                Matcher mMax = Pattern.compile("Max:\\s*(\\d+)").matcher(embed.getFooter().getText());
-                if (mMax.find()) maxSlots = Integer.parseInt(mMax.group(1));
-            }
-            
-            if (partyField != null && !partyField.equals("None")) {
-                currentSlots = partyField.split("\n").length;
-            }
-
-            String userId = event.getUser().getId();
-            String userMention = "<@" + userId + ">";
-
-            if (buttonId.equals("alert_party")) {
-                if (!event.getMember().hasPermission(net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
-                    event.reply(" **Access Denied:** Only Staff can manually alert the team!").setEphemeral(true).queue();
-                    return;
-                }
-                if (partyField.equals("None") || partyField.isEmpty()) {
-                    event.reply(" The team is currently empty!").setEphemeral(true).queue();
-                    return;
-                }
-                
-                StringBuilder pings = new StringBuilder(" **MANUAL STAFF ALERT:**\n");
-                Matcher m = Pattern.compile("<@!?(\\d+)>").matcher(partyField);
-                while (m.find()) pings.append("<@").append(m.group(1)).append("> ");
-                
-                event.getMessage().getChannel().sendMessage(pings.toString()).queue();
-                event.reply(" The team has been successfully alerted!").setEphemeral(true).queue();
+            if (partyField.equals("None") || partyField.isEmpty()) {
+                event.reply(" The team is currently empty!").setEphemeral(true).queue();
                 return;
             }
 
-            boolean isJoining = buttonId.startsWith("qjoin_");
+            StringBuilder pings = new StringBuilder(" **MANUAL STAFF ALERT:**\n");
+            Matcher m = Pattern.compile("<@!?(\\d+)>").matcher(partyField);
+            while (m.find()) pings.append("<@").append(m.group(1)).append("> ");
 
-            if (isJoining && buttonId.equals("qjoin_member")) {
-                if (!CommandListener.isOfficialMember(event.getMember())) {
-                    event.reply("❌ **Access Denied:** This event is strictly for Official Members (Amora & Amorix)!").setEphemeral(true).queue();
-                    return;
-                }
-            }
-
-            if (isJoining) {
-                if (partyField.contains(userId)) {
-                    event.reply(" You are already in the team!").setEphemeral(true).queue();
-                    return;
-                }
-                if (maxSlots > 0 && currentSlots >= maxSlots) {
-                    event.reply(" **Team Full:** There are no slots remaining for this event!").setEphemeral(true).queue();
-                    return;
-                }
-                partyField = partyField.equals("None") ? userMention : partyField + "\n" + userMention;
-                currentSlots++;
-                
-                
-                
-            } else {
-                if (!partyField.contains(userId)) {
-                    event.reply(" You aren't in the team!").setEphemeral(true).queue();
-                    return;
-                }
-                String[] users = partyField.split("\n");
-                StringBuilder newParty = new StringBuilder();
-                for (String u : users) {
-                    if (!u.contains(userId) && !u.isBlank()) {
-                        if (newParty.length() > 0) newParty.append("\n");
-                        newParty.append(u);
-                    }
-                }
-                partyField = newParty.toString();
-                if (partyField.isEmpty()) partyField = "None";
-                currentSlots--;
-            
-            }
-
-            EmbedBuilder newEmbed = new EmbedBuilder(embed);
-            newEmbed.getFields().set(fieldIndex, new MessageEmbed.Field(buildPartyFieldTitle(currentSlots, minSlots, maxSlots), partyField, false));
-            
-            event.editMessageEmbeds(newEmbed.build())
-                 .setComponents(event.getMessage().getComponents()) 
-                 .queue();
-            }
+            event.getMessage().getChannel().sendMessage(pings.toString()).queue();
+            event.reply(" The team has been successfully alerted!").setEphemeral(true).queue();
         }
+    }
 
     private Modal buildEventModal(String idPrefix, String title, String type, String audience, String urgency, 
                                   String defaultHost, String defaultTime, String defaultExtra, String defaultSlots, String defaultReward) {
