@@ -273,6 +273,9 @@ public class DatabaseManager {
             try { stmt.execute("CREATE TABLE IF NOT EXISTS age_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at BIGINT NOT NULL, used_at BIGINT);"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS age_bans (user_id TEXT PRIMARY KEY, reason TEXT, banned_by TEXT, banned_at BIGINT, proof_id_hash TEXT);"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE INDEX IF NOT EXISTS ix_age_bans_proof_id ON age_bans (proof_id_hash) WHERE proof_id_hash IS NOT NULL;"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS shop_relays (source_channel_id TEXT NOT NULL, source_msg_id TEXT NOT NULL, target_channel_id TEXT NOT NULL, target_msg_id TEXT NOT NULL, PRIMARY KEY (source_msg_id, target_msg_id));"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS creator_shop_threads (creator_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL);"); } catch (SQLException ignored) { }
+            try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN commissions_enabled INTEGER DEFAULT 1;"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -1275,6 +1278,108 @@ public class DatabaseManager {
         } catch (SQLException e) { e.printStackTrace(); }
         return list;
     }
+    public List<String[]> getLinkedBotPromptsWithChannels(String originalMsgId) {
+        ensureConnected();
+        List<String[]> list = new ArrayList<>();
+        String query = "SELECT channel_id, message_id FROM creator_prompts WHERE original_msg_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, originalMsgId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new String[]{rs.getString("channel_id"), rs.getString("message_id")});
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return list;
+    }
+
+    public void saveShopRelay(String sourceChannelId, String sourceMsgId, String targetChannelId, String targetMsgId) {
+        ensureConnected();
+        String query = "INSERT INTO shop_relays (source_channel_id, source_msg_id, target_channel_id, target_msg_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, sourceChannelId);
+            pstmt.setString(2, sourceMsgId);
+            pstmt.setString(3, targetChannelId);
+            pstmt.setString(4, targetMsgId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public List<String[]> getRelayedMessages(String msgId) {
+        ensureConnected();
+        List<String[]> list = new ArrayList<>();
+        String query = "SELECT target_channel_id AS ch_id, target_msg_id AS m_id FROM shop_relays WHERE source_msg_id = ? "
+                + "UNION SELECT source_channel_id AS ch_id, source_msg_id AS m_id FROM shop_relays WHERE target_msg_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, msgId);
+            pstmt.setString(2, msgId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new String[]{rs.getString("ch_id"), rs.getString("m_id")});
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return list;
+    }
+
+    public void deleteShopRelay(String msgId) {
+        ensureConnected();
+        String query = "DELETE FROM shop_relays WHERE source_msg_id = ? OR target_msg_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, msgId);
+            pstmt.setString(2, msgId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void saveCreatorShopThread(String creatorId, String threadId) {
+        ensureConnected();
+        String query = "INSERT INTO creator_shop_threads (creator_id, thread_id) VALUES (?, ?) "
+                + "ON CONFLICT (creator_id) DO UPDATE SET thread_id = EXCLUDED.thread_id;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            pstmt.setString(2, threadId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public String getCreatorShopThread(String creatorId) {
+        ensureConnected();
+        String query = "SELECT thread_id FROM creator_shop_threads WHERE creator_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getString("thread_id");
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return null;
+    }
+
+    public boolean isCommissionsEnabled(String creatorId) {
+        ensureConnected();
+        String query = "SELECT commissions_enabled FROM creator_stats WHERE user_id = ?;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("commissions_enabled") != 0;
+                }
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return true;
+    }
+
+    public void setCommissionsEnabled(String creatorId, boolean enabled) {
+        ensureConnected();
+        String query = "INSERT INTO creator_stats (user_id, commissions_enabled) VALUES (?, ?) "
+                + "ON CONFLICT (user_id) DO UPDATE SET commissions_enabled = EXCLUDED.commissions_enabled;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setString(1, creatorId);
+            pstmt.setInt(2, enabled ? 1 : 0);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
 
     public void incrementGlobalStat(String key, int amount) {
         ensureConnected();

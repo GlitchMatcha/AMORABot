@@ -128,6 +128,12 @@ public class App {
                                 .addOption(OptionType.BOOLEAN, "reset", "Reset all shop sales counters to 0 after generating?", true)
                         ),
 
+                    Commands.slash("commissions", "Toggle whether you accept custom commissions in your shop listings")
+                        .addOption(OptionType.BOOLEAN, "enabled", "True to accept commissions, False for ready-made sales only", false),
+
+                    Commands.slash("commission", "Toggle whether you accept custom commissions in your shop listings")
+                        .addOption(OptionType.BOOLEAN, "enabled", "True to accept commissions, False for ready-made sales only", false),
+
                     Commands.context(net.dv8tion.jda.api.interactions.commands.Command.Type.MESSAGE, "🛒 Order This"),
 
                     Commands.slash("addsparks", "Admin: Add sparks to a user")
