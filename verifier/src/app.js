@@ -182,7 +182,9 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
    * userDefinedData, which is only trusted when its MAC (the proof's userId) is ours.
    */
   async function handleSelfVerify(req, res) {
+    console.log("self verify: proof received from relayer");
     const fail = (reason, ticket) => {
+      console.warn(`self verify refused: ${reason}`);
       if (ticket) record(ticket, "rejected", reason);
       return send(res, 200, { status: "error", result: false, reason });
     };
@@ -235,6 +237,7 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
       return fail("Verification is temporarily unavailable.", ticket);
     }
     if (outcome === "ok") {
+      console.log("self verify: accepted, session completed");
       record(ticket, "verified", "Verified. You can return to Discord.");
       return send(res, 200, { status: "success", result: true });
     }
