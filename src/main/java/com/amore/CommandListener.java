@@ -5002,7 +5002,6 @@ public class CommandListener extends ListenerAdapter {
                 event.reply("  Only the shop owner can ping for this drop!").setEphemeral(true).queue();
                 return;
             }
-
             String menuMsgId = event.getMessageId();
 
             event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! ")
@@ -5011,6 +5010,42 @@ public class CommandListener extends ListenerAdapter {
                      pingMsg.editMessageComponents().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
                  });
 
+            // Also ping in matching Category Hall if triggered from a shop thread, or vice versa
+            String targetHallId = null;
+            if (roleId.equals(System.getenv("PING_OUTFITS"))) {
+                targetHallId = System.getenv("OUTFIT_HALL_ID") != null ? System.getenv("OUTFIT_HALL_ID") : ChatListener.DEFAULT_OUTFIT_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_LYRICS"))) {
+                targetHallId = System.getenv("LYRICS_HALL_ID") != null ? System.getenv("LYRICS_HALL_ID") : ChatListener.DEFAULT_LYRICS_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_FACES"))) {
+                targetHallId = System.getenv("FACE_HALL_ID") != null ? System.getenv("FACE_HALL_ID") : ChatListener.DEFAULT_FACE_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_BUILDS"))) {
+                targetHallId = System.getenv("BUILD_HALL_ID") != null ? System.getenv("BUILD_HALL_ID") : ChatListener.DEFAULT_BUILD_HALL_ID;
+            }
+
+            if (event.getGuild() != null && targetHallId != null) {
+                if (!event.getChannel().getId().equals(targetHallId)) {
+                    net.dv8tion.jda.api.entities.channel.concrete.TextChannel hall = event.getGuild().getTextChannelById(targetHallId);
+                    if (hall != null) {
+                        hall.sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just dropped a new item here!")
+                            .addActionRow(Button.danger("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId, "🗑️ Undo Ping"))
+                            .queue(hallPingMsg -> {
+                                hallPingMsg.editMessageComponents().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
+                            });
+                    }
+                } else {
+                    String threadId = DatabaseManager.getInstance().getCreatorShopThread(creatorId);
+                    if (threadId != null && !threadId.equals(event.getChannel().getId())) {
+                        net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = event.getGuild().getThreadChannelById(threadId);
+                        if (thread != null) {
+                            thread.sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above!")
+                                .addActionRow(Button.danger("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId, "🗑️ Undo Ping"))
+                                .queue(tMsg -> {
+                                    tMsg.editMessageComponents().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
+                                });
+                        }
+                    }
+                }
+            }
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
                 if (b.getId() != null && b.getId().equals(componentId)) {
@@ -5075,6 +5110,51 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.getMessage().delete().queue();
+            String undoTargetHallId = null;
+            if (roleId.equals(System.getenv("PING_OUTFITS"))) {
+                undoTargetHallId = System.getenv("OUTFIT_HALL_ID") != null ? System.getenv("OUTFIT_HALL_ID") : ChatListener.DEFAULT_OUTFIT_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_LYRICS"))) {
+                undoTargetHallId = System.getenv("LYRICS_HALL_ID") != null ? System.getenv("LYRICS_HALL_ID") : ChatListener.DEFAULT_LYRICS_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_FACES"))) {
+                undoTargetHallId = System.getenv("FACE_HALL_ID") != null ? System.getenv("FACE_HALL_ID") : ChatListener.DEFAULT_FACE_HALL_ID;
+            } else if (roleId.equals(System.getenv("PING_BUILDS"))) {
+                undoTargetHallId = System.getenv("BUILD_HALL_ID") != null ? System.getenv("BUILD_HALL_ID") : ChatListener.DEFAULT_BUILD_HALL_ID;
+            }
+
+            if (event.getGuild() != null && undoTargetHallId != null) {
+                if (!event.getChannel().getId().equals(undoTargetHallId)) {
+                    net.dv8tion.jda.api.entities.channel.concrete.TextChannel hall = event.getGuild().getTextChannelById(undoTargetHallId);
+                    if (hall != null) {
+                        hall.getHistory().retrievePast(10).queue(msgs -> {
+                            for (net.dv8tion.jda.api.entities.Message m : msgs) {
+                                if (m.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && !m.getButtons().isEmpty()) {
+                                    Button b = m.getButtons().get(0);
+                                    if (b.getId() != null && b.getId().equals("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId)) {
+                                        m.delete().queue(s -> {}, e -> {});
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    String threadId = DatabaseManager.getInstance().getCreatorShopThread(creatorId);
+                    if (threadId != null) {
+                        net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = event.getGuild().getThreadChannelById(threadId);
+                        if (thread != null) {
+                            thread.getHistory().retrievePast(10).queue(msgs -> {
+                                for (net.dv8tion.jda.api.entities.Message m : msgs) {
+                                    if (m.getAuthor().getId().equals(event.getJDA().getSelfUser().getId()) && !m.getButtons().isEmpty()) {
+                                        Button b = m.getButtons().get(0);
+                                        if (b.getId() != null && b.getId().equals("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId)) {
+                                            m.delete().queue(s -> {}, e -> {});
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
 
             event.getChannel().retrieveMessageById(menuMsgId).queue(menuMsg -> {
                 List<Button> newButtons = new ArrayList<>();

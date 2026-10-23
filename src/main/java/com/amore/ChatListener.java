@@ -1032,16 +1032,16 @@ public class ChatListener extends ListenerAdapter {
                     if (message.getGuild() == null) continue;
                     net.dv8tion.jda.api.entities.channel.concrete.TextChannel targetHall = message.getGuild().getTextChannelById(targetHallId);
                     if (targetHall != null) {
-                        EmbedBuilder hallCard = new EmbedBuilder()
-                                .setColor(new Color(255, 182, 193))
-                                .setTitle("✦ NEW DROP ✦")
-                                .setDescription("**Creator:** " + author.getAsMention() + "\n\n"
-                                        + (rawContent.isBlank() ? "" : rawContent + "\n\n")
-                                        + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
-
-                        if (hasImage && message.getAttachments().get(0).isImage()) {
-                            hallCard.setImage(message.getAttachments().get(0).getUrl());
+                        StringBuilder relayText = new StringBuilder();
+                        relayText.append("✦ **New Drop by** ").append(author.getAsMention())
+                                 .append(" (from ").append(thread.getAsMention()).append("):\n\n");
+                        if (!rawContent.isBlank()) {
+                            relayText.append(rawContent).append("\n\n");
                         }
+                        for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
+                            relayText.append(att.getUrl()).append("\n");
+                        }
+                        relayText.append("\n-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
 
                         List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
                         hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
@@ -1050,7 +1050,7 @@ public class ChatListener extends ListenerAdapter {
                         }
                         hallButtons.add(Button.link(thread.getJumpUrl(), "🛍️ Visit Shop"));
 
-                        targetHall.sendMessageEmbeds(hallCard.build())
+                        targetHall.sendMessage(relayText.toString().trim())
                                 .addActionRow(hallButtons)
                                 .queue(relayedMsg -> {
                                     db.saveShopRelay(channel.getId(), message.getId(), targetHall.getId(), relayedMsg.getId());
@@ -1146,14 +1146,16 @@ public class ChatListener extends ListenerAdapter {
 
                 // RELAY FROM CATEGORY HALL -> FORUM THREAD
                 if (creatorThread != null) {
-                    EmbedBuilder threadMirror = new EmbedBuilder()
-                            .setColor(new Color(255, 182, 193))
-                            .setTitle("✦ NEW DROP (via Hall) ✦")
-                            .setDescription((rawContent.isBlank() ? "" : rawContent + "\n\n")
-                                    + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
-                    if (hasImage && message.getAttachments().get(0).isImage()) {
-                        threadMirror.setImage(message.getAttachments().get(0).getUrl());
+                    StringBuilder relayText = new StringBuilder();
+                    relayText.append("✦ **New Drop by** ").append(author.getAsMention())
+                             .append(" (via <#").append(channel.getId()).append(">):\n\n");
+                    if (!rawContent.isBlank()) {
+                        relayText.append(rawContent).append("\n\n");
                     }
+                    for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
+                        relayText.append(att.getUrl()).append("\n");
+                    }
+                    relayText.append("\n-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
 
                     List<net.dv8tion.jda.api.interactions.components.buttons.Button> threadButtons = new ArrayList<>();
                     threadButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
@@ -1163,7 +1165,7 @@ public class ChatListener extends ListenerAdapter {
                     threadButtons.add(Button.link(message.getJumpUrl(), "📍 View Hall Post"));
 
                     final String targetThreadId = creatorThread.getId();
-                    creatorThread.sendMessageEmbeds(threadMirror.build())
+                    creatorThread.sendMessage(relayText.toString().trim())
                             .addActionRow(threadButtons)
                             .queue(relayedMsg -> {
                                 db.saveShopRelay(channel.getId(), message.getId(), targetThreadId, relayedMsg.getId());
