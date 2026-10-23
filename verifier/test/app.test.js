@@ -209,8 +209,18 @@ test("a bot outage while checking the session is reported, not treated as succes
 
 test("an invalid proof is rejected and the session is not consumed", async () => {
   await withServer({ verify: () => ({ ok: false, reason: "proof_invalid" }) }, async (base, calls) => {
-    assert.equal(await rejection(await relay(base)), "The proof could not be verified.");
+    assert.equal(await rejection(await relay(base)), "The proof could not be verified (proof_invalid).");
     assert.equal(calls.complete.length, 0);
+  });
+});
+
+test("only SDK issue types, never stack traces, are shown to the page", async () => {
+  const detail = (value) => ({ verify: () => ({ ok: false, reason: "proof_error", detail: value }) });
+  await withServer(detail("InvalidRoot,InvalidScope"), async (base) => {
+    assert.equal(await rejection(await relay(base)), "The proof could not be verified (proof_error: InvalidRoot,InvalidScope).");
+  });
+  await withServer(detail("TypeError: boom\n    at file:///app/src/x.js:1:1"), async (base) => {
+    assert.equal(await rejection(await relay(base)), "The proof could not be verified (proof_error).");
   });
 });
 
