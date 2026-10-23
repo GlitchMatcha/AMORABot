@@ -49,7 +49,7 @@ public class App {
     }
 
     public static void main(String[] args) {
-        String token = requiredEnv("DISCORD_TOKEN");
+        String token = requiredEnv("DISCORD_TOKEN").trim().replaceAll("^\"|\"$", "");
 
         System.out.println("✦ Starting AMORA Bot JDA Instance...");
 
