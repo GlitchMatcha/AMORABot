@@ -72,18 +72,20 @@ public class ChatListener extends ListenerAdapter {
         return def;
     }
 
-    /** "robux" anywhere (covers custom emojis like <:RobuxGold:id>); other words only as whole words ("costume" ≠ "cost"). */
-    private static final Pattern LISTING_PRICE_SIGNAL =
-            Pattern.compile("robux|(?<![a-z])(prices?|costs?|rbx|wts|selling|for sale|on sale)(?![a-z])");
+    private static final List<String> LISTING_TRIGGER_WORDS = List.of(
+            "price", "cost", "selling", "rbx", "robux", "combo", "pack", "order",
+            "buy", "outfit", "build", "face", "lyrics", "wts");
 
     /**
-     * A post is a sale listing only when its text carries a price signal (or 🛒/🏷️).
-     * Pictures alone (banners, intros, showcases) never count.
+     * A post is a sale listing when its text contains a trigger word or 🛒/🏷️.
+     * Pictures alone (no text) never count.
      */
     static boolean isShopListing(String rawContent) {
         if (rawContent == null || rawContent.isBlank()) return false;
         String normalized = Normalizer.normalize(rawContent, Normalizer.Form.NFKC).toLowerCase();
-        return normalized.contains("🛒") || normalized.contains("🏷") || LISTING_PRICE_SIGNAL.matcher(normalized).find();
+        if (normalized.contains("🛒") || normalized.contains("🏷")) return true;
+        String ultraClean = normalized.replaceAll("[^a-z0-9]", "");
+        return LISTING_TRIGGER_WORDS.stream().anyMatch(ultraClean::contains);
     }
 
     /**
