@@ -4933,19 +4933,12 @@ public class CommandListener extends ListenerAdapter {
                     return;
                 }
 
-                ThreadChannel shopThread = event.getChannel().asThreadChannel();
-                
-                shopThread.getHistoryBefore(event.getMessageId(), 10).queue(history -> {
-                    net.dv8tion.jda.api.entities.Message targetMsg = history.getRetrievedHistory().stream()
-                            .filter(m -> m.getAuthor().getId().equals(creatorId))
-                            .findFirst()
-                            .orElse(null);
-
+                java.util.function.Consumer<net.dv8tion.jda.api.entities.Message> placeOrder = targetMsg -> {
+                  try {
                     if (targetMsg == null) {
                         event.getHook().sendMessage(MIKU_SAD + " I couldn't track down the original item message!").queue();
                         return;
                     }
-
                     String itemDescription = targetMsg.getContentRaw();
                     if (itemDescription.length() > 300) {
                         itemDescription = itemDescription.substring(0, 300) + "..."; 
@@ -5021,7 +5014,37 @@ public class CommandListener extends ListenerAdapter {
                                    ).queue();
                         });
                     });
-                });
+                  } catch (Exception e) {
+                    System.err.println("❌ Order setup failed for creator " + creatorId + ": " + e.getMessage());
+                    e.printStackTrace();
+                    event.getHook().sendMessage(MIKU_SAD + " Something went wrong while opening your order. Please try again!").queue();
+                  }
+                };
+
+                // Relayed copies (hall <-> shop thread) are posted by the bot, so order the seller's original post.
+                List<String[]> relaySource = db.getRelayedMessages(event.getMessageId());
+                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel sourceChannel = null;
+                if (!relaySource.isEmpty() && event.getGuild() != null) {
+                    String sourceChannelId = relaySource.get(0)[0];
+                    sourceChannel = event.getGuild().getTextChannelById(sourceChannelId);
+                    if (sourceChannel == null) sourceChannel = event.getGuild().getThreadChannelById(sourceChannelId);
+                    if (sourceChannel == null) sourceChannel = event.getGuild().getNewsChannelById(sourceChannelId);
+                }
+                if (sourceChannel != null) {
+                    // Original unreachable (deleted/archived): the relayed copy carries the same listing.
+                    sourceChannel.retrieveMessageById(relaySource.get(0)[1])
+                            .queue(placeOrder, err -> placeOrder.accept(event.getMessage()));
+                } else if (!relaySource.isEmpty()) {
+                    placeOrder.accept(event.getMessage());
+                } else {
+                    // Order prompt sits right under the seller's listing (shop thread or hall post).
+                    event.getChannel().getHistoryBefore(event.getMessageId(), 10).queue(
+                            history -> placeOrder.accept(history.getRetrievedHistory().stream()
+                                    .filter(m -> m.getAuthor().getId().equals(creatorId))
+                                    .findFirst()
+                                    .orElse(null)),
+                            err -> placeOrder.accept(null));
+                }
             }, error -> {
                 event.getHook().sendMessage(MIKU_SAD + " Could not find the creator.").queue();
             });
