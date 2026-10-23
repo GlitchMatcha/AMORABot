@@ -36,6 +36,37 @@ class EventTimeTest {
     }
 
     @Test
+    void easternEuropeanZonesStillWork() {
+        assertEquals(utc(2026, 10, 23, 17, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 EEST"));
+        assertEquals(utc(2026, 12, 23, 18, 30), AnnouncementListener.parseEventEpoch("2026-12-23 20:30 EET"));
+    }
+
+    @Test
+    void genericUsZonesFollowDaylightSaving() {
+        assertEquals(utc(2026, 10, 24, 3, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 PT")); // PDT, -7
+        assertEquals(utc(2026, 12, 24, 4, 30), AnnouncementListener.parseEventEpoch("2026-12-23 20:30 PT")); // PST, -8
+        assertEquals(utc(2026, 10, 24, 0, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 ET")); // EDT, -4
+        assertEquals(utc(2026, 12, 24, 1, 30), AnnouncementListener.parseEventEpoch("2026-12-23 20:30 ET")); // EST, -5
+        assertEquals(utc(2026, 10, 24, 1, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 CT")); // CDT, -5
+        assertEquals(utc(2026, 10, 24, 2, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 MT")); // MDT, -6
+    }
+
+    @Test
+    void explicitUsAbbreviationsStayFixed() {
+        assertEquals(utc(2026, 7, 24, 3, 30), AnnouncementListener.parseEventEpoch("2026-07-23 20:30 PDT")); // -7
+        assertEquals(utc(2026, 7, 24, 4, 30), AnnouncementListener.parseEventEpoch("2026-07-23 20:30 PST")); // fixed -8, as before
+    }
+
+    @Test
+    void regionNamesAreAcceptedInAnyCase() {
+        assertEquals(utc(2026, 10, 24, 3, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 America/Los_Angeles"));
+        assertEquals(utc(2026, 10, 24, 3, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 america/los_angeles"));
+        assertEquals(utc(2026, 10, 23, 18, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 Europe/Berlin")); // CEST
+        assertEquals(utc(2026, 10, 23, 12, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30 Asia/Manila"));
+        assertEquals(utc(2026, 10, 23, 12, 30), AnnouncementListener.parseEventEpoch("23-10-2026 8:30 PM Asia/Manila"));
+    }
+
+    @Test
     void noZoneMeansUtc() {
         assertEquals(utc(2026, 10, 23, 20, 30), AnnouncementListener.parseEventEpoch("2026-10-23 20:30"));
     }

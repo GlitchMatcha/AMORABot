@@ -1053,7 +1053,7 @@ public class AnnouncementListener extends ListenerAdapter {
         if (!defaultHost.isBlank()) hostBuilder.setValue(defaultHost);
 
         TextInput.Builder timeBuilder = TextInput.create("input_time", "Date & Time (Include Timezone)", TextInputStyle.SHORT)
-                .setPlaceholder("Format: yyyy-mm-dd hh:mm timezone (e.g. GMT+7)").setRequired(true);
+                .setPlaceholder("yyyy-mm-dd hh:mm timezone (GMT+7, PT, EEST, America/Los_Angeles)").setRequired(true);
         if (!defaultTime.isBlank()) timeBuilder.setValue(defaultTime);
 
         TextInput.Builder slotsBuilder = TextInput.create("input_slots", "Party Capacity (Min / Max)", TextInputStyle.SHORT)
@@ -1427,8 +1427,24 @@ public class AnnouncementListener extends ListenerAdapter {
     private static final Pattern DATE_DMY = Pattern.compile("\\d{1,2}[-/]\\d{1,2}[-/]\\d{4}");
     private static final Pattern CLOCK_TIME = Pattern.compile("(?<![+\\-\\d:.])\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:AM|PM)?");
 
+    // Region IDs such as "America/Los_Angeles" (matched case-insensitively), which also follow daylight saving.
+    private static final Map<String, String> REGION_IDS = new java.util.HashMap<>();
+    static {
+        for (String id : ZoneId.getAvailableZoneIds()) {
+            if (id.contains("/")) REGION_IDS.putIfAbsent(id.toLowerCase(), id);
+        }
+    }
+    private static final Pattern REGION_TOKEN = Pattern.compile("[A-Za-z_]+(?:/[A-Za-z_+\\-0-9]+){1,2}");
+
     public static ZoneId parseEventZoneId(String text) {
-        String upper = CLOCK_TIME.matcher(DATE_DMY.matcher(DATE_YMD.matcher(text.toUpperCase()).replaceAll(" ")).replaceAll(" ")).replaceAll(" ");
+        String cleaned = CLOCK_TIME.matcher(DATE_DMY.matcher(DATE_YMD.matcher(text).replaceAll(" ")).replaceAll(" ")).replaceAll(" ");
+        String upper = cleaned.toUpperCase();
+
+        Matcher regionMatcher = REGION_TOKEN.matcher(cleaned);
+        while (regionMatcher.find()) {
+            String id = REGION_IDS.get(regionMatcher.group().toLowerCase());
+            if (id != null) return ZoneId.of(id);
+        }
 
         Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(upper);
         if (offsetMatcher.find()) {
@@ -1492,6 +1508,11 @@ public class AnnouncementListener extends ListenerAdapter {
         if (Pattern.compile("\\bHST\\b").matcher(upper).find()) return ZoneOffset.of("-10:00");
         if (Pattern.compile("\\bAST\\b").matcher(upper).find()) return ZoneOffset.of("-04:00");
         if (Pattern.compile("\\bBRT\\b").matcher(upper).find()) return ZoneOffset.of("-03:00");
+        // Generic US zones follow daylight saving for the event's date (PDT/PST/EDT/... above stay fixed on purpose).
+        if (Pattern.compile("\\bPT\\b").matcher(upper).find()) return ZoneId.of("America/Los_Angeles");
+        if (Pattern.compile("\\bMT\\b").matcher(upper).find()) return ZoneId.of("America/Denver");
+        if (Pattern.compile("\\bCT\\b").matcher(upper).find()) return ZoneId.of("America/Chicago");
+        if (Pattern.compile("\\bET\\b").matcher(upper).find()) return ZoneId.of("America/New_York");
 
         return ZoneOffset.UTC;
     }
