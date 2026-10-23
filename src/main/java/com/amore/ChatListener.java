@@ -62,6 +62,39 @@ public class ChatListener extends ListenerAdapter {
         }
         return def;
     }
+
+    /**
+     * Builds a relay message that never exceeds Discord's 2000-char limit.
+     * JDA rejects longer content synchronously, which previously aborted the relay silently.
+     * Header and footer are always kept; attachment URLs are kept while they fit; the listing
+     * text gets whatever space remains and is cut with "..." when needed.
+     */
+    static String buildRelayText(String header, String content, List<String> attachmentUrls, String footer) {
+        final int max = net.dv8tion.jda.api.entities.Message.MAX_CONTENT_LENGTH;
+        final String ellipsis = "...";
+        String safeHeader = header == null ? "" : header;
+        String safeFooter = footer == null ? "" : footer;
+        int fixed = safeHeader.length() + safeFooter.length();
+
+        StringBuilder attachments = new StringBuilder();
+        for (String url : attachmentUrls) {
+            if (fixed + attachments.length() + url.length() + 1 > max) break;
+            attachments.append(url).append('\n');
+        }
+
+        String body = content == null ? "" : content.strip();
+        int budget = max - fixed - attachments.length() - 2; // "\n\n" separator after the body
+        if (body.length() > budget) {
+            int cut = Math.max(0, budget - ellipsis.length());
+            if (cut > 0 && Character.isHighSurrogate(body.charAt(cut - 1))) cut--;
+            body = cut > 0 ? body.substring(0, cut) + ellipsis : "";
+        }
+
+        StringBuilder out = new StringBuilder(max).append(safeHeader);
+        if (!body.isEmpty()) out.append(body).append("\n\n");
+        out.append(attachments).append(safeFooter);
+        return out.toString().trim();
+    }
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
     private static final Map<String, ActivePrompt> activePrompts = new ConcurrentHashMap<>();
@@ -1060,21 +1093,11 @@ public class ChatListener extends ListenerAdapter {
                     }
 
                     if (targetHall != null) {
-                        StringBuilder relayText = new StringBuilder();
-                        relayText.append("✦ **New Drop by** ").append(author.getAsMention())
-                                 .append(" (from ").append(thread.getAsMention()).append("):\n\n");
-                        if (!rawContent.isBlank()) {
-                            String trimmedContent = rawContent;
-                            if (trimmedContent.length() > 1500) {
-                                trimmedContent = trimmedContent.substring(0, 1500) + "...";
-                            }
-                            relayText.append(trimmedContent).append("\n\n");
-                        }
-                        for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
-                            relayText.append(att.getUrl()).append("\n");
-                        }
-                        relayText.append("\n🔗 [**Click here to visit shop thread**](").append(thread.getJumpUrl()).append(")\n");
-                        relayText.append("-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
+                        String header = "✦ **New Drop by** " + author.getAsMention() + " (from " + thread.getAsMention() + "):\n\n";
+                        String footer = "\n🔗 [**Click here to visit shop thread**](" + thread.getJumpUrl() + ")\n"
+                                + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
+                        List<String> attachmentUrls = message.getAttachments().stream()
+                                .map(net.dv8tion.jda.api.entities.Message.Attachment::getUrl).toList();
 
                         List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
                         hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
@@ -1083,7 +1106,7 @@ public class ChatListener extends ListenerAdapter {
                         }
 
                         final String finalHallId = targetHall.getId();
-                        targetHall.sendMessage(relayText.toString().trim())
+                        targetHall.sendMessage(buildRelayText(header, rawContent, attachmentUrls, footer))
                                 .addActionRow(hallButtons)
                                 .queue(
                                     relayedMsg -> {
@@ -1197,21 +1220,11 @@ public class ChatListener extends ListenerAdapter {
 
                 // RELAY FROM CATEGORY HALL -> FORUM THREAD
                 if (creatorThread != null) {
-                    StringBuilder relayText = new StringBuilder();
-                    relayText.append("✦ **New Drop by** ").append(author.getAsMention())
-                             .append(" (via <#").append(channel.getId()).append(">):\n\n");
-                    if (!rawContent.isBlank()) {
-                        String trimmedContent = rawContent;
-                        if (trimmedContent.length() > 1500) {
-                            trimmedContent = trimmedContent.substring(0, 1500) + "...";
-                        }
-                        relayText.append(trimmedContent).append("\n\n");
-                    }
-                    for (net.dv8tion.jda.api.entities.Message.Attachment att : message.getAttachments()) {
-                        relayText.append(att.getUrl()).append("\n");
-                    }
-                    relayText.append("\n🔗 [**Click here to view hall post**](").append(message.getJumpUrl()).append(")\n");
-                    relayText.append("-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** ").append(ratingDisplay);
+                    String header = "✦ **New Drop by** " + author.getAsMention() + " (via <#" + channel.getId() + ">):\n\n";
+                    String footer = "\n🔗 [**Click here to view hall post**](" + message.getJumpUrl() + ")\n"
+                            + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
+                    List<String> attachmentUrls = message.getAttachments().stream()
+                            .map(net.dv8tion.jda.api.entities.Message.Attachment::getUrl).toList();
 
                     List<net.dv8tion.jda.api.interactions.components.buttons.Button> threadButtons = new ArrayList<>();
                     threadButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
@@ -1219,12 +1232,12 @@ public class ChatListener extends ListenerAdapter {
                         threadButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
                     }
                     final String targetThreadId = creatorThread.getId();
-                    creatorThread.sendMessage(relayText.toString().trim())
+                    creatorThread.sendMessage(buildRelayText(header, rawContent, attachmentUrls, footer))
                             .addActionRow(threadButtons)
                             .queue(relayedMsg -> {
                                 db.saveShopRelay(channel.getId(), message.getId(), targetThreadId, relayedMsg.getId());
                                 db.saveCreatorPrompt(author.getId(), targetThreadId, relayedMsg.getId(), message.getId());
-                            });
+                            }, err -> System.err.println("❌ Failed to relay hall post to shop thread " + targetThreadId + ": " + err.getMessage()));
                 }
 
                 // Ping subscribers for this specific hall
