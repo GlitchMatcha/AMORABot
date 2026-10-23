@@ -1421,8 +1421,14 @@ public class AnnouncementListener extends ListenerAdapter {
         return 1;
     }
 
+    // Dates ("2026-10-23", "10/23/2026") and clock times ("20:30") are removed before looking for a zone, otherwise the
+    // "-10" in a date was read as a UTC-10 offset. A time directly after a sign ("GMT+5:30") belongs to the offset and stays.
+    private static final Pattern DATE_YMD = Pattern.compile("\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}");
+    private static final Pattern DATE_DMY = Pattern.compile("\\d{1,2}[-/]\\d{1,2}[-/]\\d{4}");
+    private static final Pattern CLOCK_TIME = Pattern.compile("(?<![+\\-\\d:.])\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:AM|PM)?");
+
     public static ZoneId parseEventZoneId(String text) {
-        String upper = text.toUpperCase();
+        String upper = CLOCK_TIME.matcher(DATE_DMY.matcher(DATE_YMD.matcher(text.toUpperCase()).replaceAll(" ")).replaceAll(" ")).replaceAll(" ");
 
         Matcher offsetMatcher = Pattern.compile("(?:GMT|UTC)?\\s*([+-])\\s*(\\d{1,2})(?::(\\d{2})|\\.(\\d+))?").matcher(upper);
         if (offsetMatcher.find()) {
