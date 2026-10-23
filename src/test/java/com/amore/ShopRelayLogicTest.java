@@ -40,6 +40,11 @@ public class ShopRelayLogicTest {
                     + "user_id TEXT PRIMARY KEY, "
                     + "commissions_enabled INTEGER DEFAULT 1"
                     + ");");
+            stmt.execute("CREATE TABLE creator_commission_threads ("
+                    + "creator_id TEXT PRIMARY KEY, "
+                    + "thread_id TEXT NOT NULL, "
+                    + "status_msg_id TEXT"
+                    + ");");
         }
     }
 
@@ -193,6 +198,45 @@ public class ShopRelayLogicTest {
             try (ResultSet rs = pstmt.executeQuery()) {
                 assertTrue(rs.next());
                 assertEquals(1, rs.getInt("commissions_enabled"));
+            }
+        }
+    }
+    @Test
+    @DisplayName("Creator commission studio thread can be saved, updated, and retrieved")
+    public void testCreatorCommissionThreadMapping() throws Exception {
+        String upsert = "INSERT INTO creator_commission_threads (creator_id, thread_id, status_msg_id) VALUES (?, ?, ?) "
+                + "ON CONFLICT (creator_id) DO UPDATE SET thread_id = excluded.thread_id, status_msg_id = excluded.status_msg_id;";
+        try (PreparedStatement pstmt = conn.prepareStatement(upsert)) {
+            pstmt.setString(1, "user_artist_99");
+            pstmt.setString(2, "thread_comm_111");
+            pstmt.setString(3, "msg_status_222");
+            pstmt.executeUpdate();
+        }
+
+        String select = "SELECT thread_id, status_msg_id FROM creator_commission_threads WHERE creator_id = ?;";
+        try (PreparedStatement pstmt = conn.prepareStatement(select)) {
+            pstmt.setString(1, "user_artist_99");
+            try (ResultSet rs = pstmt.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals("thread_comm_111", rs.getString("thread_id"));
+                assertEquals("msg_status_222", rs.getString("status_msg_id"));
+            }
+        }
+
+        // Update status message ID
+        try (PreparedStatement pstmt = conn.prepareStatement(upsert)) {
+            pstmt.setString(1, "user_artist_99");
+            pstmt.setString(2, "thread_comm_111");
+            pstmt.setString(3, "msg_status_333");
+            pstmt.executeUpdate();
+        }
+
+        try (PreparedStatement pstmt = conn.prepareStatement(select)) {
+            pstmt.setString(1, "user_artist_99");
+            try (ResultSet rs = pstmt.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals("thread_comm_111", rs.getString("thread_id"));
+                assertEquals("msg_status_333", rs.getString("status_msg_id"));
             }
         }
     }

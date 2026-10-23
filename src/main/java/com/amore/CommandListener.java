@@ -2493,10 +2493,120 @@ public class CommandListener extends ListenerAdapter {
                 newStatus = !currentStatus;
             }
             db.setCommissionsEnabled(event.getUser().getId(), newStatus);
-            if (newStatus) {
-                event.reply("✦ **Commissions Enabled!** The `[ 📝 Request Commission ]` button will now appear on your shop drops.").setEphemeral(true).queue();
+
+            String commChannelId = System.getenv("COMMISSION_HALL_ID") != null 
+                    ? System.getenv("COMMISSION_HALL_ID") 
+                    : ChatListener.DEFAULT_COMMISSION_HALL_ID;
+
+            if (event.getGuild() != null && commChannelId != null && !commChannelId.isBlank()) {
+                String[] existingData = db.getCreatorCommissionThread(event.getUser().getId());
+                net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel existingThread = null;
+                if (existingData != null) {
+                    existingThread = event.getGuild().getThreadChannelById(existingData[0]);
+                }
+
+                if (newStatus) {
+                    // Commissions are OPEN
+                    if (existingThread != null) {
+                        if (existingThread.isArchived()) {
+                            existingThread.getManager().setArchived(false).queue();
+                        }
+                        if (existingData[1] != null && !existingData[1].isBlank()) {
+                            EmbedBuilder openEmbed = new EmbedBuilder()
+                                    .setColor(new Color(82, 255, 125))
+                                    .setTitle("✦ COMMISSION STUDIO: 🟢 OPEN ✦")
+                                    .setDescription("**Creator:** " + event.getUser().getAsMention() + "\n"
+                                            + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + db.getCreatorRatingString(event.getUser().getId()) + "\n\n"
+                                            + "*(Please read " + event.getUser().getAsMention() + "'s rules and ToS in this thread before ordering!)*");
+                            existingThread.editMessageEmbedsById(existingData[1], openEmbed.build())
+                                    .setActionRow(Button.primary("comm_start_" + event.getUser().getId(), "📝 Request Commission"))
+                                    .queue(s -> {}, e -> {});
+                        }
+                        event.reply("✦ **Commissions Enabled!** Your Commission Studio thread is open: " + existingThread.getAsMention()).setEphemeral(true).queue();
+                    } else {
+                        // Create dedicated studio thread in #commission channel
+                        net.dv8tion.jda.api.entities.channel.middleman.GuildChannel commChannel = event.getGuild().getGuildChannelById(commChannelId);
+                        String cleanName = event.getUser().getName().replaceAll("[^a-zA-Z0-9_-]", "").toLowerCase();
+                        if (cleanName.isBlank()) cleanName = "creator";
+                        String threadTitle = "🎨・" + cleanName + "-commissions";
+
+                        if (commChannel instanceof net.dv8tion.jda.api.entities.channel.concrete.TextChannel) {
+                            net.dv8tion.jda.api.entities.channel.concrete.TextChannel tc = (net.dv8tion.jda.api.entities.channel.concrete.TextChannel) commChannel;
+                            tc.createThreadChannel(threadTitle, false).queue(newThread -> {
+                                EmbedBuilder openEmbed = new EmbedBuilder()
+                                        .setColor(new Color(82, 255, 125))
+                                        .setTitle("✦ COMMISSION STUDIO: 🟢 OPEN ✦")
+                                        .setDescription("**Creator:** " + event.getUser().getAsMention() + "\n"
+                                                + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + db.getCreatorRatingString(event.getUser().getId()) + "\n\n"
+                                                + "*(Please read " + event.getUser().getAsMention() + "'s rules and ToS in this thread before ordering!)*");
+
+                                String welcomeGuide = "✨ **Welcome to your Commission Studio, " + event.getUser().getAsMention() + "!** 🎨\n"
+                                        + "Post your pricing flyer, art/build/lyric examples, and commission Terms of Service (ToS) below.\n"
+                                        + "Buyers can review your rules and click the button below to start a commission!";
+
+                                newThread.sendMessage(welcomeGuide).queue();
+                                newThread.sendMessageEmbeds(openEmbed.build())
+                                        .setActionRow(Button.primary("comm_start_" + event.getUser().getId(), "📝 Request Commission"))
+                                        .queue(statusMsg -> {
+                                            db.saveCreatorCommissionThread(event.getUser().getId(), newThread.getId(), statusMsg.getId());
+                                        });
+                                event.reply("✦ **Commissions Enabled!** A dedicated Commission Studio thread has been created for you in " + tc.getAsMention() + ": " + newThread.getAsMention()).setEphemeral(true).queue();
+                            }, err -> {
+                                event.reply("✦ **Commissions Enabled!** (Note: Could not create thread in commission channel: " + err.getMessage() + ")").setEphemeral(true).queue();
+                            });
+                            return;
+                        } else if (commChannel instanceof net.dv8tion.jda.api.entities.channel.concrete.ForumChannel) {
+                            net.dv8tion.jda.api.entities.channel.concrete.ForumChannel fc = (net.dv8tion.jda.api.entities.channel.concrete.ForumChannel) commChannel;
+                            EmbedBuilder openEmbed = new EmbedBuilder()
+                                    .setColor(new Color(82, 255, 125))
+                                    .setTitle("✦ COMMISSION STUDIO: 🟢 OPEN ✦")
+                                    .setDescription("**Creator:** " + event.getUser().getAsMention() + "\n"
+                                            + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + db.getCreatorRatingString(event.getUser().getId()) + "\n\n"
+                                            + "*(Please read " + event.getUser().getAsMention() + "'s rules and ToS in this post before ordering!)*");
+
+                            fc.createForumPost(threadTitle, net.dv8tion.jda.api.utils.messages.MessageCreateData.fromContent("✨ **Welcome to your Commission Studio, " + event.getUser().getAsMention() + "!**\nPost your pricing flyer, examples, and ToS below!"))
+                                    .queue(forumPost -> {
+                                        forumPost.getThreadChannel().sendMessageEmbeds(openEmbed.build())
+                                                .setActionRow(Button.primary("comm_start_" + event.getUser().getId(), "📝 Request Commission"))
+                                                .queue(statusMsg -> {
+                                                    db.saveCreatorCommissionThread(event.getUser().getId(), forumPost.getThreadChannel().getId(), statusMsg.getId());
+                                                });
+                                        event.reply("✦ **Commissions Enabled!** A dedicated Commission Studio post has been created for you in " + fc.getAsMention() + ": " + forumPost.getThreadChannel().getAsMention()).setEphemeral(true).queue();
+                                    }, err -> {
+                                        event.reply("✦ **Commissions Enabled!**").setEphemeral(true).queue();
+                                    });
+                            return;
+                        } else {
+                            event.reply("✦ **Commissions Enabled!** The `[ 📝 Request Commission ]` button will now appear on your shop drops.").setEphemeral(true).queue();
+                            return;
+                        }
+                    }
+                } else {
+                    // Commissions are CLOSED
+                    if (existingThread != null) {
+                        if (existingData[1] != null && !existingData[1].isBlank()) {
+                            EmbedBuilder closedEmbed = new EmbedBuilder()
+                                    .setColor(new Color(255, 75, 75))
+                                    .setTitle("✦ COMMISSION STUDIO: 🔴 CLOSED ✦")
+                                    .setDescription("**Creator:** " + event.getUser().getAsMention() + "\n"
+                                            + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + db.getCreatorRatingString(event.getUser().getId()) + "\n\n"
+                                            + "*(Commissions are currently closed. Check back soon!)*");
+                            existingThread.editMessageEmbedsById(existingData[1], closedEmbed.build())
+                                    .setComponents(java.util.Collections.emptyList())
+                                    .queue(s -> {}, e -> {});
+                        }
+                        event.reply("✦ **Commissions Disabled.** Your Commission Studio thread (" + existingThread.getAsMention() + ") has been updated to CLOSED.").setEphemeral(true).queue();
+                    } else {
+                        event.reply("✦ **Commissions Disabled.** Only the `[ Order >p< ]` button will appear on your shop drops.").setEphemeral(true).queue();
+                    }
+                    return;
+                }
             } else {
-                event.reply("✦ **Commissions Disabled.** Only the `[ Order >p< ]` button will appear on your shop drops.").setEphemeral(true).queue();
+                if (newStatus) {
+                    event.reply("✦ **Commissions Enabled!** The `[ 📝 Request Commission ]` button will now appear on your shop drops.").setEphemeral(true).queue();
+                } else {
+                    event.reply("✦ **Commissions Disabled.** Only the `[ Order >p< ]` button will appear on your shop drops.").setEphemeral(true).queue();
+                }
             }
             return;
         }
