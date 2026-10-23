@@ -1,10 +1,14 @@
-import { randomBytes } from "node:crypto";
 import { fingerprint } from "./hmac.js";
-import { deriveKey, readPayload, signPayload } from "./signedTokens.js";
+import { deriveKey, readPayload, signPayload, ticketMatches, ticketUserId } from "./signedTokens.js";
+import { parseUserContext } from "./userContext.js";
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const STATE_PATTERN = /^[a-f0-9]{32}$/;
+// What the portal commits into the proof as userDefinedData: the session token and the Discord account that owns it.
+const USER_DATA_PATTERN = /^([a-f0-9]{64})\.(\d{15,25})$/;
 const SESSION_TTL_MS = 15 * 60_000;
+const OUTCOME_TTL_MS = 15 * 60_000;
+const MAX_OUTCOMES = 1000;
 
 // JSON API only: the portal is a static site on another origin, so there is nothing here for a browser to
 // navigate to. Auth is a signed bearer token, so no cookies and no credentialed CORS.
@@ -55,8 +59,30 @@ function clientAddress(req) {
 
 export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date.now }) {
   const allow = createRateLimiter(config.rateLimitPerMinute, now);
+  // Status polling is cheap (memory only) and every open portal tab polls every few seconds.
+  const allowStatus = createRateLimiter(config.rateLimitPerMinute * 6, now);
+  const allowRelayer = createRateLimiter(config.relayerRateLimitPerMinute, now);
   const sessionKey = deriveKey(config.sharedSecret, "amora-session-v1");
+  const ticketKey = deriveKey(config.sharedSecret, "amora-self-ticket-v1");
   let inFlight = 0;
+
+  // Latest result per QR ticket so the portal can show what happened. The proof reaches us from Self's relayer, not
+  // from the browser, so this is the only way the page learns about it. The bot stays the source of truth.
+  const outcomes = new Map();
+  function record(ticket, state, message) {
+    if (outcomes.get(ticket)?.state === "verified") return; // a relayer retry after success must not mask it
+    outcomes.set(ticket, { state, message, at: now() });
+    if (outcomes.size > MAX_OUTCOMES) {
+      for (const [key, value] of outcomes) {
+        if (outcomes.size <= MAX_OUTCOMES / 2 || now() - value.at > OUTCOME_TTL_MS) outcomes.delete(key);
+      }
+    }
+  }
+  function currentOutcome(ticket) {
+    const outcome = outcomes.get(ticket);
+    if (!outcome || now() - outcome.at > OUTCOME_TTL_MS) return { state: "pending" };
+    return { state: outcome.state, message: outcome.message };
+  }
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": config.siteOrigin,
@@ -105,7 +131,7 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
 
   /**
    * Exchanges the Discord authorization code. Only a login for the account that owns the session is accepted;
-   * it returns a short-lived signed bearer the portal sends to /api/verify.
+   * it returns a short-lived signed bearer the portal sends to /api/self-app and /api/status.
    */
   async function handleLogin(req, res) {
     if (!allow(clientAddress(req))) return send(res, 429, { ok: false, error: "rate_limited" });
@@ -139,18 +165,43 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
     return send(res, 200, { ok: true, username: user.username, session });
   }
 
-  async function handleVerify(req, res) {
-    if (!allow(clientAddress(req))) return send(res, 429, { ok: false, message: "Too many attempts. Try again in a minute." });
-
+  /** What the portal needs to build the Self QR code for the logged-in account. */
+  function handleSelfApp(req, res) {
     const login = currentLogin(req);
-    if (!login) return send(res, 401, { ok: false, message: "Log in with Discord first." });
+    if (!login) return send(res, 401, { ok: false, error: "login_required" });
+    const userDefinedData = `${login.t}.${login.u}`;
+    return send(res, 200, { ok: true, userId: ticketUserId(ticketKey, userDefinedData), userDefinedData });
+  }
+
+  function handleStatus(req, res, clientKey) {
+    if (!allowStatus(clientKey)) return send(res, 429, { ok: false, error: "rate_limited" });
+    const login = currentLogin(req);
+    if (!login) return send(res, 401, { ok: false, error: "login_required" });
+    return send(res, 200, { ok: true, ...currentOutcome(ticketUserId(ticketKey, `${login.t}.${login.u}`)) });
+  }
+
+  /**
+   * Called by Self's relayer (not a browser) with the proof the phone produced. Self expects HTTP 200 with
+   * `{status, result, reason}` whatever the outcome. The Discord account and session come from the committed
+   * userDefinedData, which is only trusted when its MAC (the proof's userId) is ours.
+   */
+  async function handleSelfVerify(req, res) {
+    const fail = (reason, ticket) => {
+      if (ticket) record(ticket, "rejected", reason);
+      return send(res, 200, { status: "error", result: false, reason });
+    };
+    if (!allowRelayer("relayer")) return fail("Too many requests. Try again in a minute.");
     const payload = await readJson(req, res);
     if (payload === undefined) return undefined;
 
-    // The session token and Discord identity come from the signed bearer, never from the request body.
-    const token = login.t;
-    const discordUserId = login.u;
-    const { proofs, queryResult } = payload;
+    const { attestationId, proof, publicSignals, userContextData } = payload;
+    const context = parseUserContext(userContextData);
+    const data = USER_DATA_PATTERN.exec(context?.userDefinedData ?? "");
+    if (!data || !ticketMatches(ticketKey, context.userDefinedData, context.userId)) {
+      return fail("This QR code was not issued by the AMORA portal. Start again from /verify in Discord.");
+    }
+    const [, token, discordUserId] = data;
+    const ticket = context.userId;
 
     // Cheap check first so we only run the expensive proof verification for a live session of this very user.
     let check;
@@ -158,46 +209,45 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
       check = await bot.sessionCheck(token, discordUserId);
     } catch (err) {
       console.error("bot session-check failed:", err.message);
-      return send(res, 502, { ok: false, message: "Verification is temporarily unavailable." });
+      return fail("Verification is temporarily unavailable.", ticket);
     }
-    if (check.banned) return send(res, 403, { ok: false, message: "You can't use automatic age verification. Contact staff." });
+    if (check.banned) return fail("You can't use automatic age verification. Contact staff.", ticket);
     if (!check.live || !check.ownerMatches) {
-      return send(res, 410, { ok: false, message: "This link has expired or was already used. Run /verify again." });
+      return fail("This link has expired or was already used. Run /verify again.", ticket);
     }
 
     if (inFlight >= config.maxConcurrentVerifications) {
-      return send(res, 503, { ok: false, message: "Verifier is busy. Try again in a moment." });
+      return fail("Verifier is busy. Try again in a moment.", ticket);
     }
     inFlight++;
     let result;
     try {
-      result = await verifyAgeProof({ token, proofs, queryResult });
+      result = await verifyAgeProof({ attestationId, proof, publicSignals, userContextData });
     } finally {
       inFlight--;
     }
     if (!result.ok) {
       console.warn(`proof rejected: ${result.reason}${result.detail ? ` | ${result.detail}` : ""}`);
-      return send(res, 400, { ok: false, message: "The proof could not be verified." });
+      return fail("The proof could not be verified.", ticket);
     }
 
     let outcome;
     try {
-      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.uniqueIdentifier), config.devMode, discordUserId);
+      outcome = await bot.complete(token, fingerprint(config.idHashPepper, result.nullifier), config.devMode, discordUserId);
     } catch (err) {
       console.error("bot complete failed:", err.message);
-      return send(res, 502, { ok: false, message: "Verification is temporarily unavailable." });
+      return fail("Verification is temporarily unavailable.", ticket);
     }
-    if (outcome === "ok") return send(res, 200, { ok: true, message: "Verified. You can return to Discord." });
-    if (outcome === "banned") {
-      return send(res, 403, { ok: false, message: "You can't use automatic age verification. Contact staff." });
+    if (outcome === "ok") {
+      record(ticket, "verified", "Verified. You can return to Discord.");
+      return send(res, 200, { status: "success", result: true });
     }
-    if (outcome === "dev_proof_not_allowed") {
-      return send(res, 403, { ok: false, message: "Test-mode proofs are not accepted on this server." });
-    }
+    if (outcome === "banned") return fail("You can't use automatic age verification. Contact staff.", ticket);
+    if (outcome === "dev_proof_not_allowed") return fail("Test-mode proofs are not accepted on this server.", ticket);
     if (outcome === "duplicate_id") {
-      return send(res, 409, { ok: false, message: "This ID has already been used to verify another Discord account. Contact staff." });
+      return fail("This ID has already been used to verify another Discord account. Contact staff.", ticket);
     }
-    return send(res, 410, { ok: false, message: "This link has expired or was already used. Run /verify again." });
+    return fail("This link has expired or was already used. Run /verify again.", ticket);
   }
 
   return async function handle(req, res) {
@@ -211,16 +261,18 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
       }
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
       if (req.method === "GET" && path === "/config.json") {
-        return send(res, 200, { scope: config.scope, devMode: config.devMode });
+        return send(res, 200, { scope: config.scope, endpoint: config.selfEndpoint, devMode: config.devMode });
       }
       if (req.method === "GET" && path === "/api/discord-url") return handleDiscordUrl(res, url);
+      if (req.method === "GET" && path === "/api/self-app") return handleSelfApp(req, res);
+      if (req.method === "GET" && path === "/api/status") return handleStatus(req, res, clientAddress(req));
       if (path === "/api/login") {
         if (req.method !== "POST") return send(res, 405, "Method not allowed", { Allow: "POST" });
         return handleLogin(req, res);
       }
-      if (path === "/api/verify") {
+      if (path === "/api/self/verify") {
         if (req.method !== "POST") return send(res, 405, "Method not allowed", { Allow: "POST" });
-        return handleVerify(req, res);
+        return handleSelfVerify(req, res);
       }
       return send(res, 404, "Not found");
     } catch (err) {

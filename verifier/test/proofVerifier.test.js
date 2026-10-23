@@ -1,113 +1,107 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createProofVerifier } from "../src/proofVerifier.js";
-import { createBotClient } from "../src/botClient.js";
-import { signatureMatches } from "../src/hmac.js";
+import { getSolidityPackedUserContextData } from "@selfxyz/common/utils/hash";
+import { ALLOWED_ATTESTATION_IDS, createProofVerifier } from "../src/proofVerifier.js";
+import { parseUserContext } from "../src/userContext.js";
 
-const TOKEN = "b".repeat(64);
-const ageResult = { age: { gte: { expected: 18, result: true } } };
+const USER_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+const DATA = `${"a".repeat(64)}.123456789012345678`;
+const userContextData = getSolidityPackedUserContextData(42220, USER_ID, DATA).slice(2);
 
-// The exact payload the removed index.html used to send (plus the age claim our pre-check requires,
-// so the request reaches the real SDK). It must never verify.
-const OLD_FAKE_PAYLOAD = {
-  proofs: [
-    {
-      pi_a: ["0x25d8...", "0x09f4..."],
-      pi_b: [["0x12a...", "0x34b..."], ["0x56c...", "0x78d..."]],
-      pi_c: ["0x90e...", "0x12f..."],
-      protocol: "groth16",
-    },
-  ],
-  queryResult: { ...ageResult, publicSignals: ["1"] },
-};
+const proof = { a: ["1", "2"], b: [["1", "2"], ["3", "4"]], c: ["1", "2"] };
+const input = { attestationId: 1, proof, publicSignals: ["1", "2"], userContextData };
 
-test("real SDK rejects the fabricated proof the old portal used to send", async () => {
-  const verify = createProofVerifier({ domain: "verifier.test", scope: "s", devMode: false });
-  const result = await verify({ token: TOKEN, ...OLD_FAKE_PAYLOAD });
-  // Must get past our own age pre-check and be refused by the SDK itself.
-  assert.equal(result.ok, false);
-  assert.ok(["proof_error", "proof_invalid"].includes(result.reason), `unexpected reason ${result.reason}`);
+const goodResult = () => ({
+  isValidDetails: { isValid: true, isMinimumAgeValid: true, isOfacValid: false },
+  discloseOutput: { minimumAge: "18", nullifier: "987654321" },
+  userData: { userIdentifier: USER_ID },
+});
+const verifierWith = (backend) => createProofVerifier({ scope: "s", endpoint: "https://api.test/api/self/verify", devMode: true, backend });
+
+test("the context parser agrees with Self's own packing of chain id, user id and user data", () => {
+  assert.deepEqual(parseUserContext(userContextData), { userId: USER_ID, userDefinedData: DATA });
+  assert.deepEqual(parseUserContext(userContextData.toUpperCase()), { userId: USER_ID, userDefinedData: DATA });
 });
 
-test("real SDK rejects a well-formed claim carrying garbage proofs", async () => {
-  const verify = createProofVerifier({ domain: "verifier.test", scope: "s", devMode: false });
-  const result = await verify({
-    token: TOKEN,
-    proofs: [{ name: "outer", proof: "00", vkeyHash: "00", version: "0.0.0", publicInputs: [] }],
-    queryResult: ageResult,
-  });
+test("real SDK refuses a fabricated proof with full-size public signals", async () => {
+  const verify = createProofVerifier({ scope: "amora-test", endpoint: "https://api.test/api/self/verify", devMode: true });
+  const result = await verify({ ...input, publicSignals: new Array(30).fill("1") });
+  // Online the SDK reports context/scope/root mismatches; offline it cannot reach the Celo registry. Never ok either way.
   assert.equal(result.ok, false);
-  assert.ok(["proof_error", "proof_invalid"].includes(result.reason), `unexpected reason ${result.reason}`);
+  assert.equal(result.reason, "proof_error");
 });
 
-test("claimed age below 18 or unproven is rejected without calling the SDK", async () => {
-  const zkPassport = { createQuery: () => assert.fail("must not build a query"), verify: () => assert.fail("must not verify") };
-  const verify = createProofVerifier({ domain: "d", scope: "s", devMode: false, zkPassport });
-  for (const queryResult of [
-    { age: { gte: { expected: 16, result: true } } },
-    { age: { gte: { expected: 18, result: false } } },
-    {},
-  ]) {
-    assert.equal((await verify({ token: TOKEN, proofs: [{}], queryResult })).reason, "age_not_proven");
+test("only passports and biometric ID cards are accepted", async () => {
+  assert.deepEqual(ALLOWED_ATTESTATION_IDS, [1, 2]);
+  const verify = verifierWith({ verify: () => assert.fail("must not verify") });
+  for (const attestationId of [0, 3, 4, "1", undefined]) {
+    assert.deepEqual(await verify({ ...input, attestationId }), { ok: false, reason: "document_not_allowed" });
   }
 });
 
-test("server builds the query itself: age>=18, session token bound, local verification, fixed scope", async () => {
-  const seen = {};
-  const zkPassport = {
-    createQuery: () => {
-      const builder = {
-        gte: (field, value) => ((seen.gte = [field, value]), builder),
-        bind: (key, value) => ((seen.bind = [key, value]), builder),
-        done: () => ({ query: { marker: "server-built" } }),
-      };
-      return builder;
-    },
-    verify: async (args) => {
-      seen.args = args;
-      return { verified: true, uniqueIdentifier: "uid" };
-    },
-  };
-  const verify = createProofVerifier({ domain: "d", scope: "fixed-scope", devMode: false, zkPassport });
-  const result = await verify({ token: TOKEN, proofs: [{ p: 1 }], queryResult: ageResult });
-
-  assert.deepEqual(result, { ok: true, uniqueIdentifier: "uid" });
-  assert.deepEqual(seen.gte, ["age", 18]);
-  assert.deepEqual(seen.bind, ["custom_data", TOKEN]);
-  assert.equal(seen.args.originalQuery.marker, "server-built");
-  assert.equal(seen.args.verifierMode, "local");
-  assert.equal(seen.args.scope, "fixed-scope");
-  assert.equal(seen.args.devMode, false);
+test("malformed input is rejected before the SDK runs", async () => {
+  const verify = verifierWith({ verify: () => assert.fail("must not verify") });
+  for (const bad of [
+    { userContextData: "00" },
+    { publicSignals: [] },
+    { publicSignals: "1" },
+    { publicSignals: new Array(200).fill("1") },
+    { proof: undefined },
+    { proof: { a: [], b: [] } },
+  ]) {
+    assert.deepEqual(await verify({ ...input, ...bad }), { ok: false, reason: "malformed" });
+  }
 });
 
-test("a verified proof without a unique identifier is rejected", async () => {
-  const zkPassport = {
-    createQuery: () => {
-      const b = { gte: () => b, bind: () => b, done: () => ({ query: {} }) };
-      return b;
-    },
-    verify: async () => ({ verified: true, uniqueIdentifier: undefined }),
-  };
-  const verify = createProofVerifier({ domain: "d", scope: "s", devMode: false, zkPassport });
-  assert.deepEqual(await verify({ token: TOKEN, proofs: [{}], queryResult: ageResult }), { ok: false, reason: "no_unique_identifier" });
-});
-
-test("bot client signs `${timestamp}.${body}` so the bot's HMAC check passes", async () => {
-  let captured;
-  const client = createBotClient({
-    botUrl: "https://bot.test",
-    secret: "s".repeat(32),
-    now: () => 1_700_000_000_000,
-    fetchImpl: async (url, init) => {
-      captured = { url, init };
-      return new Response(JSON.stringify({ live: true, ownerMatches: true, banned: false }), { status: 200 });
-    },
+test("a valid proof yields only the nullifier and passes the exact arguments to the SDK", async () => {
+  let seen;
+  const verify = verifierWith({
+    verify: async (...args) => ((seen = args), goodResult()),
   });
-  assert.deepEqual(await client.sessionCheck(TOKEN, "123456789012345678"), { live: true, ownerMatches: true, banned: false });
-  assert.deepEqual(JSON.parse(captured.init.body), { token: TOKEN, discordUserId: "123456789012345678" });
-  assert.equal(captured.url, "https://bot.test/internal/age/session-check");
-  const { "X-Amora-Timestamp": ts, "X-Amora-Signature": sig } = captured.init.headers;
-  assert.equal(ts, "1700000000000");
-  assert.ok(signatureMatches("s".repeat(32), ts, captured.init.body, sig));
-  assert.ok(!signatureMatches("t".repeat(32), ts, captured.init.body, sig));
+  assert.deepEqual(await verify(input), { ok: true, nullifier: "987654321" });
+  assert.deepEqual(seen, [1, proof, ["1", "2"], userContextData]);
+});
+
+test("SDK rejections surface as proof_error with the mismatch types, never ok", async () => {
+  const mismatch = Object.assign(new Error("config mismatch"), { name: "ConfigMismatchError", issues: [{ type: "InvalidScope" }, { type: "InvalidRoot" }] });
+  const verify = verifierWith({ verify: async () => { throw mismatch; } });
+  assert.deepEqual(await verify(input), { ok: false, reason: "proof_error", detail: "InvalidScope,InvalidRoot" });
+});
+
+test("an invalid proof is rejected even when the age flags look fine", async () => {
+  const verify = verifierWith({
+    verify: async () => ({ ...goodResult(), isValidDetails: { isValid: false, isMinimumAgeValid: true } }),
+  });
+  assert.deepEqual(await verify(input), { ok: false, reason: "proof_invalid" });
+});
+
+test("anything short of a proven age of 18 is rejected", async () => {
+  for (const [flag, minimumAge] of [[false, "18"], [true, "00"], [true, "17"], [true, ""], [true, undefined]]) {
+    const verify = verifierWith({
+      verify: async () => ({
+        ...goodResult(),
+        isValidDetails: { isValid: true, isMinimumAgeValid: flag },
+        discloseOutput: { minimumAge, nullifier: "1" },
+      }),
+    });
+    const result = await verify(input);
+    assert.equal(result.ok, false, `${flag}/${minimumAge}`);
+    assert.equal(result.reason, "age_not_proven");
+  }
+});
+
+test("a proof whose user id differs from the one we parsed is rejected", async () => {
+  const verify = verifierWith({
+    verify: async () => ({ ...goodResult(), userData: { userIdentifier: "11111111-1111-4111-8111-111111111111" } }),
+  });
+  assert.deepEqual(await verify(input), { ok: false, reason: "context_mismatch" });
+});
+
+test("a verified proof without a usable nullifier is rejected", async () => {
+  for (const nullifier of [undefined, "", "abc", "12 3"]) {
+    const verify = verifierWith({
+      verify: async () => ({ ...goodResult(), discloseOutput: { minimumAge: "18", nullifier } }),
+    });
+    assert.deepEqual(await verify(input), { ok: false, reason: "no_nullifier" }, String(nullifier));
+  }
 });

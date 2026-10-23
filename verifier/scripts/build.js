@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { cp, mkdir, rm } from "node:fs/promises";
 
-// Builds the static portal (deployed to GitHub Pages) into dist/site. The only build-time input is the
+// Builds the static portal (deployed to Netlify) into dist/site. The only build-time input is the
 // public URL of the verifier API the page calls, e.g. https://amora-verifier.onrender.com
 const apiBase = (process.env.API_BASE_URL ?? "").trim().replace(/\/+$/, "");
 if (!/^https?:\/\/[^/]+$/.test(apiBase)) {

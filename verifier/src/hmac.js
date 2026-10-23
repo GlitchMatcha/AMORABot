@@ -11,7 +11,7 @@ export function signatureMatches(secret, timestampMillis, body, signatureHex) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-/** One-way, pepper-keyed fingerprint of the zkPassport unique identifier. The raw identifier never leaves this service. */
-export function fingerprint(pepper, uniqueIdentifier) {
-  return createHmac("sha256", pepper).update(`zkpassport-id:${uniqueIdentifier}`).digest("hex");
+/** One-way, pepper-keyed fingerprint of the Self nullifier. The raw nullifier never leaves this service. */
+export function fingerprint(pepper, nullifier) {
+  return createHmac("sha256", pepper).update(`self-nullifier:${nullifier}`).digest("hex");
 }
