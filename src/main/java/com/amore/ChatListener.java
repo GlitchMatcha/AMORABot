@@ -872,122 +872,321 @@ public class ChatListener extends ListenerAdapter {
     }
 
     private void handleInvisibleShopTracker(net.dv8tion.jda.api.entities.Message message, net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion channel, net.dv8tion.jda.api.entities.User author) {
-        if (!channel.getType().isThread()) return;
-        
-        net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = channel.asThreadChannel();
-        String parentId = thread.getParentChannel().getId();
+        if (author.isBot()) return;
         
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
-        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2"); 
-
-        boolean isShopForum = (shopForumId2 != null && parentId.equals(shopForumId2));
-
-        if (!isShopForum) return;
-        if (!author.getId().equals(thread.getOwnerId())) return;
+        String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
+        String outfitHallId = System.getenv("OUTFIT_HALL_ID");
+        String lyricsHallId = System.getenv("LYRICS_HALL_ID");
+        String faceHallId = System.getenv("FACE_HALL_ID");
+        String buildHallId = System.getenv("BUILD_HALL_ID");
         
-        boolean alreadyLogged = message.getReactions().stream()
-                .anyMatch(r -> r.getEmoji().getName().equals("✅") && r.isSelf());
-        if (alreadyLogged) return;
+        boolean isThread = channel.getType().isThread();
+        DatabaseManager db = DatabaseManager.getInstance();
+        
+        // PATH A: Message posted inside a SHOP Forum Thread
+        if (isThread) {
+            net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel thread = channel.asThreadChannel();
+            String parentId = thread.getParentChannel().getId();
+            boolean isShopForum = (shopForumId2 != null && parentId.equals(shopForumId2)) 
+                               || (shopForumId1 != null && parentId.equals(shopForumId1));
+            if (!isShopForum) return;
+            if (!author.getId().equals(thread.getOwnerId())) return;
+            
+            // Save mapping so we know this creator's dedicated shop thread
+            db.saveCreatorShopThread(author.getId(), thread.getId());
+            
+            boolean alreadyLogged = message.getReactions().stream()
+                    .anyMatch(r -> r.getEmoji().getName().equals("✅") && r.isSelf());
+            if (alreadyLogged) return;
 
-        String rawContent = message.getContentRaw();
-        String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
-        if (normalizedContent.contains("seller guide") 
-            || normalizedContent.contains("buyer guide") 
-            || normalizedContent.contains("marketplace manual") 
-            || normalizedContent.contains("amora marketplace")
-            || normalizedContent.contains("amora updates")
-            || normalizedContent.contains("[noshop]")) {
-            return; 
+            String rawContent = message.getContentRaw();
+            String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
+            if (normalizedContent.contains("seller guide") 
+                || normalizedContent.contains("buyer guide") 
+                || normalizedContent.contains("marketplace manual") 
+                || normalizedContent.contains("amora marketplace")
+                || normalizedContent.contains("amora updates")
+                || normalizedContent.contains("[noshop]")) {
+                return; 
+            }
+
+            String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
+            boolean hasImage = !message.getAttachments().isEmpty();
+            
+            boolean isExplicitListing = ultraCleanContent.contains("price") 
+                                     || ultraCleanContent.contains("cost") 
+                                     || ultraCleanContent.contains("selling")
+                                     || ultraCleanContent.contains("rbx") 
+                                     || ultraCleanContent.contains("robux") 
+                                     || normalizedContent.contains("🛒") 
+                                     || normalizedContent.contains("🏷️")
+                                     || hasImage; 
+            
+            if (isExplicitListing) {
+                long msgId = message.getIdLong();
+                
+                synchronized (processedShopMessages) {
+                    if (processedShopMessages.contains(msgId)) return;
+                    processedShopMessages.addLast(msgId);
+                    if (processedShopMessages.size() > 500) processedShopMessages.removeFirst(); 
+                }
+
+                db.incrementCreatorListed(author.getId());
+                message.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
+                
+                List<net.dv8tion.jda.api.entities.channel.forums.ForumTag> appliedTags = thread.getAppliedTags();
+                List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
+                
+                String pingOutfits = System.getenv("PING_OUTFITS");
+                String pingLyrics = System.getenv("PING_LYRICS");
+                String pingFaces = System.getenv("PING_FACES");
+                String pingBuilds = System.getenv("PING_BUILDS"); 
+
+                boolean canPingOutfits = false;
+                boolean canPingLyrics = false;
+                boolean canPingFaces = false;
+                boolean canPingBuilds = false; 
+
+                for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
+                    String tagName = tag.getName().toLowerCase();
+                    if (tagName.contains("outfit")) canPingOutfits = true;
+                    if (tagName.contains("lyric")) canPingLyrics = true;
+                    if (tagName.contains("face")) canPingFaces = true;
+                    if (tagName.contains("build")) canPingBuilds = true; 
+                }
+                
+                if (canPingOutfits && pingOutfits != null) {
+                    pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + author.getId(), "👗 Ping Outfits"));
+                }
+                if (canPingLyrics && pingLyrics != null) {
+                    pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingLyrics + "_" + author.getId(), "📝 Ping Lyrics"));
+                }
+                if (canPingFaces && pingFaces != null) {
+                    pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + author.getId(), "🎭 Ping Faces"));
+                }
+                if (canPingBuilds && pingBuilds != null) { 
+                    pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingBuilds + "_" + author.getId(), "🛠️ Ping Builds"));
+                }
+
+                String commissionTip = "\n-# 💡 If your shop does/doesn't do commissions, use the cmd `/commission` to toggle on off";
+                if (!pingButtons.isEmpty()) {
+                    pingButtons.add(Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
+                    
+                    channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!** Select the groups you want to ping:" + commissionTip)
+                         .addActionRow(pingButtons)
+                         .queue(msg -> {
+                             db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                             // Auto-cleanup after 2 minutes so prompt never lingers
+                             msg.delete().queueAfter(2, TimeUnit.MINUTES, success -> {}, error -> {});
+                         });
+                } else {
+                    channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!**" + commissionTip)
+                         .queue(msg -> {
+                             db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                             msg.delete().queueAfter(2, TimeUnit.MINUTES, success -> {}, error -> {});
+                         });
+                }
+                
+                String ratingDisplay = db.getCreatorRatingString(author.getId());
+                boolean acceptsCommissions = db.isCommissionsEnabled(author.getId());
+
+                EmbedBuilder orderPromptEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setDescription(" **Want to buy this?**\nClick the buttons below to instantly open a private order ticket"
+                                        + (acceptsCommissions ? " or request a custom commission" : "")
+                                        + " from " + author.getAsMention() + "!\n\n" +
+                                        "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
+
+                List<net.dv8tion.jda.api.interactions.components.buttons.Button> orderActionButtons = new ArrayList<>();
+                orderActionButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
+                if (acceptsCommissions) {
+                    orderActionButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
+                }
+
+                channel.sendMessageEmbeds(orderPromptEmbed.build())
+                        .addActionRow(orderActionButtons)
+                        .queue(msg -> {
+                            db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                        });
+
+                // RELAY FROM FORUM THREAD -> CATEGORY HALL(S)
+                List<String> targetHallIds = new ArrayList<>();
+                if (canPingOutfits && outfitHallId != null) targetHallIds.add(outfitHallId);
+                if (canPingLyrics && lyricsHallId != null) targetHallIds.add(lyricsHallId);
+                if (canPingFaces && faceHallId != null) targetHallIds.add(faceHallId);
+                if (canPingBuilds && buildHallId != null) targetHallIds.add(buildHallId);
+
+                for (String targetHallId : targetHallIds) {
+                    if (message.getGuild() == null) continue;
+                    net.dv8tion.jda.api.entities.channel.concrete.TextChannel targetHall = message.getGuild().getTextChannelById(targetHallId);
+                    if (targetHall != null) {
+                        EmbedBuilder hallCard = new EmbedBuilder()
+                                .setColor(new Color(255, 182, 193))
+                                .setTitle("✦ NEW DROP ✦")
+                                .setDescription("**Creator:** " + author.getAsMention() + "\n\n"
+                                        + (rawContent.isBlank() ? "" : rawContent + "\n\n")
+                                        + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
+
+                        if (hasImage && message.getAttachments().get(0).isImage()) {
+                            hallCard.setImage(message.getAttachments().get(0).getUrl());
+                        }
+
+                        List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
+                        hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
+                        if (acceptsCommissions) {
+                            hallButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
+                        }
+                        hallButtons.add(Button.link(thread.getJumpUrl(), "🛍️ Visit Shop"));
+
+                        targetHall.sendMessageEmbeds(hallCard.build())
+                                .addActionRow(hallButtons)
+                                .queue(relayedMsg -> {
+                                    db.saveShopRelay(channel.getId(), message.getId(), targetHall.getId(), relayedMsg.getId());
+                                    db.saveCreatorPrompt(author.getId(), targetHall.getId(), relayedMsg.getId(), message.getId());
+                                });
+                    }
+                }
+            }
+            return;
         }
 
-        String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
-        boolean hasImage = !message.getAttachments().isEmpty();
-        
-        boolean isExplicitListing = ultraCleanContent.contains("price") 
-                                 || ultraCleanContent.contains("cost") 
-                                 || ultraCleanContent.contains("selling")
-                                 || ultraCleanContent.contains("rbx") 
-                                 || ultraCleanContent.contains("robux") 
-                                 || normalizedContent.contains("🛒") 
-                                 || normalizedContent.contains("🏷️")
-                                 || hasImage; 
-        
-        if (isExplicitListing) {
-            long msgId = message.getIdLong();
+        // PATH B: Message posted directly inside a Category Hall
+        String channelId = channel.getId();
+        boolean isOutfitHall = (outfitHallId != null && channelId.equals(outfitHallId));
+        boolean isLyricsHall = (lyricsHallId != null && channelId.equals(lyricsHallId));
+        boolean isFaceHall = (faceHallId != null && channelId.equals(faceHallId));
+        boolean isBuildHall = (buildHallId != null && channelId.equals(buildHallId));
+        boolean isCategoryHall = isOutfitHall || isLyricsHall || isFaceHall || isBuildHall;
+
+        if (isCategoryHall) {
+            boolean alreadyLogged = message.getReactions().stream()
+                    .anyMatch(r -> r.getEmoji().getName().equals("✅") && r.isSelf());
+            if (alreadyLogged) return;
+
+            String rawContent = message.getContentRaw();
+            String normalizedContent = java.text.Normalizer.normalize(rawContent, java.text.Normalizer.Form.NFKC).toLowerCase();
+            String ultraCleanContent = normalizedContent.replaceAll("[^a-z0-9]", "");
+            boolean hasImage = !message.getAttachments().isEmpty();
             
-            synchronized (processedShopMessages) {
-                if (processedShopMessages.contains(msgId)) return;
-                processedShopMessages.addLast(msgId);
-                if (processedShopMessages.size() > 500) processedShopMessages.removeFirst(); 
-            }
+            boolean isExplicitListing = ultraCleanContent.contains("price") 
+                                     || ultraCleanContent.contains("cost") 
+                                     || ultraCleanContent.contains("selling")
+                                     || ultraCleanContent.contains("rbx") 
+                                     || ultraCleanContent.contains("robux") 
+                                     || normalizedContent.contains("🛒") 
+                                     || normalizedContent.contains("🏷️")
+                                     || hasImage;
 
-            DatabaseManager.getInstance().incrementCreatorListed(author.getId());
-            message.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
-            
-            List<net.dv8tion.jda.api.entities.channel.forums.ForumTag> appliedTags = thread.getAppliedTags();
-            List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
-            
-            String pingOutfits = System.getenv("PING_OUTFITS");
-            String pingLyrics = System.getenv("PING_LYRICS");
-            String pingFaces = System.getenv("PING_FACES");
-            String pingBuilds = System.getenv("PING_BUILDS"); 
+            if (isExplicitListing) {
+                long msgId = message.getIdLong();
+                synchronized (processedShopMessages) {
+                    if (processedShopMessages.contains(msgId)) return;
+                    processedShopMessages.addLast(msgId);
+                    if (processedShopMessages.size() > 500) processedShopMessages.removeFirst();
+                }
 
-            boolean canPingOutfits = false;
-            boolean canPingLyrics = false;
-            boolean canPingFaces = false;
-            boolean canPingBuilds = false; 
+                db.incrementCreatorListed(author.getId());
+                message.addReaction(net.dv8tion.jda.api.entities.emoji.Emoji.fromUnicode("✅")).queue();
 
-            for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : appliedTags) {
-                String tagName = tag.getName().toLowerCase();
-                if (tagName.contains("outfit")) canPingOutfits = true;
-                if (tagName.contains("lyric")) canPingLyrics = true;
-                if (tagName.contains("face")) canPingFaces = true;
-                if (tagName.contains("build")) canPingBuilds = true; 
-            }
-            
-            if (canPingOutfits && pingOutfits != null) {
-                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingOutfits + "_" + author.getId(), "👗 Ping Outfits"));
-            }
-            if (canPingLyrics && pingLyrics != null) {
-                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingLyrics + "_" + author.getId(), "📝 Ping Lyrics"));
-            }
-            if (canPingFaces && pingFaces != null) {
-                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingFaces + "_" + author.getId(), "🎭 Ping Faces"));
-            }
-            if (canPingBuilds && pingBuilds != null) { 
-                pingButtons.add(net.dv8tion.jda.api.interactions.components.buttons.Button.primary("shopping_" + pingBuilds + "_" + author.getId(), "🛠️ Ping Builds"));
-            }
+                String ratingDisplay = db.getCreatorRatingString(author.getId());
+                boolean acceptsCommissions = db.isCommissionsEnabled(author.getId());
 
-            if (!pingButtons.isEmpty()) {
-                pingButtons.add(Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
-                
-                channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!** Select the groups you want to ping:")
-                     .addActionRow(pingButtons)
-                     .queue(msg -> {
-                         DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
-                         
-                         //Auto-cleanup  
-                         msg.delete().queueAfter(15, TimeUnit.MINUTES, success -> {}, error -> {});
-                     });
-            } else {
-                channel.sendMessage("No Tags were detected for pinging, Pwes put your tags onto your Shop Forum >p< TYSMM >p<").queue();
+                // Add Order Buttons directly in the Hall
+                EmbedBuilder orderPromptEmbed = new EmbedBuilder()
+                        .setColor(new Color(255, 182, 193))
+                        .setDescription(" **Want to buy this?**\nClick the buttons below to instantly open a private order ticket"
+                                        + (acceptsCommissions ? " or request a custom commission" : "")
+                                        + " from " + author.getAsMention() + "!\n\n" +
+                                        "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
+
+                List<net.dv8tion.jda.api.interactions.components.buttons.Button> orderActionButtons = new ArrayList<>();
+                orderActionButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
+                if (acceptsCommissions) {
+                    orderActionButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
+                }
+
+                channel.sendMessageEmbeds(orderPromptEmbed.build())
+                        .addActionRow(orderActionButtons)
+                        .queue(msg -> {
+                            db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                        });
+
+                // Locate Creator's Dedicated Forum Shop Thread
+                String threadId = db.getCreatorShopThread(author.getId());
+                net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel creatorThread = null;
+                if (threadId != null && message.getGuild() != null) {
+                    creatorThread = message.getGuild().getThreadChannelById(threadId);
+                }
+                if (creatorThread == null && message.getGuild() != null) {
+                    net.dv8tion.jda.api.entities.channel.concrete.ForumChannel forum = null;
+                    if (shopForumId2 != null) forum = message.getGuild().getForumChannelById(shopForumId2);
+                    if (forum == null && shopForumId1 != null) forum = message.getGuild().getForumChannelById(shopForumId1);
+                    if (forum != null) {
+                        for (net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel tc : forum.getThreadChannels()) {
+                            if (tc.getOwnerId().equals(author.getId())) {
+                                creatorThread = tc;
+                                db.saveCreatorShopThread(author.getId(), tc.getId());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // RELAY FROM CATEGORY HALL -> FORUM THREAD
+                if (creatorThread != null) {
+                    EmbedBuilder threadMirror = new EmbedBuilder()
+                            .setColor(new Color(255, 182, 193))
+                            .setTitle("✦ NEW DROP (via Hall) ✦")
+                            .setDescription((rawContent.isBlank() ? "" : rawContent + "\n\n")
+                                    + "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
+                    if (hasImage && message.getAttachments().get(0).isImage()) {
+                        threadMirror.setImage(message.getAttachments().get(0).getUrl());
+                    }
+
+                    List<net.dv8tion.jda.api.interactions.components.buttons.Button> threadButtons = new ArrayList<>();
+                    threadButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
+                    if (acceptsCommissions) {
+                        threadButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
+                    }
+                    threadButtons.add(Button.link(message.getJumpUrl(), "📍 View Hall Post"));
+
+                    final String targetThreadId = creatorThread.getId();
+                    creatorThread.sendMessageEmbeds(threadMirror.build())
+                            .addActionRow(threadButtons)
+                            .queue(relayedMsg -> {
+                                db.saveShopRelay(channel.getId(), message.getId(), targetThreadId, relayedMsg.getId());
+                                db.saveCreatorPrompt(author.getId(), targetThreadId, relayedMsg.getId(), message.getId());
+                            });
+                }
+
+                // Ping subscribers for this specific hall
+                String pingRoleId = null;
+                if (isOutfitHall) pingRoleId = System.getenv("PING_OUTFITS");
+                else if (isLyricsHall) pingRoleId = System.getenv("PING_LYRICS");
+                else if (isFaceHall) pingRoleId = System.getenv("PING_FACES");
+                else if (isBuildHall) pingRoleId = System.getenv("PING_BUILDS");
+
+                String commissionTip = "\n-# 💡 If your shop does/doesn't do commissions, use the cmd `/commission` to toggle on off";
+                if (pingRoleId != null && !pingRoleId.isBlank()) {
+                    List<net.dv8tion.jda.api.interactions.components.buttons.Button> pingButtons = new ArrayList<>();
+                    pingButtons.add(Button.primary("shopping_" + pingRoleId + "_" + author.getId(), "📢 Ping Subscribers"));
+                    pingButtons.add(Button.secondary("shopnoping_" + author.getId(), "✅ Done / Close"));
+
+                    channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!** Click below to alert subscribers:" + commissionTip)
+                         .addActionRow(pingButtons)
+                         .queue(msg -> {
+                             db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                             msg.delete().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
+                         });
+                } else {
+                    channel.sendMessage(author.getAsMention() + " ✦ **Listing tracked!**" + commissionTip)
+                         .queue(msg -> {
+                             db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
+                             msg.delete().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
+                         });
+                }
             }
-            
-            String ratingDisplay = DatabaseManager.getInstance().getCreatorRatingString(author.getId());
-
-            EmbedBuilder orderPromptEmbed = new EmbedBuilder()
-                    .setColor(new Color(255, 182, 193))
-                    .setDescription(" **Want to buy this?**\nClick the buttons below to instantly open a private order ticket or request a custom commission from " + author.getAsMention() + "!\n\n" +
-                                    "꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay);
-
-            channel.sendMessageEmbeds(orderPromptEmbed.build())
-                    .addActionRow(
-                        Button.success("order_start_" + author.getId(), " Order >p<"),
-                        Button.primary("comm_start_" + author.getId(), "📝 Request Commission")
-                    )
-                    .queue(msg -> {
-                        DatabaseManager.getInstance().saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
-                    });
         }
     }
 
@@ -1002,15 +1201,43 @@ public class ChatListener extends ListenerAdapter {
 
         DatabaseManager db = DatabaseManager.getInstance();
         
-        List<String> linkedBotMessages = db.getLinkedBotMessages(deletedId);
-        
-        if (!linkedBotMessages.isEmpty()) {
-            for (String botMsgId : linkedBotMessages) {
-                event.getChannel().deleteMessageById(botMsgId).queue(
-                    success -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId),
-                    error -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId)
-                );
+        // 1. Cross-Channel Shop Relays: auto-delete mirrored message across channels
+        List<String[]> relays = db.getRelayedMessages(deletedId);
+        for (String[] relay : relays) {
+            String targetChId = relay[0];
+            String targetMsgId = relay[1];
+            net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = event.getJDA().getTextChannelById(targetChId);
+            if (ch == null) ch = event.getJDA().getThreadChannelById(targetChId);
+            if (ch != null) {
+                ch.deleteMessageById(targetMsgId).queue(s -> {}, e -> {});
             }
+        }
+        db.deleteShopRelay(deletedId);
+
+        // 2. Linked Bot Prompts (Order buttons) across ANY channel
+        List<String[]> linkedPrompts = db.getLinkedBotPromptsWithChannels(deletedId);
+        for (String[] prompt : linkedPrompts) {
+            String chId = prompt[0];
+            String botMsgId = prompt[1];
+            net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = event.getJDA().getTextChannelById(chId);
+            if (ch == null) ch = event.getJDA().getThreadChannelById(chId);
+            if (ch != null) {
+                ch.deleteMessageById(botMsgId).queue(
+                    success -> db.removeCreatorPrompt(chId, botMsgId),
+                    error -> db.removeCreatorPrompt(chId, botMsgId)
+                );
+            } else {
+                db.removeCreatorPrompt(chId, botMsgId);
+            }
+        }
+
+        // 3. Fallback: same-channel legacy bot messages
+        List<String> legacyBotMessages = db.getLinkedBotMessages(deletedId);
+        for (String botMsgId : legacyBotMessages) {
+            event.getChannel().deleteMessageById(botMsgId).queue(
+                success -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId),
+                error -> db.removeCreatorPrompt(event.getChannel().getId(), botMsgId)
+            );
         }
     }
     @Override

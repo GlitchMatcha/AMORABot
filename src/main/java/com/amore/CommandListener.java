@@ -2484,6 +2484,23 @@ public class CommandListener extends ListenerAdapter {
             }
         }
 
+        if (event.getName().equals("commissions") || event.getName().equals("commission")) {
+            boolean currentStatus = db.isCommissionsEnabled(event.getUser().getId());
+            boolean newStatus;
+            if (event.getOption("enabled") != null) {
+                newStatus = event.getOption("enabled").getAsBoolean();
+            } else {
+                newStatus = !currentStatus;
+            }
+            db.setCommissionsEnabled(event.getUser().getId(), newStatus);
+            if (newStatus) {
+                event.reply("✦ **Commissions Enabled!** The `[ 📝 Request Commission ]` button will now appear on your shop drops.").setEphemeral(true).queue();
+            } else {
+                event.reply("✦ **Commissions Disabled.** Only the `[ Order >p< ]` button will appear on your shop drops.").setEphemeral(true).queue();
+            }
+            return;
+        }
+
         if (event.getName().equals("pull")) {
             String pullUserId = event.getUser().getId();
             final int pullCost = 50;
@@ -4880,7 +4897,9 @@ public class CommandListener extends ListenerAdapter {
 
             event.getChannel().sendMessage("<@&" + roleId + "> ✦ **New Shop Drop!**\n" + event.getUser().getAsMention() + " just posted a new item above! ")
                  .addActionRow(Button.danger("deleteping_" + creatorId + "_" + roleId + "_" + menuMsgId, "🗑️ Undo Ping"))
-                 .queue();
+                 .queue(pingMsg -> {
+                     pingMsg.editMessageComponents().queueAfter(2, TimeUnit.MINUTES, s -> {}, e -> {});
+                 });
 
             List<Button> newButtons = new ArrayList<>();
             for (Button b : event.getMessage().getButtons()) {
@@ -4895,8 +4914,8 @@ public class CommandListener extends ListenerAdapter {
                  .setActionRow(newButtons)
                  .queue();
 
-            //Auto-delete the menu after .... minutes 
-            event.getMessage().delete().queueAfter(10, TimeUnit.MINUTES, 
+            //Auto-delete the menu after 2 minutes so it does not linger
+            event.getMessage().delete().queueAfter(2, TimeUnit.MINUTES, 
                 success -> {}, 
                 error -> {} 
             );
