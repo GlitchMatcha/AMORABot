@@ -30,15 +30,24 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.message.MessageUpdateEvent;
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
+import net.dv8tion.jda.api.interactions.components.ActionRow;
+import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu;
 import net.dv8tion.jda.api.utils.FileUpload;
 
 public class ChatListener extends ListenerAdapter {
@@ -137,6 +146,234 @@ public class ChatListener extends ListenerAdapter {
         }
         return java.util.concurrent.CompletableFuture.allOf(downloads.toArray(new java.util.concurrent.CompletableFuture[0]))
                 .thenApply(v -> downloads.stream().map(java.util.concurrent.CompletableFuture::join).filter(java.util.Objects::nonNull).toList());
+    }
+
+    // ── Hybrid shop hall picker ────────────────────────────────────────────────
+    // Threads tagged for 2+ halls ask the seller where each drop goes instead of spamming every hall.
+    // Component IDs carry "<sourceMsgId>:<authorId>" so pickers/undo keep working across bot restarts;
+    // only the auto-post/cleanup timers are in-memory.
+    private static final long HALL_PICK_AUTO_POST_MINUTES = 5;
+    private static final long HALL_PICK_CLEANUP_MINUTES = 15;
+    private static final Map<Long, ScheduledFuture<?>> hallPickTimers = new ConcurrentHashMap<>();
+    private static final Set<Long> hallRelaysInFlight = ConcurrentHashMap.newKeySet();
+
+    /** Halls (id -> label) a shop thread relays to, derived from its forum tags. */
+    private static Map<String, String> taggedHallTargets(ThreadChannel thread) {
+        boolean outfit = false, build = false, lyrics = false, face = false;
+        for (net.dv8tion.jda.api.entities.channel.forums.ForumTag tag : thread.getAppliedTags()) {
+            String name = tag.getName().toLowerCase();
+            if (name.contains("outfit")) outfit = true;
+            if (name.contains("build")) build = true;
+            if (name.contains("lyric")) lyrics = true;
+            if (name.contains("face")) face = true;
+        }
+        Map<String, String> halls = new java.util.LinkedHashMap<>();
+        if (outfit) halls.put(getValidSnowflake("OUTFIT_HALL_ID", DEFAULT_OUTFIT_HALL_ID), "👗 Outfit Hall");
+        if (build) halls.put(getValidSnowflake("BUILD_HALL_ID", DEFAULT_BUILD_HALL_ID), "🛠️ Build Hall");
+        if (lyrics) halls.put(getValidSnowflake("LYRICS_HALL_ID", DEFAULT_LYRICS_HALL_ID), "🎶 Lyrics Hall");
+        if (face) halls.put(getValidSnowflake("FACE_HALL_ID", DEFAULT_FACE_HALL_ID), "🎭 Face Hall");
+        return halls;
+    }
+
+    private static MessageChannel resolveHallChannel(net.dv8tion.jda.api.entities.Guild guild, String hallId) {
+        MessageChannel ch = guild.getTextChannelById(hallId);
+        if (ch == null) ch = guild.getNewsChannelById(hallId);
+        if (ch == null) ch = guild.getThreadChannelById(hallId);
+        return ch;
+    }
+
+    /**
+     * Copies a shop-thread drop into the given halls and completes with the hall IDs actually posted to.
+     * Completes empty when the drop is already relayed or a relay for it is in flight, so a picker click
+     * racing the auto-post can never double-post.
+     */
+    private static CompletableFuture<List<String>> relayDropToHalls(Message message, ThreadChannel thread, List<String> hallIds) {
+        long msgId = message.getIdLong();
+        DatabaseManager db = DatabaseManager.getInstance();
+        if (hallIds.isEmpty() || !hallRelaysInFlight.add(msgId)) return CompletableFuture.completedFuture(List.of());
+        if (!db.getRelayedMessages(message.getId()).isEmpty()) {
+            hallRelaysInFlight.remove(msgId);
+            return CompletableFuture.completedFuture(List.of());
+        }
+
+        User author = message.getAuthor();
+        String ratingDisplay = db.getCreatorRatingString(author.getId());
+        String header = "✦ **New Drop by** " + author.getAsMention() + " (from " + thread.getAsMention() + "):\n\n";
+        String footer = "\n🔗 [**Click here to visit shop thread**](" + thread.getJumpUrl() + ")\n"
+                + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
+        String relayText = buildRelayText(header, message.getContentRaw(), footer);
+
+        List<Button> hallButtons = new ArrayList<>();
+        hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
+        if (db.isCommissionsEnabled(author.getId())) {
+            hallButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
+        }
+
+        return downloadRelayImages(message).thenCompose(images -> {
+            List<CompletableFuture<String>> sends = new ArrayList<>();
+            for (String hallId : hallIds) {
+                MessageChannel hall = resolveHallChannel(message.getGuild(), hallId);
+                if (hall == null) {
+                    System.err.println("❌ Target hall channel ID " + hallId + " not found! Ensure Amora Bot has 'View Channel' and 'Send Messages' permissions in this channel.");
+                    continue;
+                }
+                try {
+                    sends.add(hall.sendMessage(relayText).addFiles(toUploads(images)).addActionRow(hallButtons).submit()
+                            .thenApply(relayed -> {
+                                System.out.println("✦ Successfully relayed drop to hall " + hallId);
+                                db.saveShopRelay(thread.getId(), message.getId(), hallId, relayed.getId());
+                                db.saveCreatorPrompt(author.getId(), hallId, relayed.getId(), message.getId());
+                                return hallId;
+                            })
+                            .exceptionally(e -> {
+                                System.err.println("❌ Failed to send relay message to hall " + hallId + ": " + e.getMessage());
+                                return null;
+                            }));
+                } catch (Exception e) {
+                    System.err.println("❌ Relay to hall " + hallId + " aborted: " + e.getMessage());
+                }
+            }
+            return CompletableFuture.allOf(sends.toArray(new CompletableFuture[0]))
+                    .thenApply(v -> sends.stream().map(CompletableFuture::join).filter(java.util.Objects::nonNull).toList());
+        }).whenComplete((posted, e) -> hallRelaysInFlight.remove(msgId));
+    }
+
+    /** Replaces any pending auto-post/cleanup timer for a drop. */
+    private static void setHallPickTimer(long sourceMsgId, ScheduledFuture<?> timer) {
+        ScheduledFuture<?> previous = timer == null ? hallPickTimers.remove(sourceMsgId) : hallPickTimers.put(sourceMsgId, timer);
+        if (previous != null) previous.cancel(false);
+    }
+
+    private static void scheduleHallPickerCleanup(MessageChannel thread, long sourceMsgId, String pickerId) {
+        setHallPickTimer(sourceMsgId, CHECK_SCHEDULER.schedule(() -> {
+            hallPickTimers.remove(sourceMsgId);
+            thread.deleteMessageById(pickerId).queue(s -> {}, e -> {});
+        }, HALL_PICK_CLEANUP_MINUTES, TimeUnit.MINUTES));
+    }
+
+    private static StringSelectMenu hallPickMenu(String sourceMsgId, String authorId, Map<String, String> halls) {
+        StringSelectMenu.Builder menu = StringSelectMenu.create("hallpick:" + sourceMsgId + ":" + authorId)
+                .setPlaceholder("Choose the hall(s) for this drop…")
+                .setRequiredRange(1, halls.size());
+        halls.forEach((hallId, label) -> menu.addOption(label, hallId));
+        return menu.build();
+    }
+
+    private static void sendHallPicker(Message message, ThreadChannel thread, Map<String, String> halls) {
+        String authorId = message.getAuthor().getId();
+        long sourceMsgId = message.getIdLong();
+        thread.sendMessage(message.getAuthor().getAsMention() + " ✦ **Hybrid shop!** Which hall(s) should this drop go to?\n"
+                        + "-# No pick within " + HALL_PICK_AUTO_POST_MINUTES + " minutes = it goes to all your tagged halls. You can undo after.")
+                .addActionRow(hallPickMenu(message.getId(), authorId, halls))
+                .queue(picker -> {
+                    DatabaseManager.getInstance().saveCreatorPrompt(authorId, thread.getId(), picker.getId(), message.getId());
+                    setHallPickTimer(sourceMsgId, CHECK_SCHEDULER.schedule(
+                            () -> autoPostToAllHalls(thread, message.getId(), authorId, picker.getId()),
+                            HALL_PICK_AUTO_POST_MINUTES, TimeUnit.MINUTES));
+                });
+    }
+
+    /** Seller forgot to pick: fall back to every tagged hall, still undoable. */
+    private static void autoPostToAllHalls(ThreadChannel thread, String sourceMsgId, String authorId, String pickerId) {
+        hallPickTimers.remove(Long.parseLong(sourceMsgId));
+        thread.retrieveMessageById(sourceMsgId).queue(message ->
+                relayDropToHalls(message, thread, new ArrayList<>(taggedHallTargets(thread).keySet()))
+                        .thenAccept(posted -> {
+                            if (!posted.isEmpty()) {
+                                showHallRelayDone(thread, pickerId, sourceMsgId, authorId, posted, "⏰ No hall picked in time, so this drop went to all your tagged halls:");
+                            }
+                        })
+                        .exceptionally(e -> {
+                            System.err.println("❌ Auto-post of hybrid drop " + sourceMsgId + " failed: " + e.getMessage());
+                            return null;
+                        }),
+                gone -> thread.deleteMessageById(pickerId).queue(s -> {}, e -> {}));
+    }
+
+    private static void showHallRelayDone(MessageChannel thread, String pickerId, String sourceMsgId, String authorId, List<String> postedHallIds, String intro) {
+        String where = postedHallIds.stream().map(id -> "<#" + id + ">").collect(java.util.stream.Collectors.joining(" "));
+        thread.editMessageById(pickerId, "<@" + authorId + "> " + intro + " " + where
+                        + "\n-# Wrong hall? Press Undo within " + HALL_PICK_CLEANUP_MINUTES + " minutes to pull it back and pick again.")
+                .setComponents(ActionRow.of(Button.secondary("hallundo:" + sourceMsgId + ":" + authorId, "↩️ Undo")))
+                .queue(ok -> scheduleHallPickerCleanup(thread, Long.parseLong(sourceMsgId), pickerId), e -> {});
+    }
+
+    @Override
+    public void onStringSelectInteraction(StringSelectInteractionEvent event) {
+        String componentId = event.getComponentId();
+        if (!componentId.startsWith("hallpick:")) return;
+
+        String[] parts = componentId.split(":");
+        String sourceMsgId = parts[1];
+        String authorId = parts[2];
+        if (!event.getUser().getId().equals(authorId)) {
+            event.reply("Only the seller who posted this drop can choose its hall.").setEphemeral(true).queue();
+            return;
+        }
+        if (!event.getChannel().getType().isThread()) return;
+
+        ThreadChannel thread = event.getChannel().asThreadChannel();
+        String pickerId = event.getMessageId();
+        List<String> chosen = event.getValues();
+        setHallPickTimer(Long.parseLong(sourceMsgId), null);
+        event.deferEdit().queue();
+
+        thread.retrieveMessageById(sourceMsgId).queue(message ->
+                relayDropToHalls(message, thread, chosen)
+                        .thenAccept(posted -> {
+                            if (posted.isEmpty()) {
+                                event.getHook().sendMessage("⚠️ Couldn't post this drop. It may already be in the halls, or I lack access to them.").setEphemeral(true).queue();
+                                return;
+                            }
+                            showHallRelayDone(thread, pickerId, sourceMsgId, authorId, posted, "✅ Drop posted to");
+                        })
+                        .exceptionally(e -> {
+                            System.err.println("❌ Hybrid hall relay for " + sourceMsgId + " failed: " + e.getMessage());
+                            return null;
+                        }),
+                gone -> {
+                    event.getHook().sendMessage("⚠️ The original post was deleted, so there's nothing to relay.").setEphemeral(true).queue();
+                    thread.deleteMessageById(pickerId).queue(s -> {}, e -> {});
+                });
+    }
+
+    private static void handleHallUndo(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
+        String[] parts = event.getComponentId().split(":");
+        String sourceMsgId = parts[1];
+        String authorId = parts[2];
+        if (!event.getUser().getId().equals(authorId)) {
+            event.reply("Only the seller who posted this drop can undo it.").setEphemeral(true).queue();
+            return;
+        }
+        if (!event.getChannel().getType().isThread()) return;
+
+        ThreadChannel thread = event.getChannel().asThreadChannel();
+        long sourceKey = Long.parseLong(sourceMsgId);
+        setHallPickTimer(sourceKey, null);
+
+        DatabaseManager db = DatabaseManager.getInstance();
+        List<String[]> relays = db.getRelayedMessages(sourceMsgId);
+        // Drop the relay rows BEFORE deleting the copies: onMessageDelete mirrors deletions both ways
+        // and would otherwise delete the seller's original post too.
+        db.deleteShopRelay(sourceMsgId);
+        for (String[] relay : relays) {
+            db.removeCreatorPrompt(relay[0], relay[1]);
+            MessageChannel hall = resolveHallChannel(event.getGuild(), relay[0]);
+            if (hall != null) hall.deleteMessageById(relay[1]).queue(s -> {}, e -> {});
+        }
+
+        Map<String, String> halls = taggedHallTargets(thread);
+        if (halls.isEmpty()) {
+            event.editMessage("<@" + authorId + "> ↩️ **Undone!** Your shop has no hall tags anymore, so this drop stays in your shop only.")
+                    .setComponents().queue();
+            scheduleHallPickerCleanup(thread, sourceKey, event.getMessageId());
+            return;
+        }
+        event.editMessage("<@" + authorId + "> ↩️ **Undone!** Pick the correct hall(s) for this drop:\n"
+                        + "-# This picker closes in " + HALL_PICK_CLEANUP_MINUTES + " minutes. No pick = the drop stays in your shop only.")
+                .setComponents(ActionRow.of(hallPickMenu(sourceMsgId, authorId, halls)))
+                .queue();
+        scheduleHallPickerCleanup(thread, sourceKey, event.getMessageId());
     }
     private static final Map<String, Long> userCooldowns = new ConcurrentHashMap<>();
     private static final Map<String, ActiveSparkDrop> activeSparkDrops = new ConcurrentHashMap<>();
@@ -1113,65 +1350,16 @@ public class ChatListener extends ListenerAdapter {
                             db.saveCreatorPrompt(author.getId(), channel.getId(), msg.getId(), message.getId());
                         });
 
-                // RELAY FROM FORUM THREAD -> CATEGORY HALL(S)
-                List<String> targetHallIds = new ArrayList<>();
-                if (canPingOutfits && outfitHallId != null) targetHallIds.add(outfitHallId);
-                if (canPingLyrics && lyricsHallId != null) targetHallIds.add(lyricsHallId);
-                if (canPingFaces && faceHallId != null) targetHallIds.add(faceHallId);
-                if (canPingBuilds && buildHallId != null) targetHallIds.add(buildHallId);
-
-                java.util.concurrent.CompletableFuture<List<RelayImage>> relayImages = targetHallIds.isEmpty()
-                        ? java.util.concurrent.CompletableFuture.completedFuture(List.of())
-                        : downloadRelayImages(message);
-                for (String targetHallId : targetHallIds) {
-                    if (targetHallId == null || !targetHallId.matches("\\d{17,20}")) continue;
-
-                    net.dv8tion.jda.api.entities.channel.middleman.MessageChannel targetHall = null;
-                    if (message.getGuild() != null) {
-                        targetHall = message.getGuild().getTextChannelById(targetHallId);
-                        if (targetHall == null) targetHall = message.getGuild().getNewsChannelById(targetHallId);
-                        if (targetHall == null) targetHall = message.getGuild().getThreadChannelById(targetHallId);
-                    }
-                    if (targetHall == null) {
-                        targetHall = message.getJDA().getTextChannelById(targetHallId);
-                        if (targetHall == null) targetHall = message.getJDA().getNewsChannelById(targetHallId);
-                        if (targetHall == null) targetHall = message.getJDA().getThreadChannelById(targetHallId);
-                    }
-
-                    if (targetHall != null) {
-                        String header = "✦ **New Drop by** " + author.getAsMention() + " (from " + thread.getAsMention() + "):\n\n";
-                        String footer = "\n🔗 [**Click here to visit shop thread**](" + thread.getJumpUrl() + ")\n"
-                                + "-# ꒰ ⌾ ꒱ ✦ **Creator Rating:** " + ratingDisplay;
-                        String relayText = buildRelayText(header, rawContent, footer);
-
-                        List<net.dv8tion.jda.api.interactions.components.buttons.Button> hallButtons = new ArrayList<>();
-                        hallButtons.add(Button.success("order_start_" + author.getId(), " Order >p<"));
-                        if (acceptsCommissions) {
-                            hallButtons.add(Button.primary("comm_start_" + author.getId(), "📝 Request Commission"));
-                        }
-
-                        final net.dv8tion.jda.api.entities.channel.middleman.MessageChannel finalHall = targetHall;
-                        final String finalHallId = targetHall.getId();
-                        relayImages.thenAccept(images -> finalHall.sendMessage(relayText)
-                                .addFiles(toUploads(images))
-                                .addActionRow(hallButtons)
-                                .queue(
-                                    relayedMsg -> {
-                                        System.out.println("✦ Successfully relayed drop to hall " + finalHallId);
-                                        db.saveShopRelay(channel.getId(), message.getId(), finalHallId, relayedMsg.getId());
-                                        db.saveCreatorPrompt(author.getId(), finalHallId, relayedMsg.getId(), message.getId());
-                                    },
-                                    err -> {
-                                        System.err.println("❌ Failed to send relay message to hall " + finalHallId + ": " + err.getMessage());
-                                        err.printStackTrace();
-                                    }
-                                )).exceptionally(e -> {
-                                    System.err.println("❌ Relay to hall " + finalHallId + " aborted: " + e.getMessage());
-                                    return null;
-                                });
-                    } else {
-                        System.err.println("❌ Target hall channel ID " + targetHallId + " not found! Ensure Amora Bot has 'View Channel' and 'Send Messages' permissions in this channel.");
-                    }
+                // RELAY FROM FORUM THREAD -> CATEGORY HALL(S); hybrid shops pick per drop
+                Map<String, String> taggedHalls = taggedHallTargets(thread);
+                if (taggedHalls.size() > 1) {
+                    sendHallPicker(message, thread, taggedHalls);
+                } else {
+                    relayDropToHalls(message, thread, new ArrayList<>(taggedHalls.keySet()))
+                            .exceptionally(e -> {
+                                System.err.println("❌ Relay of drop " + message.getId() + " failed: " + e.getMessage());
+                                return null;
+                            });
                 }
             }
             return;
@@ -2013,6 +2201,11 @@ public class ChatListener extends ListenerAdapter {
     @Override
     public void onButtonInteraction(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
+
+        if (buttonId.startsWith("hallundo:")) {
+            handleHallUndo(event);
+            return;
+        }
         
         if (buttonId.startsWith("grid_")) {
             String msgId = event.getMessageId();
