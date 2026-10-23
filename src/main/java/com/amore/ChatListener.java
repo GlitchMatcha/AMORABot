@@ -889,6 +889,7 @@ public class ChatListener extends ListenerAdapter {
 
     private void handleInvisibleShopTracker(net.dv8tion.jda.api.entities.Message message, net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion channel, net.dv8tion.jda.api.entities.User author) {
         if (author.isBot()) return;
+        try {
         
         String shopForumId1 = System.getenv("SHOP_FORUM_CHANNEL_ID");
         String shopForumId2 = System.getenv("SHOP_FORUM_CHANNEL_ID_2");
@@ -1228,6 +1229,10 @@ public class ChatListener extends ListenerAdapter {
                          });
                 }
             }
+        }
+        } catch (Exception e) {
+            System.err.println("❌ Error in handleInvisibleShopTracker: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
