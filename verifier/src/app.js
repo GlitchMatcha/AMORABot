@@ -1,9 +1,10 @@
 import { fingerprint } from "./hmac.js";
-import { deriveKey, readPayload, signPayload, ticketMatches, ticketUserId } from "./signedTokens.js";
+import { deriveKey, loginAssertionKey, readPayload, signPayload, ticketMatches, ticketUserId } from "./signedTokens.js";
 import { parseUserContext } from "./userContext.js";
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 const STATE_PATTERN = /^[a-f0-9]{32}$/;
+const DISCORD_ID_PATTERN = /^\d{15,25}$/;
 // What the portal commits into the proof as userDefinedData: the session token and the Discord account that owns it.
 const USER_DATA_PATTERN = /^([a-f0-9]{64})\.(\d{15,25})$/;
 const SESSION_TTL_MS = 15 * 60_000;
@@ -64,6 +65,7 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
   const allowRelayer = createRateLimiter(config.relayerRateLimitPerMinute, now);
   const sessionKey = deriveKey(config.sharedSecret, "amora-session-v1");
   const ticketKey = deriveKey(config.sharedSecret, "amora-self-ticket-v1");
+  const assertionKey = loginAssertionKey(config.sharedSecret);
   let inFlight = 0;
 
   // Latest result per QR ticket so the portal can show what happened. The proof reaches us from Self's relayer, not
@@ -130,29 +132,23 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
   }
 
   /**
-   * Exchanges the Discord authorization code. Only a login for the account that owns the session is accepted;
-   * it returns a short-lived signed bearer the portal sends to /api/self-app and /api/status.
+   * Accepts the signed login assertion the portal got from the Netlify login function (which is the only place that
+   * talks to Discord: Render's shared IP is blocked by Cloudflare). Only a login for the account that owns the
+   * session is accepted; it returns a short-lived signed bearer the portal sends to /api/self-app and /api/status.
    */
   async function handleLogin(req, res) {
     if (!allow(clientAddress(req))) return send(res, 429, { ok: false, error: "rate_limited" });
     const payload = await readJson(req, res);
     if (payload === undefined) return undefined;
 
-    const { token, code } = payload;
+    const { token, assertion } = payload;
     if (!TOKEN_PATTERN.test(token ?? "")) return send(res, 400, { ok: false, error: "invalid" });
-    if (typeof code !== "string" || !code || code.length > 512) return send(res, 400, { ok: false, error: "login_failed" });
-
-    let user;
-    try {
-      user = await discordAuth.exchange(code);
-    } catch (err) {
-      console.error("discord login failed:", err.message);
-      return send(res, 400, { ok: false, error: "login_failed" });
-    }
+    const user = typeof assertion === "string" && assertion.length <= 1024 ? readPayload(assertionKey, assertion, now()) : null;
+    if (!user || !DISCORD_ID_PATTERN.test(user.u ?? "")) return send(res, 400, { ok: false, error: "login_failed" });
 
     let check;
     try {
-      check = await bot.sessionCheck(token, user.id);
+      check = await bot.sessionCheck(token, user.u);
     } catch (err) {
       console.error("bot session-check failed:", err.message);
       return send(res, 502, { ok: false, error: "unavailable" });
@@ -161,8 +157,8 @@ export function createApp({ config, verifyAgeProof, bot, discordAuth, now = Date
     if (!check.live) return send(res, 410, { ok: false, error: "expired" });
     if (!check.ownerMatches) return send(res, 403, { ok: false, error: "wrong_account" });
 
-    const session = signPayload(sessionKey, { t: token, u: user.id, exp: now() + SESSION_TTL_MS });
-    return send(res, 200, { ok: true, username: user.username, session });
+    const session = signPayload(sessionKey, { t: token, u: user.u, exp: now() + SESSION_TTL_MS });
+    return send(res, 200, { ok: true, username: String(user.n ?? "Discord user").slice(0, 64), session });
   }
 
   /** What the portal needs to build the Self QR code for the logged-in account. */

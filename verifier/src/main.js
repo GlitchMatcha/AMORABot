@@ -17,7 +17,6 @@ const app = createApp({
   bot: createBotClient({ botUrl: config.botUrl, secret: config.sharedSecret }),
   discordAuth: createDiscordAuth({
     clientId: config.discordClientId,
-    clientSecret: config.discordClientSecret,
     redirectUri: config.redirectUri,
   }),
 });

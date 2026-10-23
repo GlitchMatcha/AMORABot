@@ -4,6 +4,7 @@ import qrcode from "qrcode-generator";
 // Injected by scripts/build.js from API_BASE_URL (the verifier API, e.g. https://amora-verifier.onrender.com).
 const API = __API_BASE__;
 const STORAGE_KEY = "amora_login";
+const LOGIN_FUNCTION = "/.netlify/functions/discord-login";
 const POLL_INTERVAL_MS = 3000;
 const CHECK_WINDOW_MS = 15 * 60_000;
 
@@ -158,7 +159,10 @@ async function beginLogin(token) {
   show("First, log in with Discord so AMORA knows which account is verifying.");
 }
 
-/** Back from Discord: the API checks the Discord account owns the session and hands back a bearer. */
+/**
+ * Back from Discord. The Netlify login function (same origin) exchanges the code with Discord and returns a signed
+ * assertion of the account; the API then checks that account owns the session and hands back a bearer.
+ */
 async function finishLogin(code, state, config) {
   const pending = readStored();
   if (!pending?.state || pending.state !== state || !pending.token) return show(ERRORS.login_failed, "error");
@@ -167,10 +171,19 @@ async function finishLogin(code, state, config) {
   show("Logging you in...");
   let result;
   try {
+    const discord = await fetch(LOGIN_FUNCTION, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ code }),
+    });
+    const identity = await discord.json().catch(() => ({}));
+    if (!identity.ok) return show(ERRORS[identity.error] ?? ERRORS.login_failed, "error");
+
     result = await api("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: pending.token, code }),
+      body: JSON.stringify({ token: pending.token, assertion: identity.assertion }),
     });
   } catch {
     return show(ERRORS.unavailable, "error");

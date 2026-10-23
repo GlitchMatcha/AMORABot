@@ -5,6 +5,11 @@ export function deriveKey(secret, label) {
   return createHmac("sha256", secret).update(label).digest();
 }
 
+/** Key for the login assertion the Netlify login function signs and the API verifies. */
+export function loginAssertionKey(secret) {
+  return deriveKey(secret, "amora-discord-assertion-v1");
+}
+
 /** `base64url(json).base64url(hmac)`; the payload must carry `exp` (epoch millis). */
 export function signPayload(key, payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");

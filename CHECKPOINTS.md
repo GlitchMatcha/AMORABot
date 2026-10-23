@@ -169,9 +169,9 @@ D:/Discord/amora-bot/
 - Auth: `X-Amora-Signature` = hex HMAC-SHA256(`VERIFIER_SHARED_SECRET`, `{X-Amora-Timestamp}.{rawBody}`), timestamp within 60s, 16 KiB body cap.
 
 ### 3.11 `verifier/` (zero-knowledge age verifier, Node 22)
-- Separate service (own `Dockerfile`), JSON API only: `GET /config.json`, `GET /api/discord-url`, `POST /api/login`, `GET /api/self-app` (bearer; QR parameters), `GET /api/status` (bearer; result of the scan), `POST /api/self/verify` (public; called by Self's relayer with the proof). CORS limited to the portal origin, bearer auth, no cookies. The user-facing portal is a static site (`verifier/site/`, built to `verifier/dist/site` and deployed on Netlify via the root `netlify.toml`), so the Render API host is never opened in a browser tab (Google Safe Browsing was flagging it).
+- Separate service (own `Dockerfile`), JSON API only: `GET /config.json`, `GET /api/discord-url`, `POST /api/login` (takes the signed assertion from the Netlify login function), `GET /api/self-app` (bearer; QR parameters), `GET /api/status` (bearer; result of the scan), `POST /api/self/verify` (public; called by Self's relayer with the proof). CORS limited to the portal origin, bearer auth, no cookies. The user-facing portal is a static site (`verifier/site/`, built to `verifier/dist/site` and deployed on Netlify via the root `netlify.toml`, together with `verifier/netlify/functions/discord-login.mjs`, the only code that calls Discord because Render's shared IP is blocked by Cloudflare), so the Render API host is never opened in a browser tab (Google Safe Browsing was flagging it).
 - Proofs come from the Self app (Self Pass SDK, `@selfxyz/core` `SelfBackendVerifier`, legacy but self-hosted). The QR commits `userDefinedData = "<token>.<discordUserId>"` and `userId = HMAC ticket` (UUID); the verifier only trusts the committed data when that MAC is valid, checks the session with the bot, verifies on Celo via public RPC (age >= 18, passport or biometric ID card only), then reports `HMAC(pepper, nullifier)` to the bot's internal API.
-- Stateless apart from a 15-minute in-memory result map for the portal's status poll: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL`, `API_PUBLIC_URL` (proofs are bound to its host and to `ZK_SCOPE`) and `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`), so only the Discord account that owns a session can obtain a QR the verifier accepts.
+- Stateless apart from a 15-minute in-memory result map for the portal's status poll: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL`, `API_PUBLIC_URL` (proofs are bound to its host and to `ZK_SCOPE`) and `DISCORD_CLIENT_ID` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`; the client secret is only on Netlify), so only the Discord account that owns a session can obtain a QR the verifier accepts.
 
 ### 3.12 `YouTubePlaylistImporter.java`
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
@@ -257,7 +257,7 @@ sequenceDiagram
     User->>Discord: /verify or 18+ Adult Zone button
     Discord->>DB: createAgeSession(sha256(token), userId, +15min)
     Discord-->>User: Ephemeral embed with VERIFIER_PUBLIC_URL/verify.html#s=token
-    User->>V: Static portal (Netlify) -> Discord login (OAuth2 identify) -> POST /api/login, bearer token
+    User->>V: Static portal (Netlify) -> Discord login (OAuth2 identify) -> Netlify function exchanges code -> signed assertion -> POST /api/login, bearer token
     User->>V: GET /api/self-app -> userDefinedData "token.discordId", userId = MAC ticket
     User->>App: scan QR / open link (minimumAge 18, userId, userDefinedData)
     App->>R: proof (commits to userId + userDefinedData)
