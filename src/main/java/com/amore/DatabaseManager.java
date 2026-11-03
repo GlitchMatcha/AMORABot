@@ -62,32 +62,6 @@ public class DatabaseManager {
         }
     }
 
-    public static class SongSuggestionRecord {
-        public final int songId;
-        public final String addedBy;
-        public final String title;
-        public final String artist;
-        public final String link;
-        public final String source;
-        public final boolean active;
-        public final long createdAt;
-        public final long lastFeaturedAt;
-
-        public SongSuggestionRecord(
-                int songId, String addedBy, String title, String artist, String link,
-                String source, boolean active, long createdAt, long lastFeaturedAt) {
-            this.songId = songId;
-            this.addedBy = addedBy;
-            this.title = title;
-            this.artist = artist;
-            this.link = link;
-            this.source = source;
-            this.active = active;
-            this.createdAt = createdAt;
-            this.lastFeaturedAt = lastFeaturedAt;
-        }
-    }
-
     private DatabaseManager() {
         if (URL == null || URL.isBlank()) {
             throw new IllegalStateException("DATABASE_URL environment variable is not set!");
@@ -544,17 +518,37 @@ public class DatabaseManager {
         } catch (java.sql.SQLException e) { e.printStackTrace(); }
     }
 
-    public void updateSparks(String userId, int newAmount) {
-        ensureConnected();
-        getSparks(userId);
-        String query = "UPDATE users SET sparks = ? WHERE user_id = ?;";
+    /** Atomically adds {@code delta} (may be negative) and returns the new balance, or -1 on failure. */
+    public int addSparks(String userId, int delta) {
+        getSparks(userId); // creates the row if missing
+        String query = "UPDATE users SET sparks = sparks + ? WHERE user_id = ? RETURNING sparks;";
         try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setInt(1, newAmount);
+            pstmt.setInt(1, delta);
             pstmt.setString(2, userId);
-            pstmt.executeUpdate();
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
+        return -1;
+    }
+
+    /** Atomically deducts {@code cost} only if the balance covers it. Returns the new balance, or -1 if insufficient. */
+    public int trySpendSparks(String userId, int cost) {
+        getSparks(userId);
+        String query = "UPDATE users SET sparks = sparks - ? WHERE user_id = ? AND sparks >= ? RETURNING sparks;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            pstmt.setInt(1, cost);
+            pstmt.setString(2, userId);
+            pstmt.setInt(3, cost);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return -1;
     }
 
     public int getPoints(String userId) {
@@ -880,207 +874,6 @@ public class DatabaseManager {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-    }
-
-    private SongSuggestionRecord mapSongSuggestion(ResultSet rs) throws SQLException {
-        return new SongSuggestionRecord(
-                rs.getInt("song_id"),
-                rs.getString("added_by"),
-                rs.getString("title"),
-                rs.getString("artist"),
-                rs.getString("link"),
-                rs.getString("source"),
-                rs.getInt("is_active") == 1,
-                rs.getLong("created_at"),
-                rs.getLong("last_featured_at")
-        );
-    }
-
-    public boolean songLinkExists(String link) {
-        ensureConnected();
-        String query = "SELECT 1 FROM song_suggestions WHERE LOWER(link) = LOWER(?) AND is_active = 1;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, link);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                return rs.next();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    public SongSuggestionRecord addSongSuggestion(String addedBy, String title, String artist, String link, String source) {
-        ensureConnected();
-        String query = "INSERT INTO song_suggestions "
-                + "(added_by, title, artist, link, source, is_active, created_at, last_featured_at) "
-                + "VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, addedBy);
-            pstmt.setString(2, title);
-            pstmt.setString(3, artist);
-            pstmt.setString(4, link);
-            pstmt.setString(5, source);
-            pstmt.setLong(6, System.currentTimeMillis());
-            pstmt.executeUpdate();
-            return getSongSuggestionByLink(link);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    public int bulkAddSongSuggestions(String addedBy, List<String> links, List<String> titles, List<String> artists, String source) {
-        ensureConnected();
-        String query = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, last_featured_at) VALUES (?, ?, ?, ?, ?, 1, ?, 0);";
-        int count = 0;
-        Connection conn = ensureConnected();
-        try {
-            conn.setAutoCommit(false); 
-            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
-                long now = System.currentTimeMillis();
-                for (int i = 0; i < links.size(); i++) {
-                    pstmt.setString(1, addedBy);
-                    pstmt.setString(2, titles.get(i));
-                    pstmt.setString(3, artists.get(i));
-                    pstmt.setString(4, links.get(i));
-                    pstmt.setString(5, source);
-                    pstmt.setLong(6, now);
-                    pstmt.addBatch(); 
-                    count++;
-                }
-                pstmt.executeBatch(); 
-                conn.commit();  
-            } catch (SQLException e) {
-                conn.rollback();
-                e.printStackTrace();
-                count = 0;
-            } finally {
-                conn.setAutoCommit(true); 
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return count;
-    }
-
-    public SongSuggestionRecord getSongSuggestionByLink(String link) {
-        ensureConnected();
-        String query = "SELECT * FROM song_suggestions WHERE LOWER(link) = LOWER(?) ORDER BY song_id DESC LIMIT 1;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, link);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapSongSuggestion(rs);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    public SongSuggestionRecord getSongSuggestionById(int songId) {
-        ensureConnected();
-        String query = "SELECT * FROM song_suggestions WHERE song_id = ? LIMIT 1;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setInt(1, songId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return mapSongSuggestion(rs);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    public List<SongSuggestionRecord> getRecentSongSuggestions(int limit) {
-        ensureConnected();
-        List<SongSuggestionRecord> songs = new ArrayList<>();
-        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setInt(1, limit);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    songs.add(mapSongSuggestion(rs));
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return songs;
-    }
-
-    public List<SongSuggestionRecord> getSongsAddedBy(String userId, int limit) {
-        ensureConnected();
-        List<SongSuggestionRecord> songs = new ArrayList<>();
-        String query = "SELECT * FROM song_suggestions WHERE added_by = ? AND is_active = 1 ORDER BY created_at DESC LIMIT ?;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setString(1, userId);
-            pstmt.setInt(2, limit);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    songs.add(mapSongSuggestion(rs));
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return songs;
-    }
-
-    public SongSuggestionRecord getRandomActiveSongSuggestion() {
-        ensureConnected();
-        String query = "SELECT * FROM song_suggestions WHERE is_active = 1 ORDER BY last_featured_at ASC, RANDOM() LIMIT 1;";
-        try (PreparedStatement pstmt = prepare(query);
-             ResultSet rs = pstmt.executeQuery()) {
-            if (rs.next()) {
-                return mapSongSuggestion(rs);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
-
-    public boolean deactivateSongSuggestion(int songId) {
-        ensureConnected();
-        String query = "UPDATE song_suggestions SET is_active = 0 WHERE song_id = ? AND is_active = 1;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setInt(1, songId);
-            return pstmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    public void markSongFeatured(int songId, long featuredAt) {
-        ensureConnected();
-        String query = "UPDATE song_suggestions SET last_featured_at = ? WHERE song_id = ?;";
-        try (PreparedStatement pstmt = prepare(query)) {
-            pstmt.setLong(1, featuredAt);
-            pstmt.setInt(2, songId);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public int getActiveSongSuggestionCount() {
-        ensureConnected();
-        String query = "SELECT COUNT(*) AS total FROM song_suggestions WHERE is_active = 1;";
-        try (PreparedStatement pstmt = prepare(query);
-             ResultSet rs = pstmt.executeQuery()) {
-            if (rs.next()) {
-                return rs.getInt("total");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return 0;
     }
 
     public String getBotState(String key) {

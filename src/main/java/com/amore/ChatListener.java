@@ -1598,9 +1598,7 @@ public class ChatListener extends ListenerAdapter {
                     check.firstReactorId = userId;
                     check.firstReactionTime = System.currentTimeMillis(); 
                     
-                   int currentSparks = db.getSparks(userId);
-                    int newTotal = currentSparks + 5;
-                    db.updateSparks(userId, newTotal);
+                    int newTotal = db.addSparks(userId, 5);
                     
                     int currentWins = db.getAcWins(userId); 
                     int newWins = currentWins + 1;
@@ -1707,8 +1705,7 @@ public class ChatListener extends ListenerAdapter {
                         for (String winnerId : finalWinners) {
                             winnersMentions.append("✦ <@").append(winnerId).append(">\n");
                             
-                            int cur = db.getSparks(winnerId);
-                            db.updateSparks(winnerId, cur + 3);
+                            db.addSparks(winnerId, 3);
 
                             int currentWins = db.getAcWins(winnerId);
                             int newWins = currentWins + 1;
@@ -2243,8 +2240,7 @@ public class ChatListener extends ListenerAdapter {
                 
                 int reward = 3 + (state.hasGem ? 5 : 0) + (state.moves <= 6 ? 2 : 0);
                 DatabaseManager db = DatabaseManager.getInstance();
-                int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + reward);
+                db.addSparks(event.getUser().getId(), reward);
                 
                 EmbedBuilder winEmbed = new EmbedBuilder()
                     .setTitle("🎉 Spark Captured! (Maze Cleared)")
@@ -2328,8 +2324,7 @@ public class ChatListener extends ListenerAdapter {
                 
                 int reward = 3 + Math.min(state.combo, 4);
                 DatabaseManager db = DatabaseManager.getInstance();
-                int currentSparks = db.getSparks(event.getUser().getId());
-                db.updateSparks(event.getUser().getId(), currentSparks + reward);
+                db.addSparks(event.getUser().getId(), reward);
                 
                 EmbedBuilder happyEmbed = new EmbedBuilder()
                     .setTitle("🎉 " + state.mascotEmoji + " " + state.mascotName + " is Overjoyed!")
@@ -2451,21 +2446,21 @@ public class ChatListener extends ListenerAdapter {
                 DatabaseManager db = DatabaseManager.getInstance();
                 
                 if (winner == 1) {
-                    db.updateSparks(state.playerXId, db.getSparks(state.playerXId) + (state.isPvP ? 5 : 100));
+                    db.addSparks(state.playerXId, state.isPvP ? 5 : 100);
                     endEmbed.setColor(Color.GREEN).setTitle(state.isPvP ? "Player X Wins!" : " YOU BEAT THE AI!?");
                     endEmbed.setDescription("<@" + state.playerXId + "> won the game!\n\n*( `" + (state.isPvP ? "+5" : "+100") + " Sparks` )*");
                 } else if (winner == 2) {
                     if (state.isPvP) {
-                        db.updateSparks(state.playerOId, db.getSparks(state.playerOId) + 5);
+                        db.addSparks(state.playerOId, 5);
                         endEmbed.setColor(Color.GREEN).setTitle(" Player O Wins!");
                         endEmbed.setDescription("<@" + state.playerOId + "> won the game!\n\n*( `+5 Sparks` )*");
                     } else {
                         endEmbed.setColor(Color.RED).setTitle("💀 AI Wins!").setDescription("The AMORA AI remains undefeated.");
                     }
                 } else {
-                    db.updateSparks(state.playerXId, db.getSparks(state.playerXId) + 1);
+                    db.addSparks(state.playerXId, 1);
                     if (state.isPvP && state.playerOId != null) {
-                        db.updateSparks(state.playerOId, db.getSparks(state.playerOId) + 1);
+                        db.addSparks(state.playerOId, 1);
                     }
                     endEmbed.setColor(Color.LIGHT_GRAY).setTitle("🤝 Hard-Fought Draw!").setDescription("A brilliant stalemate! Both players received `+1 Spark` for playing.");
                 }
@@ -2511,7 +2506,7 @@ public class ChatListener extends ListenerAdapter {
         return true;
     }
     private void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
-        int gameChoice = java.util.concurrent.ThreadLocalRandom.current().nextInt(3);
+        int gameChoice = java.util.concurrent.ThreadLocalRandom.current().nextInt(4);
 
         switch (gameChoice) {
             case 0:
@@ -2522,6 +2517,9 @@ public class ChatListener extends ListenerAdapter {
                 break;
             case 2:
                 spawnTicTacToe(channel);
+                break;
+            case 3:
+                MusicGames.spawnRandomLoungeGame(channel, () -> spawnTicTacToe(channel));
                 break;
         }
     }
@@ -2621,8 +2619,7 @@ public class ChatListener extends ListenerAdapter {
 
         DatabaseManager db = DatabaseManager.getInstance();
         String winnerId = event.getAuthor().getId();
-        int currentSparks = db.getSparks(winnerId);
-        db.updateSparks(winnerId, currentSparks + 1);
+        db.addSparks(winnerId, 1);
 
         if (drop.messageId != 0L) {
             event.getChannel().retrieveMessageById(drop.messageId).queue(
@@ -2694,8 +2691,7 @@ public class ChatListener extends ListenerAdapter {
             activePrompt.rewardsGiven++;
 
             DatabaseManager db = DatabaseManager.getInstance();
-            int currentSparks = db.getSparks(userId);
-            db.updateSparks(userId, currentSparks + PROMPT_REWARD_AMOUNT);
+            db.addSparks(userId, PROMPT_REWARD_AMOUNT);
 
             int slotNumber = activePrompt.rewardsGiven;
             int remaining = Math.max(0, PROMPT_REWARD_SLOTS - activePrompt.rewardsGiven);
@@ -3011,8 +3007,7 @@ public class ChatListener extends ListenerAdapter {
         for (String winnerId : finalReactors) {
             winnersMentions.append(" ╰ ✦ <@").append(winnerId).append(">\n");
 
-            int curSparks = db.getSparks(winnerId);
-            db.updateSparks(winnerId, curSparks + 3);
+            db.addSparks(winnerId, 3);
 
             int curWins = db.getAcWins(winnerId);
             int newWins = curWins + 1;

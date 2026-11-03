@@ -14,7 +14,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class YouTubePlaylistImporter {
 
@@ -116,6 +118,43 @@ public final class YouTubePlaylistImporter {
         } while (pageToken != null && !pageToken.isBlank());
 
         return songs;
+    }
+
+    public static boolean isConfigured() {
+        return API_KEY != null && !API_KEY.isBlank();
+    }
+
+    /** View counts for up to 50 video ids (YouTube Data API videos.list, 1 quota unit). Missing/private videos are absent. */
+    public static Map<String, Long> fetchViewCounts(List<String> videoIds) throws Exception {
+        if (!isConfigured()) {
+            throw new IllegalStateException("YOUTUBE_API_KEY is missing from environment variables.");
+        }
+        Map<String, Long> out = new HashMap<>();
+        if (videoIds.isEmpty()) return out;
+        String url = "https://www.googleapis.com/youtube/v3/videos?part=statistics&maxResults=50&id="
+                + encode(String.join(",", videoIds.subList(0, Math.min(50, videoIds.size()))))
+                + "&key=" + encode(API_KEY);
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException("YouTube API returned HTTP " + response.statusCode() + ".");
+        }
+        JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+        if (root.has("items") && root.get("items").isJsonArray()) {
+            for (JsonElement element : root.getAsJsonArray("items")) {
+                if (!element.isJsonObject()) continue;
+                JsonObject item = element.getAsJsonObject();
+                String id = safeGet(item, "id");
+                if (id.isBlank() || !item.has("statistics") || !item.get("statistics").isJsonObject()) continue;
+                String views = safeGet(item.getAsJsonObject("statistics"), "viewCount");
+                if (views.isBlank()) continue;
+                try {
+                    out.put(id, Long.parseLong(views));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return out;
     }
 
     private static String resolveArtist(JsonObject snippet) {

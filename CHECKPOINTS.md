@@ -31,7 +31,7 @@ D:/Discord/amora-bot/
     │   ├── resources/
     │   │   └── (empty)
     │   └── java/com/amore/
-    │       ├── App.java                  # Main entry point, JDA startup, slash command registration, song cron
+    │       ├── App.java                  # Main entry point, JDA startup, slash command registration
     │       ├── DatabaseManager.java      # Singleton DB manager, Neon Postgres reconnection, schema DDL, CRUD
     │       ├── CommandListener.java      # Slash commands, context menus, modals, entity/string selects, shops
     │       ├── ChatListener.java         # Messages, active check minigames, spark drops, stress engine, hunter grid
@@ -41,7 +41,14 @@ D:/Discord/amora-bot/
     │       ├── StatusRotator.java        # 5m periodic rich presence rotator
     │       ├── RoleManager.java          # 5m periodic expired temporary role revocation sweep
     │       ├── InternalApiServer.java    # Embedded HTTP server: /health, /internal/age/*
-    │       └── YouTubePlaylistImporter.java # YouTube Data API v3 playlist scraper & song parser
+    │       ├── YouTubePlaylistImporter.java # YouTube Data API v3 playlist import & view counts
+    │       ├── SongMetadata.java         # Song link/title/artist normalization, answer matching, tags
+    │       ├── MusicListener.java        # /song, /music, music buttons/modals/chat guesses
+    │       ├── MusicService.java         # Song of the Day loop, votes, streaks, vinyls, sponsors, recap
+    │       ├── MusicGames.java           # Who Added It?, Blurred Cover, Songdle, Higher or Lower
+    │       ├── MusicBattle.java          # Weekly song bracket
+    │       ├── MusicRepository.java      # Music persistence + migrations
+    │       └── MusicArt.java             # Artwork lookup, pixelation, recap card
     └── test/                             # Test root (currently empty)
 ```
 
@@ -52,10 +59,11 @@ D:/Discord/amora-bot/
 ### 3.1 `App.java` (Application Bootstrap & Command Registry)
 - **Entry point**: `App.main(String[] args)`.
 - Validates `DISCORD_TOKEN`, initializes `DatabaseManager` and runs `db.cleanupExpiredSessions()`.
-- Builds JDA instance with `GatewayIntent.MESSAGE_CONTENT`, attaches 3 primary event listeners:
+- Builds JDA instance with `GatewayIntent.MESSAGE_CONTENT`, attaches 4 primary event listeners:
   - `new CommandListener()`
   - `new ChatListener()`
   - `new AnnouncementListener()`
+  - `new MusicListener()`
 - Awaits JDA ready state, then starts background services:
   - `StatusRotator.start(jda)` (5-minute status rotation)
   - `LoungeManager.start(jda)` (2-hour lounge quote cycle)
@@ -63,9 +71,9 @@ D:/Discord/amora-bot/
   - `ActivityMonitor.start(jda)` (12-hour activity and rank scheduler)
   - `InternalApiServer.startServer(webPort, jda)` (HTTP server for the verifier callbacks)
 - Registers all Slash Commands & Context Menu commands with Discord:
-  - Slash: `/forcesweep`, `/syncschedule`, `/taskbank`, `/toggleapps`, `/amorahub`, `/help`, `/serverreport`, `/rolepanel`, `/agepanel`, `/verify`, `/unverify`, `/ageban [add|remove|list]`, `/gift`, `/eventsetup`, `/pull`, `/balance`, `/inventory`, `/forge`, `/transcript`, `/leaderboard`, `/shop evaluate`, `/addsparks`, `/award`, `/trade`, `/payout`, `/publish`, `/activitycheck`, `/profile`, `/song [add|importplaylist|remove|list|suggest|postnow]`.
+  - Slash: `/forcesweep`, `/syncschedule`, `/taskbank`, `/toggleapps`, `/amorahub`, `/help`, `/serverreport`, `/rolepanel`, `/agepanel`, `/verify`, `/unverify`, `/ageban [add|remove|list]`, `/gift`, `/eventsetup`, `/pull`, `/balance`, `/inventory`, `/forge`, `/transcript`, `/leaderboard`, `/shop evaluate`, `/addsparks`, `/award`, `/trade`, `/payout`, `/publish`, `/activitycheck`, `/profile`, plus `MusicListener.commands()` (`/song`, `/music`).
   - Context Menu: `🛒 Order This` (Message Context Command).
-- **Daily Song Scheduler**: `startDailySongScheduler(jda)` runs every 60s, checking if UTC hour >= `DAILY_SONG_POST_HOUR_UTC`. If not posted today (`daily_song_last_post_date` in `bot_state`), picks a community song from `song_suggestions`, fetches artwork, embeds it in `DAILY_SONG_CHANNEL_ID`, and alerts `LOUNGE_CHANNEL_ID`.
+- **Music**: `MusicService.start(jda)` runs the music scheduler (daily song, settlement, weekly battle, monthly recap). See 3.13 and 5.4.
 
 ### 3.2 `DatabaseManager.java` (Database Engine & Schema Migration)
 - **Connection**: Managed via JDBC connection string `DATABASE_URL` (specifically tuned for serverless PostgreSQL on Neon).
@@ -77,7 +85,7 @@ D:/Discord/amora-bot/
   4. `pending_trade_setups`: Staging trades during item selection before proposal.
   5. `active_trades`: Proposed trades waiting for recipient action.
   6. `pending_forges`: Staged items for craft/recycle synthesis.
-  7. `song_suggestions`: Pool of suggested songs with title, artist, link, source, active status, creation time, and last featured timestamp.
+  7. `song_suggestions`: Pool of songs: raw title/artist/link/source, `display_title`/`display_artist`, `dedupe_key`, `tags` (`,a,b,`), `origin` (`member`/`import`), cached YouTube `view_count`, active flag, timestamps. Music tables (owned by `MusicRepository`): `song_features`, `song_votes`, `song_listens`, `song_thread_rewards`, `user_music_stats`, `song_sponsors`, `user_vinyls`, `songdle_plays`, `song_battles`, `battle_matches`, `battle_votes`.
   8. `bot_state`: Key-value state store for timestamps (e.g. `last_task_drop`, `last_activity_sweep`, `last_quote_msg_id`, `daily_song_last_post_date`, `global_commands_used`).
   9. `role_timers`: Temporary roles scheduled for removal `(user_id, role_id, expires_at)`.
   10. `creator_stats`: Monthly and all-time shop sales, items listed, total ratings, and total stars.
@@ -108,6 +116,7 @@ D:/Discord/amora-bot/
   - `/verify` & `/unverify`: `/verify` (and the 18+ panel button) creates a 15-minute single-use age session and shows a Self proof link (when `VERIFIER_PUBLIC_URL` is set) and/or a self-attestation button (unless `ALLOW_SELF_ATTESTATION=false`; Discord account age is not checked). `/unverify` resets the flag and clears the stored ID fingerprint so that ID can be used again.
 - **M.IKU Stress System**:
   - `/gift`: Allows members to gift matcha, plushies, spa vouchers, or energy drinks to reduce M.IKU's stress level.
+- `/profile` includes a 🎵 Music field; `/leaderboard` has a `curators` category. Both read from `MusicService` / `MusicRepository`.
 
 ### 3.4 `ChatListener.java` (Chat Intelligence, Active Checks, Mini-Games)
 - **Active Checks**:
@@ -174,7 +183,17 @@ D:/Discord/amora-bot/
 - Stateless apart from a 15-minute in-memory result map for the portal's status poll: no database access; the bot owns sessions, bans and roles. Requires `SITE_URL`, `API_PUBLIC_URL` (proofs are bound to its host and to `ZK_SCOPE`) and `DISCORD_CLIENT_ID` (Discord OAuth2 "identify" login; redirect URI `SITE_URL/verify.html`; the client secret is only on Netlify), so only the Discord account that owns a session can obtain a QR the verifier accepts.
 
 ### 3.12 `YouTubePlaylistImporter.java`
-- Uses YouTube Data API v3 (`YOUTUBE_API_KEY`) to fetch playlist items, parse video titles and channel names into `ImportedSong(title, artist, link)`, supporting batch song pool imports.
+- Uses YouTube Data API v3 (`YOUTUBE_API_KEY`): `importPlaylist` returns raw `ImportedSong(title, channel, link)` items; `fetchViewCounts` batches `videos.list` statistics for Higher or Lower.
+
+### 3.13 Music module (`Music*.java`, `SongMetadata.java`)
+- `MusicListener`: owns `/song [add|importplaylist|remove|tag|list|suggest|postnow]` and `/music [songdle|game|vinyls|crate|sponsor|stats|match|battle|recap]`, plus every `music:` button and the `music:sdm` modal. It also routes chat messages to Blurred Cover guesses and Song of the Day thread rewards.
+- `MusicService`: 60s scheduler (daily post, settlement, battle tick, monthly recap); voting, listening streaks, vinyls, sponsorships (150 Sparks, one pending, 7-day cooldown, refunded if the song is removed), crates (40 Sparks, duplicates refund 10), music twin, profile field.
+- `MusicGames`: Who Added It? (public, 60s, +8), Blurred Cover (public, chat guesses, 4 sharpening stages, +15/10/6/3), Songdle (private daily puzzle, 6 guesses, +3 Sparks per unused guess), Higher or Lower (private, YouTube views, 3 rewarded runs a day, max +30). Who Added It? and Blurred Cover also appear in the random lounge games (`ChatListener.spawnRandomLoungeGame`).
+- `MusicBattle`: weekly bracket (see 5.4).
+- `MusicRepository`: all music SQL (record types `Song`, `Feature`, `Tally`, `Stats`, ...). It migrates `song_suggestions` on boot and backfills `origin` (rows sharing `(added_by, created_at)` are playlist imports) and the display metadata.
+- `MusicArt`: cached oEmbed artwork lookup, pixelation, recap-card rendering.
+- `SongMetadata`: link normalization, display-title/artist cleanup ("Artist - Title (Official Video)", "X - Topic", "XVEVO"), cross-source duplicate key, loose answer matching, tag vocabulary.
+- Members may add 5 songs per 24h (staff unlimited); duplicates are rejected by link and by cleaned artist+title key.
 
 ---
 
@@ -185,9 +204,9 @@ D:/Discord/amora-bot/
 | `DISCORD_TOKEN` | Discord Bot application secret token | `App.java` |
 | `DATABASE_URL` | PostgreSQL connection URI (Neon PostgreSQL) | `DatabaseManager.java` |
 | `PORT` | Port for embedded HTTP server (default 8080) | `App.java`, `InternalApiServer.java` |
-| `DAILY_SONG_CHANNEL_ID` | Channel where daily songs are recommended | `App.java`, `CommandListener.java` |
-| `DAILY_SONG_POST_HOUR_UTC` | UTC hour (0–23) to trigger daily song post | `App.java` |
-| `LOUNGE_CHANNEL_ID` | Main community lounge channel (quotes & music pings) | `App.java`, `LoungeManager.java`, `AnnouncementListener.java` |
+| `DAILY_SONG_CHANNEL_ID` | Channel where daily songs, recaps (and battles by default) are posted | `MusicService.java`, `MusicBattle.java` |
+| `DAILY_SONG_POST_HOUR_UTC` | UTC hour (0–23) to trigger the daily song post, weekly battle and monthly recap | `MusicService.java` |
+| `LOUNGE_CHANNEL_ID` | Main community lounge channel (quotes & music pings) | `MusicService.java`, `LoungeManager.java`, `AnnouncementListener.java` |
 | `TASK_CHANNEL_ID` | Channel for mid-month and final rank task reminders | `ActivityMonitor.java` |
 | `STAFF_SCHEDULE_CHANNEL_ID` | Channel where daily staff duties are announced | `ActivityMonitor.java` |
 | `HIATUS_ROLE_ID` | Role ID exempting members from monthly activity sweeps | `ActivityMonitor.java`, `CommandListener.java` |
@@ -218,7 +237,7 @@ D:/Discord/amora-bot/
 | `HIGH_STAFF_ROLE_IDS` | Comma-separated role IDs with high staff clearances | `AnnouncementListener.java`, `CommandListener.java` |
 | `ADDSPARKS_ROLE_IDS` | Comma-separated role IDs authorized for `/addsparks` | `CommandListener.java` |
 | `PAYOUT_ROLE_IDS` | Comma-separated role IDs authorized for `/payout` | `CommandListener.java` |
-| `MUSIC_ADMIN_ROLE_IDS` | Comma-separated role IDs authorized for music management | `CommandListener.java` |
+| `MUSIC_ADMIN_ROLE_IDS` | Comma-separated role IDs authorized for music management | `MusicListener.java` |
 | `ROLE_TODAYS_WINNER` | Temporary 2-day role for active check winner | `ChatListener.java` |
 | `ROLE_MOST_ACTIVE` | Temporary 14-day role for 10 active check wins | `ChatListener.java` |
 | `ROLE_SUPER_MOST_ACTIVE` | Temporary 30-day role for 25 active check wins | `ChatListener.java` |
@@ -237,7 +256,11 @@ D:/Discord/amora-bot/
 | `VERIFIER_SHARED_SECRET` | >= 32 chars; HMAC key shared by bot and verifier for `/internal/age/*`. Unset/short = endpoints disabled | `InternalApiServer.java`, `verifier/` |
 | `ALLOW_SELF_ATTESTATION` | `false` disables the self-attestation button (default enabled) | `CommandListener.java` |
 | `ZK_ALLOW_DEV_PROOFS` | `true` lets the bot accept Self mock-passport (dev-mode) proofs. Leave unset in production: a verifier accidentally left in `ZK_DEV_MODE` is then refused (403) | `InternalApiServer.java` |
-| `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key | `YouTubePlaylistImporter.java` |
+| `YOUTUBE_API_KEY` | Google / YouTube Data API v3 key (playlist import, Higher or Lower view counts) | `YouTubePlaylistImporter.java` |
+| `MUSIC_STREAK_ROLE_ID` | Optional role held while a member has a 7+ day listening streak | `MusicService.java` |
+| `MUSIC_STREAK_ELITE_ROLE_ID` | Optional role held while a member has a 30+ day listening streak | `MusicService.java` |
+| `MUSIC_CURATOR_ROLE_ID` | Optional 7-day "Curator of the Week" role for the Song Battle champion's submitter | `MusicBattle.java` |
+| `MUSIC_BATTLE_CHANNEL_ID` | Optional channel for the weekly Song Battle (defaults to `DAILY_SONG_CHANNEL_ID`) | `MusicBattle.java` |
 
 ---
 
@@ -311,6 +334,15 @@ sequenceDiagram
 3. **Day 25**: Broadcasts final warning reminder to `TASK_CHANNEL_ID`.
 4. **Daily**: Pings assigned staff in `STAFF_SCHEDULE_CHANNEL_ID` for daily duties configured in `staff_schedule`.
 
+### 5.4 Music Day Loop
+1. **Pick** (`MusicService.postDaily`): first a pending `song_sponsors` entry, else a themed pick (Mon `chill`, Wed `underrated`, Thu `throwback`, Fri `hype`, Sun `acoustic` tags), else any song. Picks are weighted among the 25 least recently featured songs: rated songs weigh `2 + average vote`, never-featured songs ×1.5.
+2. **Post**: embed + 🔥/🙂/💤 vote buttons (`music:vote:<key>:<2|1|-1>`), 🎧 Listened (`music:listen:<key>`), a link button, and a discussion thread. Row stored in `song_features` (key = UTC date; staff bonus drops use `<date>-bonus-<epoch>`).
+3. **Listen**: once per drop: +1 Spark, streak update (+10 Sparks every 7 days), that song's vinyl, and the `MUSIC_STREAK_ROLE_ID` (7+) / `MUSIC_STREAK_ELITE_ROLE_ID` (30+) roles. Each listen refreshes their 2-day timer, so `RoleManager` removes them after a missed day.
+4. **Thread**: the first 5 replies with at least 3 words / 12 characters earn +2 Sparks (`song_thread_rewards`).
+5. **Settle** (next drop or after 26h): voting closes and the buttons are disabled. For member picks, the submitter gets `min(40, 5 + 2·🔥 + 🙂)` Sparks and `max(0, score) + 3` Curator Points; their own votes don't count. Playlist imports (`origin = 'import'`) earn nobody rewards.
+6. **Weekly battle** (`MusicBattle`, Mondays): a 16/8/4-song bracket seeded from the best-rated songs of the last 30 days, one 24h round per day. Ties go to the better-rated song. The champion's curator gets +50 Sparks, +20 Curator Points and `MUSIC_CURATOR_ROLE_ID` for 7 days.
+7. **Monthly recap** (day 1): rendered card + embed for the previous month in `DAILY_SONG_CHANNEL_ID`, once per month (`bot_state.music_recap_<YYYY-MM>`).
+
 ---
 
 ## 6. How to Build, Test, and Run
@@ -339,3 +371,5 @@ sequenceDiagram
 3. **Event Reminders Memory State**: `AnnouncementListener.activeTimers` is an in-memory `ConcurrentHashMap`. Restarting the bot clears scheduled futures for pending event notifications.
 4. **Temporary Roles**: Temporary roles are safely persisted in `role_timers` in PostgreSQL, so bot restarts will not lose track of pending role revocations.
 5. **No Direct `sed` or String Overwrites**: When editing `CommandListener.java` or `DatabaseManager.java`, remember they are large files (~3000-5000 lines); always read the target lines first to obtain fresh anchor tags.
+6. **Sparks are atomic**: change balances only with `DatabaseManager.addSparks(userId, delta)` (returns the new balance) or `trySpendSparks(userId, cost)` (returns -1 when the balance is too low). Never read-then-write a balance.
+7. **Music interactions**: every `music:` component goes to `MusicListener`, which acknowledges (defer) before any DB or HTTP work. `MusicArt.artworkUrl` blocks on oEmbed, so only call it after deferring.

@@ -1,18 +1,8 @@
 package com.amore;
 
-import java.awt.Color;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
-import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
-import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
@@ -20,10 +10,6 @@ import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 
 public class App {
 
-    private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
-    private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
-    private static final int DAILY_SONG_POST_HOUR_UTC = parseUtcHour(System.getenv("DAILY_SONG_POST_HOUR_UTC"));
-    private static final ScheduledExecutorService DAILY_SONG_SCHEDULER = Executors.newSingleThreadScheduledExecutor();
 
     private static String requiredEnv(String key) {
         String value = System.getenv(key);
@@ -31,21 +17,6 @@ public class App {
             throw new IllegalStateException("Missing required environment variable: " + key);
         }
         return value;
-    }
-
-    private static int parseUtcHour(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return 0;
-        }
-        try {
-            int hour = Integer.parseInt(raw.trim());
-            if (hour < 0 || hour > 23) {
-                return 0;
-            }
-            return hour;
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     public static void main(String[] args) {
@@ -60,7 +31,7 @@ public class App {
             JDA jda = JDABuilder.createDefault(token)
                     .enableIntents(net.dv8tion.jda.api.requests.GatewayIntent.MESSAGE_CONTENT)
                     .setActivity(Activity.playing("AMORA ✦: Matcha Says to Type /pull"))
-                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener())
+                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener(), new MusicListener())
                     .build();
 
             jda.awaitReady();
@@ -121,7 +92,8 @@ public class App {
                             .addChoice("Urgent Directives", "urgent")
                             .addChoice("⏱ Active Check Wins", "acwins") 
                             .addChoice("🛒 Monthly Shop Orders", "orders_month")   
-                            .addChoice("👑 All-Time Shop Orders", "orders_alltime") 
+                            .addChoice("👑 All-Time Shop Orders", "orders_alltime")
+                            .addChoice("🎵 Top Music Curators", "curators")
                         ),
 
                     Commands.slash("shop", "AMORA Creator Marketplace")
@@ -193,30 +165,15 @@ public class App {
                         .addOption(OptionType.STRING, "goal_phrase", "Phrase directly before the target number (e.g. Goal)", true)
                         .addOption(OptionType.INTEGER, "daily_limit", "Max number of Activity Checks allowed per day", false),
 
+
                     Commands.slash("profile", "View your AMORA profile")
-                        .addOption(OptionType.USER, "user", "Whose profile to view", false),
-
-                    Commands.slash("song", "Manage the AMORA daily song pool")
-                    .addSubcommands(
-                    new SubcommandData("add", "Add a Spotify or YouTube song to the daily pool")
-                    .addOption(OptionType.STRING, "title", "Song title", true)
-                    .addOption(OptionType.STRING, "artist", "Artist name", true)
-                    .addOption(OptionType.STRING, "link", "Spotify or YouTube link", true),
-
-                    new SubcommandData("importplaylist", "Import all songs from a public YouTube playlist")
-                    .addOption(OptionType.STRING, "link", "Public YouTube playlist URL", true),
-
-                    new SubcommandData("remove", "Remove a song by ID (owner or admin)")
-                    .addOption(OptionType.INTEGER, "id", "Song ID from /song list", true),
-
-                    new SubcommandData("list", "Show recent songs in the AMORA pool"),
-                    new SubcommandData("suggest", "Get a random song recommendation from the pool"),
-                    new SubcommandData("postnow", "Admin: force-post a song recommendation now")
-                    )
-                ).queue();
+                        .addOption(OptionType.USER, "user", "Whose profile to view", false)
+                )
+                .addCommands(MusicListener.commands())
+                .queue();
 
             System.out.println("✦ Slash commands registered successfully.");
-            startDailySongScheduler(jda);
+            MusicService.start(jda);
 
         } catch (Exception e) {
             System.out.println("❌ Critical failure during bot initialization.");
@@ -224,97 +181,4 @@ public class App {
         }
     }
 
-    private static void startDailySongScheduler(JDA jda) {
-        DAILY_SONG_SCHEDULER.scheduleAtFixedRate(() -> {
-            try {
-                attemptAutomaticDailySongPost(jda);
-            } catch (Exception e) {
-                System.out.println("❌ Daily song scheduler error.");
-                e.printStackTrace();
-            }
-        }, 30, 60, TimeUnit.SECONDS);
-    }
-
-    private static void attemptAutomaticDailySongPost(JDA jda) {
-        if (DAILY_SONG_CHANNEL_ID == null || DAILY_SONG_CHANNEL_ID.isBlank()) {
-            return;
-        }
-
-        try {
-            DatabaseManager db = DatabaseManager.getInstance();
-            ZonedDateTime nowUtc = ZonedDateTime.now(ZoneOffset.UTC);
-
-            if (nowUtc.getHour() < DAILY_SONG_POST_HOUR_UTC) {
-                return;
-            }
-
-            String todayUtc = LocalDate.now(ZoneOffset.UTC).toString();
-            String lastPostedDate = db.getBotState("daily_song_last_post_date");
-
-            if (todayUtc.equals(lastPostedDate)) {
-                return;
-            }
-
-            postSongRecommendation(jda, true);
-        } catch (Exception e) {
-            System.err.println("Warning during daily song check (Neon may be waking up): " + e.getMessage());
-        }
-    }
-
-    public static boolean postSongRecommendation(JDA jda, boolean lockForToday) {
-        if (DAILY_SONG_CHANNEL_ID == null || DAILY_SONG_CHANNEL_ID.isBlank()) {
-            return false;
-        }
-
-        DatabaseManager db = DatabaseManager.getInstance();
-        DatabaseManager.SongSuggestionRecord song = db.getRandomActiveSongSuggestion();
-        if (song == null) {
-            return false;
-        }
-
-        TextChannel channel = jda.getTextChannelById(DAILY_SONG_CHANNEL_ID);
-        if (channel == null) {
-            return false;
-        }
-
-        EmbedBuilder embed = new EmbedBuilder()
-                .setColor(new Color(255, 105, 180))
-                .setTitle("✦ AMORA SONG OF THE DAY ✦")
-                .setDescription(
-                        "🎶 **" + song.title + "**\n" +
-                        "by **" + song.artist + "**\n\n" +
-                        "🎧 **Listen here:**\n" + song.link + "\n\n" +
-                        "🫶 **Suggested by:** <@" + song.addedBy + ">"
-                )
-                .addField("Source", song.source, true)
-                .addField("Song ID", "#" + song.songId, true)
-                .setFooter("AMORA Daily Recommendation • Curated by the community", null);
-                
-        String artworkUrl = CommandListener.fetchSongArtwork(song.link);
-        if (artworkUrl != null && !artworkUrl.isBlank()) {
-            embed.setImage(artworkUrl);
-        }
-
-        try {
-            channel.sendMessageEmbeds(embed.build()).complete();
-            db.markSongFeatured(song.songId, System.currentTimeMillis());
-
-            if (lockForToday) {
-                db.setBotState("daily_song_last_post_date", LocalDate.now(ZoneOffset.UTC).toString());
-            }
-
-            if (LOUNGE_CHANNEL_ID != null && !LOUNGE_CHANNEL_ID.isBlank()) {
-                TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
-                if (lounge != null) {
-                    lounge.sendMessage("🎶 ✦ **A new Song of the Day just dropped!** ✦\nHead over to <#" + DAILY_SONG_CHANNEL_ID + "> to listen to **" + song.title + "** by **" + song.artist + "**! ✨").queue();
-                }
-            }
-
-            return true;
-        } catch (Exception e) {
-            System.out.println("❌ Failed to post daily song recommendation.");
-            e.printStackTrace();
-            return false;
-        }
-    }
 }

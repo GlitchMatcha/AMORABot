@@ -12,19 +12,12 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import org.json.JSONObject;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
-import java.net.URLDecoder;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -62,8 +55,6 @@ public class CommandListener extends ListenerAdapter {
     private static final String URGENT_BOUNTY_FORUM_ID = System.getenv("URGENT_BOUNTY_FORUM_ID");
     private static final String ADDSPARKS_ROLE_IDS = System.getenv("ADDSPARKS_ROLE_IDS");
     private static final String PAYOUT_ROLE_IDS = System.getenv("PAYOUT_ROLE_IDS");
-    private static final String DAILY_SONG_CHANNEL_ID = System.getenv("DAILY_SONG_CHANNEL_ID");
-    private static final String MUSIC_ADMIN_ROLE_IDS = System.getenv("MUSIC_ADMIN_ROLE_IDS");
     private static final String ORDER_CHANNEL_ID = System.getenv("ORDER_CHANNEL_ID");
     private static final String MEMBER_ROLE_ID = System.getenv("MEMBER_ROLE_ID");
     private static final String AMORIX_ROLE_ID = System.getenv("AMORIX_ROLE_ID");
@@ -345,16 +336,6 @@ public class CommandListener extends ListenerAdapter {
         return true;
     }
 
-    private boolean isMusicStaff(SlashCommandInteractionEvent event) {
-        if (event.getMember() == null) return false;
-        if (event.getMember().hasPermission(Permission.ADMINISTRATOR)) return true;
-        
-        if (MUSIC_ADMIN_ROLE_IDS != null && !MUSIC_ADMIN_ROLE_IDS.isBlank()) {
-            return hasAnyAllowedRole(event, MUSIC_ADMIN_ROLE_IDS);
-        }
-        return false;
-    }
-
     public static boolean isOfficialMember(net.dv8tion.jda.api.entities.Member member) {
         if (member == null) return false;
         if (member.hasPermission(Permission.ADMINISTRATOR)) return true;
@@ -425,56 +406,6 @@ public class CommandListener extends ListenerAdapter {
         }
         return null;
     }
-
-    private String normalizeSongLink(String raw) {
-        if (raw == null) {
-            return "";
-        }
-
-        String link = raw.trim();
-        if (link.isBlank()) {
-            return "";
-        }
-
-        try {
-            URI uri = URI.create(link);
-            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-            if (host.startsWith("www.")) {
-                host = host.substring(4);
-            }
-
-            if (host.equals("youtu.be")) {
-                String videoId = uri.getPath() == null ? "" : uri.getPath().replace("/", "").trim();
-                if (!videoId.isBlank()) {
-                    return "https://www.youtube.com/watch?v=" + videoId;
-                }
-            }
-
-            if (host.equals("youtube.com") || host.equals("m.youtube.com") || host.equals("music.youtube.com")) {
-                String videoId = getQueryParam(uri.getRawQuery(), "v");
-                if (videoId != null && !videoId.isBlank()) {
-                    return "https://www.youtube.com/watch?v=" + videoId; 
-                }
-            }
-
-            if (host.equals("open.spotify.com")) {
-                String path = uri.getPath() == null ? "" : uri.getPath().trim();
-                if (path.startsWith("/track/")) {
-                    String trackId = path.substring("/track/".length());
-                    int slashIndex = trackId.indexOf('/');
-                    if (slashIndex != -1) {
-                        trackId = trackId.substring(0, slashIndex);
-                    }
-                    if (!trackId.isBlank()) {
-                        return "https://open.spotify.com/track/" + trackId;
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        return link;
-    }
     
     private String getCustomEmoji(Guild guild, String emojiName, String fallback) {
         if (guild == null) return fallback;
@@ -482,88 +413,6 @@ public class CommandListener extends ListenerAdapter {
                 .findFirst()
                 .map(net.dv8tion.jda.api.entities.emoji.RichCustomEmoji::getAsMention)
                 .orElse(fallback);
-    }
-    
-    private String getQueryParam(String rawQuery, String key) {
-        if (rawQuery == null || rawQuery.isBlank()) {
-            return null;
-        }
-
-        for (String pair : rawQuery.split("&")) {
-            int idx = pair.indexOf('=');
-            if (idx <= 0) {
-                continue;
-            }
-
-            String paramKey = pair.substring(0, idx);
-            String paramValue = pair.substring(idx + 1);
-
-            if (paramKey.equals(key)) {
-                return URLDecoder.decode(paramValue, StandardCharsets.UTF_8);
-            }
-        }
-
-        return null;
-    }
-
-    private boolean isSupportedSongLink(String link) {
-        String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
-        return normalized.startsWith("https://open.spotify.com/track/")
-                || normalized.startsWith("https://www.youtube.com/watch?v=");
-    }
-
-    private boolean isYouTubePlaylistLink(String link) {
-        if (link == null || link.isBlank()) {
-            return false;
-        }
-
-        String lower = link.trim().toLowerCase(Locale.ROOT);
-        if ((lower.contains("youtube.com") || lower.contains("youtu.be")) && lower.contains("list=")) {
-            return true;
-        }
-        if (link.startsWith("PL") || link.startsWith("OL") || link.startsWith("RD") || link.startsWith("UU")) {
-            return true;
-        }
-        
-        return false;
-    }
-
-    private String detectSongSource(String link) {
-        String normalized = normalizeSongLink(link).toLowerCase(Locale.ROOT);
-        if (normalized.contains("spotify")) {
-            return "Spotify";
-        }
-        return "YouTube";
-    }
-
-    private String truncateText(String text, int maxLength) {
-        if (text == null) {
-            return "";
-        }
-        if (text.length() <= maxLength) {
-            return text;
-        }
-        return text.substring(0, Math.max(0, maxLength - 3)) + "...";
-    }
-
-    private EmbedBuilder buildSongEmbed(DatabaseManager.SongSuggestionRecord song, String title, String footer) {
-        EmbedBuilder eb = new EmbedBuilder()
-                .setColor(new Color(255, 105, 180))
-                .setTitle(title)
-                .setDescription(
-                        "🎵 **" + song.title + "**\n" +
-                        "by **" + song.artist + "**\n\n" +
-                        "🎧 **Listen here:**\n" + song.link + "\n\n" +
-                        "🫶 **Suggested by:** <@" + song.addedBy + ">"
-                )
-                .addField("Source", song.source, true)
-                .addField("Song ID", "#" + song.songId, true)
-                .setFooter(footer, null);
-        String artworkUrl = fetchSongArtwork(song.link);
-        if (artworkUrl != null && !artworkUrl.isBlank()) {
-            eb.setImage(artworkUrl);
-        }
-        return eb;
     }
 
     private String removeItem(String inventory, String exactItemName) {
@@ -799,80 +648,6 @@ public class CommandListener extends ListenerAdapter {
             }
         }
         return count;
-    }
-    
-    public static String fetchSongArtwork(String link) {
-        try {
-            String normalized = link.toLowerCase();
-
-            if (normalized.contains("spotify.com/")) {
-                return fetchSpotifyThumbnail(link);
-            }
-
-            if (normalized.contains("youtube.com/") || normalized.contains("youtu.be/")) {
-                return fetchYouTubeThumbnail(link);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return null;
-    }
-
-    private static String fetchSpotifyThumbnail(String link) {
-        try {
-            String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-            String endpoint = "https://open.spotify.com/oembed?url=" + encodedUrl;
-
-            HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-
-                JSONObject json = new JSONObject(response.toString());
-                return json.optString("thumbnail_url", null);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public static String fetchYouTubeThumbnail(String link) {
-        try {
-            String encodedUrl = URLEncoder.encode(link, StandardCharsets.UTF_8);
-            String endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodedUrl;
-
-            HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-
-                JSONObject json = new JSONObject(response.toString());
-                return json.optString("thumbnail_url", null);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
     }
     
     @Override
@@ -2431,8 +2206,10 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            // Deduct Sparks from PostgreSQL
-            db.updateSparks(userId, currentSparks - cost);
+            if (db.trySpendSparks(userId, cost) < 0) {
+                event.reply("❌ You need **" + cost + " Sparks** to send a " + itemName + ".").setEphemeral(true).queue();
+                return;
+            }
             db.incrementGlobalStat("global_miku_gifts", 1);
 
             // Dispatch the Bridge Embed into the channel for Python M.IKU to intercept
@@ -2759,11 +2536,15 @@ public class CommandListener extends ListenerAdapter {
                     newPity = currentPity + 1;
                 }
 
-                db.updateSparks(pullUserId, currentSparks - pullCost);
+                int afterSpend = db.trySpendSparks(pullUserId, pullCost);
+                if (afterSpend < 0) {
+                    event.reply("  You need **50 Sparks** to perform a pull.").setEphemeral(true).queue();
+                    return;
+                }
                 db.updatePity(pullUserId, newPity);
                 db.addInventoryItem(pullUserId, reward);
 
-                remainingSparks = currentSparks - pullCost;
+                remainingSparks = afterSpend;
                 db.incrementGlobalStat("global_gacha_pulls", 1);
             }
 
@@ -2840,6 +2621,7 @@ public class CommandListener extends ListenerAdapter {
                             "**Directives Cleared:** `" + directivesCleared + "`\n" +
                             "**Urgent Directives:** `" + urgentCleared + "`",
                             false)
+                    .addField("🎵 Music", MusicService.profileField(targetId), false)
                     .setThumbnail(targetUser.getEffectiveAvatarUrl())
                     .setFooter("AMORA Profile Archive", null);
 
@@ -3005,6 +2787,10 @@ public class CommandListener extends ListenerAdapter {
                 title = "👑 AM0RA LEGENDARY SHOPS (ALL TIME)";
                 color = new Color(255, 165, 0); 
                 topList = db.getTopShopsAllTime();
+            } else if (category.equals("curators")) {
+                title = "🎵 AM0RA TOP MUSIC CURATORS";
+                color = new Color(255, 105, 180);
+                topList = MusicRepository.get().topCurators();
             }
 
             StringBuilder desc = new StringBuilder();
@@ -3475,14 +3261,13 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            int currentTargetSparks = db.getSparks(targetUser.getId());
-            db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
+            int newTargetSparks = db.addSparks(targetUser.getId(), amount);
 
             event.replyEmbeds(new EmbedBuilder()
                     .setColor(Color.GREEN)
                     .setTitle("VAULT UPDATED")
                     .setDescription("Minted **" + amount + " Sparks** for " + targetUser.getAsMention() + ".")
-                    .addField("Updated Balance", "`" + (currentTargetSparks + amount) + " Sparks`", false)
+                    .addField("Updated Balance", "`" + newTargetSparks + " Sparks`", false)
                     .build()).queue();
 
             sendAuditLog(event.getGuild(), "Sparks Minted",
@@ -3541,8 +3326,7 @@ public class CommandListener extends ListenerAdapter {
             User targetUser = event.getOption("target").getAsUser();
             int amount = event.getOption("amount").getAsInt();
             String reason = event.getOption("reason").getAsString();
-            int currentTargetSparks = db.getSparks(targetUser.getId());
-            db.updateSparks(targetUser.getId(), currentTargetSparks + amount);
+            db.addSparks(targetUser.getId(), amount);
             db.incrementGlobalStat("global_points_injected", amount);
             db.incrementStaffStat(event.getUser().getId(), "payouts_processed", 1);
             
@@ -3560,282 +3344,6 @@ public class CommandListener extends ListenerAdapter {
                     event.getUser().getAsMention() + " awarded " + targetUser.getAsMention() + " `"
                             + amount + " Sparks` for **" + reason + "**.",
                     new Color(255, 215, 0));
-        }
-
-        if (event.getName().equals("song")) {
-            String subcommand = event.getSubcommandName();
-
-            if (subcommand == null) {
-                event.reply("  Missing subcommand. Use `/song add`, `/song importplaylist`, `/song list`, `/song suggest`, or `/song remove`.")
-                        .setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("add")) {
-                String title = event.getOption("title").getAsString().trim();
-                String artist = event.getOption("artist").getAsString().trim();
-                String link = normalizeSongLink(event.getOption("link").getAsString().trim());
-
-                if (title.isBlank() || artist.isBlank() || link.isBlank()) {
-                    event.reply("  Title, artist, and link are required.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (title.length() > 120 || artist.length() > 120 || link.length() > 500) {
-                    event.reply("  One or more fields are too long.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (!isSupportedSongLink(link)) {
-                    event.reply("  Please submit a valid Spotify track or YouTube song link.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (db.songLinkExists(link)) {
-                    event.reply("  That exact song link is already in the AMORA pool.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                DatabaseManager.SongSuggestionRecord created = db.addSongSuggestion(
-                        userId,
-                        title,
-                        artist,
-                        link,
-                        detectSongSource(link)
-                );
-
-                if (created == null) {
-                    event.reply("  Failed to save the song suggestion.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.replyEmbeds(
-                        buildSongEmbed(created, "✦ SONG ADDED TO THE AMORA POOL ✦", "AMORA Daily Music Pool").build()
-                ).setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("importplaylist")) {
-                if (!isMusicStaff(event)) {
-                    event.reply("  Only AMORA Staff can mass-import playlists.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-                
-                String playlistLink = event.getOption("link").getAsString().trim();
-
-                if (playlistLink.isBlank()) {
-                    event.reply("  Playlist link is required.").setEphemeral(true).queue();
-                    return;
-                }
-
-                if (!isYouTubePlaylistLink(playlistLink)) {
-                    event.reply("  Please provide a valid public YouTube playlist link or Playlist ID.").setEphemeral(true).queue();
-                    return;
-                }
-
-                event.deferReply(true).queue(hook -> {
-                    scheduler.execute(() -> {
-                        try {
-                            List<YouTubePlaylistImporter.ImportedSong> importedSongs =
-                                    YouTubePlaylistImporter.importPlaylist(playlistLink);
-
-                            if (importedSongs.isEmpty()) {
-                                hook.editOriginal("  No usable songs were found in that playlist.").queue();
-                                return;
-                            }
-
-                            int skippedExisting = 0;
-                            int skippedInvalid = 0;
-                            Set<String> seenThisImport = new HashSet<>();
-                            
-                            List<String> bulkLinks = new ArrayList<>();
-                            List<String> bulkTitles = new ArrayList<>();
-                            List<String> bulkArtists = new ArrayList<>();
-                            StringBuilder preview = new StringBuilder();
-
-                            for (YouTubePlaylistImporter.ImportedSong imported : importedSongs) {
-                                String normalizedLink = normalizeSongLink(imported.link());
-
-                                if (normalizedLink.isBlank() || !isSupportedSongLink(normalizedLink)) {
-                                    skippedInvalid++;
-                                    continue;
-                                }
-
-                                String dedupeKey = normalizedLink.toLowerCase(Locale.ROOT);
-                                if (!seenThisImport.add(dedupeKey)) {
-                                    skippedInvalid++;
-                                    continue;
-                                }
-
-                                if (db.songLinkExists(normalizedLink)) {
-                                    skippedExisting++;
-                                    continue;
-                                }
-
-                                bulkLinks.add(normalizedLink);
-                                bulkTitles.add(imported.title());
-                                bulkArtists.add(imported.artist());
-
-                                if (preview.length() < 900) {
-                                    preview.append("✦ **").append(truncateText(imported.title(), 40)).append("**")
-                                            .append(" — ").append(truncateText(imported.artist(), 30))
-                                            .append("\n");
-                                }
-                            }
-
-                            int added = 0;
-                            if (!bulkLinks.isEmpty()) {
-                                added = db.bulkAddSongSuggestions(userId, bulkLinks, bulkTitles, bulkArtists, "YouTube");
-                            }
-
-                            EmbedBuilder resultEmbed = new EmbedBuilder()
-                                    .setColor(new Color(255, 105, 180))
-                                    .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
-                                    .setDescription(
-                                            "🎵 Playlist scan finished.\n\n" +
-                                            " Added: `" + added + "`\n" +
-                                            "♻️ Already in pool: `" + skippedExisting + "`\n" +
-                                            "⚠️ Skipped/invalid: `" + skippedInvalid + "`"
-                                    )
-                                    .setFooter("AMORA Music Importer", null);
-
-                            if (preview.length() > 0) {
-                                resultEmbed.addField("Imported Songs Preview", preview.toString(), false);
-                            }
-
-                            hook.editOriginalEmbeds(resultEmbed.build()).setContent("").queue();
-
-                        } catch (Throwable t) { 
-                            t.printStackTrace();
-                            String errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
-                            if (t instanceof java.util.concurrent.CompletionException && t.getCause() != null) {
-                                errorMsg = t.getCause().getMessage() != null ? t.getCause().getMessage() : t.getCause().getClass().getSimpleName();
-                            }
-                            hook.editOriginal("  Failed to import playlist: " + errorMsg).queue();
-                        }
-                    });
-                });
-                return;
-            }
-            if (subcommand.equals("remove")) {
-                int songId = event.getOption("id").getAsInt();
-                DatabaseManager.SongSuggestionRecord song = db.getSongSuggestionById(songId);
-
-                if (song == null || !song.active) {
-                    event.reply("  That song ID does not exist in the active pool.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean isOwner = userId.equals(song.addedBy);
-                boolean isStaff = isMusicStaff(event);
-
-                if (!isOwner && !isStaff) {
-                    event.reply("  You can only remove songs you added yourself unless you are AMORA Staff.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean removed = db.deactivateSongSuggestion(songId);
-                if (!removed) {
-                    event.reply("  Failed to remove that song.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.reply(" Removed **" + song.title + "** by **" + song.artist + "** from the AMORA pool.")
-                        .setEphemeral(true).queue();
-                return;
-            }
-
-            if (subcommand.equals("list")) {
-                if (!isMusicStaff(event)) {
-                    event.reply("  Only AMORA Staff can view the full song pool directory.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-                
-                List<DatabaseManager.SongSuggestionRecord> songs = db.getRecentSongSuggestions(5000);
-
-                if (songs.isEmpty()) {
-                    event.reply("  The AMORA song pool is empty right now. Add one with `/song add`.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                StringBuilder fileContent = new StringBuilder();
-                fileContent.append("✦ AMORA COMPLETE SONG POOL DIRECTORY ✦\n");
-                fileContent.append("Total Active Songs: ").append(songs.size()).append("\n");
-                fileContent.append("=========================================\n\n");
-
-                for (DatabaseManager.SongSuggestionRecord song : songs) {
-                    fileContent.append("[ ID: #").append(song.songId).append(" ]\n");
-                    fileContent.append("Title   : ").append(song.title).append("\n");
-                    fileContent.append("Artist  : ").append(song.artist).append("\n");
-                    fileContent.append("Link    : ").append(song.link).append("\n");
-                    fileContent.append("Added By: ").append(song.addedBy).append("\n");
-                    fileContent.append("-----------------------------------------\n");
-                }
-
-                byte[] fileBytes = fileContent.toString().getBytes(StandardCharsets.UTF_8);
-                FileUpload upload = FileUpload.fromData(fileBytes, "AMORA_Song_Directory.txt");
-
-                event.reply("📂 **AMORA Song Directory**\nBecause the database is so large, I have compiled the entire active song pool into this text file. \n\n*Tip: Open it and use `Ctrl+F` to instantly search for the song ID you need to remove!*")
-                        .addFiles(upload)
-                        .setEphemeral(true) 
-                        .queue();
-                return;
-            }
-
-            if (subcommand.equals("suggest")) {
-                DatabaseManager.SongSuggestionRecord song = db.getRandomActiveSongSuggestion();
-
-                if (song == null) {
-                    event.reply("  There are no active song suggestions yet.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.replyEmbeds(
-                        buildSongEmbed(song, "✦ RANDOM AMORA SONG PICK ✦", "AMORA Music Recommendation").build()
-                ).queue();
-                return;
-            }
-
-            if (subcommand.equals("postnow")) {
-                if (!isMusicStaff(event)) {
-                    event.reply("  Only AMORA Staff can force-post the daily song.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                if (DAILY_SONG_CHANNEL_ID == null || DAILY_SONG_CHANNEL_ID.isBlank()) {
-                    event.reply("  DAILY_SONG_CHANNEL_ID is not configured.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                boolean posted = App.postSongRecommendation(event.getJDA(), false);
-                if (!posted) {
-                    event.reply("  Could not post a song right now. Check the channel ID or make sure the pool has songs.")
-                            .setEphemeral(true).queue();
-                    return;
-                }
-
-                event.reply(" Song recommendation posted in <#" + DAILY_SONG_CHANNEL_ID + ">.")
-                        .setEphemeral(true).queue();
-                return;
-            }
-
-            event.reply("  Unknown song subcommand.")
-                    .setEphemeral(true).queue();
-            return;
         }
     }
 
@@ -3974,8 +3482,7 @@ public class CommandListener extends ListenerAdapter {
                 String newInv = removeMultipleItems(currentInv, selected, 1);
                 db.updateInventory(ownerId, newInv);
 
-                int curSparks = db.getSparks(ownerId);
-                db.updateSparks(ownerId, curSparks + sparks);
+                int newBalance = db.addSparks(ownerId, sparks);
 
                 EmbedBuilder success = new EmbedBuilder()
                         .setColor(new Color(80, 200, 120))
@@ -3986,7 +3493,7 @@ public class CommandListener extends ListenerAdapter {
                         )
                         .addField("♻️ Recycled Item", "`" + selected + "`", false)
                         .addField("⚡ Sparks Recovered", "`+" + sparks + " Sparks`", true)
-                        .addField("🏦 New Balance", "`" + (curSparks + sparks) + " Sparks`", true)
+                        .addField("🏦 New Balance", "`" + newBalance + " Sparks`", true)
                         .setFooter("AMORA Recovery Forge", null);
 
                 event.replyEmbeds(success.build()).queue();
