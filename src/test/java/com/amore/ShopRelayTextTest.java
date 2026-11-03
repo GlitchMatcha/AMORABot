@@ -55,7 +55,7 @@ public class ShopRelayTextTest {
     public void triggerWordsAreListings() {
         assertTrue(ChatListener.isShopListing("Velvet Eclipse ⤹ **20** <:RobuxGold:1206361013054611466>"));
         assertTrue(ChatListener.isShopListing("𝙿𝚛𝚒𝚌𝚎: 15"));
-        assertTrue(ChatListener.isShopListing("Outfit pack 1 — 30"));
+        assertTrue(ChatListener.isShopListing("Outfit pack 1 \u2014 30"));
         assertTrue(ChatListener.isShopListing("new drop 🛒"));
         assertFalse(ChatListener.isShopListing("Fit Showcase **Below!**"));
     }

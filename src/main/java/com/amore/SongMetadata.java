@@ -31,7 +31,8 @@ public final class SongMetadata {
             "\\s+(official (music )?video|official audio|official mv|m/v|mv|lyric video|lyrics|visuali[sz]er)\\s*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern QUOTED = Pattern.compile("[‘'\"“「『]([^’'\"”」』]{1,120})[’'\"”」』]");
-    private static final Pattern DASH_SPLIT = Pattern.compile("\\s+[-–—]\\s+");
+    /** Splits "Artist - Title"; uploaders also use en dash (U+2013) and em dash (U+2014), written as escapes. */
+    private static final Pattern DASH_SPLIT = Pattern.compile("\\s+[-\u2013\u2014]\\s+");
     private static final Pattern FEAT = Pattern.compile(
             "[\\(\\[]?\\s*\\b(feat\\.?|ft\\.?|featuring|with)\\s+[^\\)\\]]*[\\)\\]]?", Pattern.CASE_INSENSITIVE);
 

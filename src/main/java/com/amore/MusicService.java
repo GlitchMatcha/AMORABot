@@ -218,7 +218,7 @@ public final class MusicService {
         if (lockForToday) db().setBotState("daily_song_last_post_date", today.toString());
 
         final MusicRepository.Song posted = song;
-        message.createThreadChannel(SongMetadata.truncate(song.displayTitle() + " — " + song.displayArtist(), 95))
+        message.createThreadChannel(SongMetadata.truncate(song.displayTitle() + " - " + song.displayArtist(), 95))
                 .queue(thread -> {
                     repo().setFeatureThread(key, thread.getId());
                     rememberThread(thread.getId(), key);
@@ -551,7 +551,7 @@ public final class MusicService {
             MusicRepository.Song s = repo().songById(v.songId());
             if (s == null) continue;
             String rarity = rarityOf(tallies.getOrDefault(v.songId(), new MusicRepository.Tally(0, 0, 0)));
-            entries.add(new Entry(rarity + " · **" + SongMetadata.truncate(s.displayTitle(), 40) + "** — "
+            entries.add(new Entry(rarity + " · **" + SongMetadata.truncate(s.displayTitle(), 40) + "** - "
                     + SongMetadata.truncate(s.displayArtist(), 24) + (v.copies() > 1 ? " x" + v.copies() : ""), rarityRank(rarity)));
         }
         entries.sort(Comparator.comparingInt(Entry::rank).reversed());
@@ -612,7 +612,7 @@ public final class MusicService {
                 .addField("Higher or Lower best", "`" + s.hlBest() + "` in a row", true)
                 .setThumbnail(user.getEffectiveAvatarUrl());
         if (bestSong != null) {
-            eb.addField("Best-rated pick", "**" + bestSong.displayTitle() + "** — " + bestSong.displayArtist()
+            eb.addField("Best-rated pick", "**" + bestSong.displayTitle() + "** - " + bestSong.displayArtist()
                     + " (score " + bestScore + ")", false);
         }
         return eb;
@@ -733,7 +733,7 @@ public final class MusicService {
             if (hero == null) hero = s;
             int[] v = ranked.get(i).getValue();
             topLines.add(new MusicArt.RecapLine(s.displayTitle(), s.displayArtist() + " · score " + v[0] + " · " + v[1] + " votes"));
-            topText.append("`#").append(i + 1).append("` **").append(s.displayTitle()).append("** — ").append(s.displayArtist())
+            topText.append("`#").append(i + 1).append("` **").append(s.displayTitle()).append("** - ").append(s.displayArtist())
                     .append(" (score ").append(v[0]).append(")\n");
         }
 
@@ -763,8 +763,8 @@ public final class MusicService {
         int listens = repo().countListensBetweenDates(fromDate, toDate);
 
         List<MusicArt.RecapLine> highlights = List.of(
-                new MusicArt.RecapLine("Top Curator", topCurator == null ? "—" : userName(jda, topCurator)),
-                new MusicArt.RecapLine("Longest Streak", streakUser == null ? "—" : userName(jda, streakUser) + " · " + streakLen + "d"),
+                new MusicArt.RecapLine("Top Curator", topCurator == null ? "-" : userName(jda, topCurator)),
+                new MusicArt.RecapLine("Longest Streak", streakUser == null ? "-" : userName(jda, streakUser) + " · " + streakLen + "d"),
                 new MusicArt.RecapLine("Votes Cast", String.valueOf(votes)),
                 new MusicArt.RecapLine("Listens", String.valueOf(listens)));
 
@@ -776,8 +776,8 @@ public final class MusicService {
                 .setColor(PINK)
                 .setTitle("Music recap: " + period)
                 .setDescription(topText.length() == 0 ? "_No rated songs this month._" : topText.toString())
-                .addField("Top curator", topCurator == null ? "—" : "<@" + topCurator + ">", true)
-                .addField("Longest streak", streakUser == null ? "—" : "<@" + streakUser + ">, " + streakLen + " days", true)
+                .addField("Top curator", topCurator == null ? "-" : "<@" + topCurator + ">", true)
+                .addField("Longest streak", streakUser == null ? "-" : "<@" + streakUser + ">, " + streakLen + " days", true)
                 .addField("This month", features.size() + " songs, " + votes + " votes, " + listens + " listens", false)
                 .setImage("attachment://music_recap.png")
                 .setFooter("AMORA Music • " + Instant.ofEpochMilli(to - 1).atZone(ZoneOffset.UTC).toLocalDate(), null);

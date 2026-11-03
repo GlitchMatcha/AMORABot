@@ -332,7 +332,7 @@ public class MusicListener extends ListenerAdapter {
             }
             toAdd.add(new YouTubePlaylistImporter.ImportedSong(item.title(), item.artist(), link));
             if (preview.length() < 900) {
-                preview.append("**").append(SongMetadata.truncate(meta.title(), 40)).append("** — ")
+                preview.append("**").append(SongMetadata.truncate(meta.title(), 40)).append("** - ")
                         .append(SongMetadata.truncate(meta.artist(), 30)).append("\n");
             }
         }

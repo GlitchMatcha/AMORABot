@@ -152,7 +152,7 @@ public final class MusicBattle {
     }
 
     private static String label(MusicRepository.Song s) {
-        return s == null ? "_removed song_" : "**" + SongMetadata.truncate(s.displayTitle(), 45) + "** — " + SongMetadata.truncate(s.displayArtist(), 25);
+        return s == null ? "_removed song_" : "**" + SongMetadata.truncate(s.displayTitle(), 45) + "** - " + SongMetadata.truncate(s.displayArtist(), 25);
     }
 
     private static List<ActionRow> roundRows(List<MusicRepository.Match> matches, boolean closed) {

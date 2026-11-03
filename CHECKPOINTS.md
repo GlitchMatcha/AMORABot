@@ -373,3 +373,4 @@ sequenceDiagram
 5. **No Direct `sed` or String Overwrites**: When editing `CommandListener.java` or `DatabaseManager.java`, remember they are large files (~3000-5000 lines); always read the target lines first to obtain fresh anchor tags.
 6. **Sparks are atomic**: change balances only with `DatabaseManager.addSparks(userId, delta)` (returns the new balance) or `trySpendSparks(userId, cost)` (returns -1 when the balance is too low). Never read-then-write a balance.
 7. **Music interactions**: every `music:` component goes to `MusicListener`, which acknowledges (defer) before any DB or HTTP work. `MusicArt.artworkUrl` blocks on oEmbed, so only call it after deferring.
+8. **No em dashes (U+2014)**: never write the em dash character anywhere in this repo (bot messages, comments, docs, tests). Use a plain hyphen `-` instead. If code must *match* an em dash in user input, write it as the escape `\u2014` (see `SongMetadata.DASH_SPLIT`).

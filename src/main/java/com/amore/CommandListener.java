@@ -130,7 +130,7 @@ public class CommandListener extends ListenerAdapter {
         StringBuilder description = new StringBuilder();
         if (portalUrl != null) {
             description.append("**Zero-knowledge proof (strongest):** prove you are 18+ using the chip in your passport or ID card. ")
-                       .append("Your phone checks it privately and AMORA only gets a \"yes, 18 or older\" — your name, photo and birthday never leave your phone.\n")
+                       .append("Your phone checks it privately and AMORA only gets a \"yes, 18 or older\" - your name, photo and birthday never leave your phone.\n")
                        .append("New to this? Get the free Self app first: [iPhone](https://apps.apple.com/us/app/self-human-agent-identity/id6478563710) · [Android](https://play.google.com/store/apps/details?id=com.proofofpassportapp)\n")
                        .append("The link works once and expires in ").append(AGE_SESSION_TTL_MINUTES).append(" minutes.\n\n");
         }
@@ -141,7 +141,7 @@ public class CommandListener extends ListenerAdapter {
         if (portalUrl == null && !attestAvailable) {
             description.append("No automatic verification is available right now. Please contact staff.\n\n");
         }
-        description.append("*AMORA stores only your Discord ID, a verified flag and the method used — no names, photos or documents.*");
+        description.append("*AMORA stores only your Discord ID, a verified flag and the method used - no names, photos or documents.*");
 
         EmbedBuilder embed = new EmbedBuilder()
             .setColor(Color.decode("#FF5FA2"))
@@ -1739,8 +1739,8 @@ public class CommandListener extends ListenerAdapter {
             String agePanelDesc = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n\n" +
                                   "  ୨ ꒰ **A𝑴𝟎𝑹𝑨 𝑨𝑮𝑬 𝑺𝑬𝑳𝑬𝑪𝑻𝑰𝑶𝑵** ꒱ ୧\n\n" +
                                   "˚｡౨ *Choose your tier below to access your designated safe zone.* ৎ .﹡\n\n" +
-                                  "🧸 **Minor Zone (18-)** — *Safe, friendly public spaces.*\n" +
-                                  "🥂 **Adult Zone (18+)** — *Protected mature lounge (Automated account-age verification required).* \n\n" +
+                                  "🧸 **Minor Zone (18-)** - *Safe, friendly public spaces.*\n" +
+                                  "🥂 **Adult Zone (18+)** - *Protected mature lounge (Automated account-age verification required).* \n\n" +
                                   "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
 
             EmbedBuilder embed = new EmbedBuilder()
@@ -1838,7 +1838,7 @@ public class CommandListener extends ListenerAdapter {
             }
             StringBuilder out = new StringBuilder("**Age-verification bans** (latest " + bans.size() + ")\n");
             for (DatabaseManager.AgeBanEntry ban : bans) {
-                out.append("• <@").append(ban.userId()).append("> — ").append(ban.reason())
+                out.append("• <@").append(ban.userId()).append("> - ").append(ban.reason())
                    .append(" (by <@").append(ban.bannedBy()).append(">, <t:").append(ban.bannedAt() / 1000).append(":R>)\n");
             }
             event.reply(out.toString()).setEphemeral(true).queue();
@@ -1930,21 +1930,21 @@ public class CommandListener extends ListenerAdapter {
                 .setDescription("Welcome to the AM0RA terminal! Here is everything you can do:")
                 
                 .addField("💎 Economy & Collection",
-                        "`/balance` — Check your Sparks, Points, and Pity.\n" +
-                        "`/profile [user]` — View your or someone else's server profile.\n" +
-                        "`/inventory` — View your collected Gacha assets.\n" +
-                        "`/leaderboard` — View the Top 10 rankings in the server.", false)
+                        "`/balance` - Check your Sparks, Points, and Pity.\n" +
+                        "`/profile [user]` - View your or someone else's server profile.\n" +
+                        "`/inventory` - View your collected Gacha assets.\n" +
+                        "`/leaderboard` - View the Top 10 rankings in the server.", false)
                         
                 .addField("🎮 Gacha & Fun",
-                        "`/pull` — Spend 50 Sparks to pull a random Gacha reward!\n" +
-                        "`/forge` — Open the Synthesis Forge to craft or recycle items.\n" +
-                        "`/trade` — Safely exchange your duplicate assets with another member.\n" +
-                        "`/gift` — Buy a comforting treat for M.IKU to lower her stress level!", false)
+                        "`/pull` - Spend 50 Sparks to pull a random Gacha reward!\n" +
+                        "`/forge` - Open the Synthesis Forge to craft or recycle items.\n" +
+                        "`/trade` - Safely exchange your duplicate assets with another member.\n" +
+                        "`/gift` - Buy a comforting treat for M.IKU to lower her stress level!", false)
                         
                 .addField("🎵 Music",
-                        "`/music help` — Full guide to Song of the Day, music games and vinyls.\n" +
-                        "`/song add` — Add your favorite Spotify/YouTube song to the pool.\n" +
-                        "`/music songdle` — Guess today's song from its cover.", false)
+                        "`/music help` - Full guide to Song of the Day, music games and vinyls.\n" +
+                        "`/song add` - Add your favorite Spotify/YouTube song to the pool.\n" +
+                        "`/music songdle` - Guess today's song from its cover.", false)
                         
                 .addField("🛠️ Staff & Director Commands",
                         "`/eventsetup`, `/award`, `/addsparks`, `/payout`, `/publish`, `/transcript`", false)
@@ -1968,14 +1968,14 @@ public class CommandListener extends ListenerAdapter {
                 "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
                 "˚｡౨ 𝘊𝘩𝘰𝘰𝘴𝘦 𝘩𝘰𝘸 𝘺𝘰𝘶’𝘥 𝘭𝘪𝘬𝘦 𝘵𝘰 𝘫𝘰𝘪𝘯 ৎ .﹡\n\n" +
                 "<a:00325:1514919121941168139> ﹕<@&1516061152843665549>﹕<a:00325:1514919121941168139>\n" +
-                "-# ꒰ 𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥 𝐌𝐞𝐦𝐛𝐞𝐫 — 𝑱𝒐𝒊𝒏 𝒂𝒔 𝑪𝒐𝒎𝒑 𝒐𝒓 𝑮𝒆𝒏𝒆𝒓𝒂𝒍 ꒱\n\n" +
+                "-# ꒰ 𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥 𝐌𝐞𝐦𝐛𝐞𝐫 - 𝑱𝒐𝒊𝒏 𝒂𝒔 𝑪𝒐𝒎𝒑 𝒐𝒓 𝑮𝒆𝒏𝒆𝒓𝒂𝒍 ꒱\n\n" +
                 "<a:pink_flowerrr:1514920298472800286> ﹕<@&1516061302701817986>﹕<a:pink_flowerrr:1514920298472800286>\n" +
-                "-# ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐕𝐢𝐬𝐢𝐭𝐨𝐫 — 𝑺𝒕𝒂𝒚 𝒂𝒔 𝒂 𝑮𝒖𝒆𝒔𝒕 ꒱\n\n\n" +
+                "-# ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐕𝐢𝐬𝐢𝐭𝐨𝐫 - 𝑺𝒕𝒂𝒚 𝒂𝒔 𝒂 𝑮𝒖𝒆𝒔𝒕 ꒱\n\n\n" +
                 "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
                 "           ˚｡౨ 𝘈𝘱plicat𝘪𝘰𝘯 𝘈𝘤𝘤𝘦𝘴𝘴 ৎ .﹡\n" +
                 "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
                 "♡ ﹕ <@&1529651281105387631>\n" +
-                "-# ꒰ 𝐒𝐞𝐥𝐥𝐞𝐫 — 𝑶𝒑𝒆𝒏 𝒕𝒐 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝒂𝒏𝒅 𝑽𝒊𝒔𝒊𝒕𝒐𝒓𝒔 ꒱\n\n" +
+                "-# ꒰ 𝐒𝐞𝐥𝐥𝐞𝐫 - 𝑶𝒑𝒆𝒏 𝒕𝒐 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝒂𝒏𝒅 𝑽𝒊𝒔𝒊𝒕𝒐𝒓𝒔 ꒱\n\n" +
                 "♡ ﹕𝐀𝐌𝟎𝐑𝐀 𝐏𝐨𝐬𝐢𝐭𝐢𝐨𝐧𝐬\n" +
                 "-# ꒰ 𝑶𝒏𝒍𝒚 𝑶𝒇𝒇𝒊𝒄𝒊𝒂𝒍 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝑴𝒂𝒚 𝑨𝒑𝒑𝒍𝒚 ꒱\n\n" +
                 "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
@@ -2966,7 +2966,7 @@ public class CommandListener extends ListenerAdapter {
                     error -> {
                         error.printStackTrace();
                         event.getHook().sendMessage(
-                                        "⚠️ Discord returned an upload/network error after submission. Check the forum — the shop post may already exist.")
+                                        "⚠️ Discord returned an upload/network error after submission. Check the forum - the shop post may already exist.")
                                 .queue();
                     }
             );
@@ -3051,7 +3051,7 @@ public class CommandListener extends ListenerAdapter {
         //                 error -> {
         //                     error.printStackTrace();
         //                     event.getHook().sendMessage(
-        //                                     "⚠️ Discord returned an upload/network error after submission. Check the quest forum — the post may already exist.")
+        //                                     "⚠️ Discord returned an upload/network error after submission. Check the quest forum - the post may already exist.")
         //                             .queue();
         //                 }
         //         );
@@ -3403,7 +3403,7 @@ public class CommandListener extends ListenerAdapter {
 
             EmbedBuilder step2Embed = new EmbedBuilder()
                     .setColor(new Color(138, 43, 226))
-                    .setTitle("THE SYNTHESIS FORGE — REWARD SELECTION")
+                    .setTitle("THE SYNTHESIS FORGE - REWARD SELECTION")
                     .setDescription("You are burning **3x " + selectedIngredient + "**.\n\nWhich reward would you like to mold from the ashes?");
 
             event.editMessageEmbeds(step2Embed.build()).setActionRow(claimMenu.build()).queue();

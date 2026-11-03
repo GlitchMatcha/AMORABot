@@ -998,7 +998,7 @@ public class DatabaseManager {
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
                     int ratings = rs.getInt("total_ratings");
-                    if (ratings == 0) return "*(No reviews yet — be the first!)*";
+                    if (ratings == 0) return "*(No reviews yet - be the first!)*";
                     
                     int totalStars = rs.getInt("total_stars");
                     double avg = (double) totalStars / ratings;
@@ -1018,7 +1018,7 @@ public class DatabaseManager {
                 }
             }
         } catch (SQLException e) { e.printStackTrace(); }
-        return "*(No reviews yet — be the first!)*";
+        return "*(No reviews yet - be the first!)*";
     }
 
     public void saveCreatorPrompt(String creatorId, String channelId, String messageId, String originalMsgId) {

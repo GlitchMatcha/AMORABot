@@ -618,9 +618,9 @@ public final class MusicGames {
                 .setColor(GAME_COLOR)
                 .setTitle("Higher or lower?")
                 .setDescription((note == null ? "" : note + "\n\n")
-                        + "**A:** " + SongMetadata.truncate(s.a.displayTitle(), 60) + " — " + SongMetadata.truncate(s.a.displayArtist(), 30)
+                        + "**A:** " + SongMetadata.truncate(s.a.displayTitle(), 60) + " - " + SongMetadata.truncate(s.a.displayArtist(), 30)
                         + "\n" + views(s.a.viewCount()) + " views on YouTube\n\n"
-                        + "**B:** " + SongMetadata.truncate(s.b.displayTitle(), 60) + " — " + SongMetadata.truncate(s.b.displayArtist(), 30)
+                        + "**B:** " + SongMetadata.truncate(s.b.displayTitle(), 60) + " - " + SongMetadata.truncate(s.b.displayArtist(), 30)
                         + "\n? views\n\nDoes B have more or fewer views than A?")
                 .addField("Streak", "`" + s.streak + "`", true)
                 .setFooter("AMORA Music Arcade", null);
