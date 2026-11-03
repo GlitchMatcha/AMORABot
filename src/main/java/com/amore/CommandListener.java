@@ -1941,10 +1941,10 @@ public class CommandListener extends ListenerAdapter {
                         "`/trade` — Safely exchange your duplicate assets with another member.\n" +
                         "`/gift` — Buy a comforting treat for M.IKU to lower her stress level!", false)
                         
-                .addField("🎵 Music Network",
-                        "`/song suggest` — Get a random song recommendation from the pool.\n" +
+                .addField("🎵 Music",
+                        "`/music help` — Full guide to Song of the Day, music games and vinyls.\n" +
                         "`/song add` — Add your favorite Spotify/YouTube song to the pool.\n" +
-                        "`/song list` — Show the active AMORA music pool.", false)
+                        "`/music songdle` — Guess today's song from its cover.", false)
                         
                 .addField("🛠️ Staff & Director Commands",
                         "`/eventsetup`, `/award`, `/addsparks`, `/payout`, `/publish`, `/transcript`", false)

@@ -186,7 +186,7 @@ D:/Discord/amora-bot/
 - Uses YouTube Data API v3 (`YOUTUBE_API_KEY`): `importPlaylist` returns raw `ImportedSong(title, channel, link)` items; `fetchViewCounts` batches `videos.list` statistics for Higher or Lower.
 
 ### 3.13 Music module (`Music*.java`, `SongMetadata.java`)
-- `MusicListener`: owns `/song [add|importplaylist|remove|tag|list|suggest|postnow]` and `/music [songdle|game|vinyls|crate|sponsor|stats|match|battle|recap]`, plus every `music:` button and the `music:sdm` modal. It also routes chat messages to Blurred Cover guesses and Song of the Day thread rewards.
+- `MusicListener`: owns `/song [add|importplaylist|remove|tag|list|suggest|postnow]` and `/music [help|songdle|game|vinyls|crate|sponsor|stats|match|battle|recap]`, plus every `music:` button and the `music:sdm` modal. It also routes chat messages to Blurred Cover guesses and Song of the Day thread rewards. `/music help` is the member guide (staff also see a staff section); `/help` links to it.
 - `MusicService`: 60s scheduler (daily post, settlement, battle tick, monthly recap); voting, listening streaks, vinyls, sponsorships (150 Sparks, one pending, 7-day cooldown, refunded if the song is removed), crates (40 Sparks, duplicates refund 10), music twin, profile field.
 - `MusicGames`: Who Added It? (public, 60s, +8), Blurred Cover (public, chat guesses, 4 sharpening stages, +15/10/6/3), Songdle (private daily puzzle, 6 guesses, +3 Sparks per unused guess), Higher or Lower (private, YouTube views, 3 rewarded runs a day, max +30). Who Added It? and Blurred Cover also appear in the random lounge games (`ChatListener.spawnRandomLoungeGame`).
 - `MusicBattle`: weekly bracket (see 5.4).

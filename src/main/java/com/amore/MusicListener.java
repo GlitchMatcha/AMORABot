@@ -58,6 +58,7 @@ public class MusicListener extends ListenerAdapter {
                         new SubcommandData("suggest", "Get a random song recommendation from the pool"),
                         new SubcommandData("postnow", "Staff: post a bonus song drop now")),
                 Commands.slash("music", "AMORA music games, collections and stats").addSubcommands(
+                        new SubcommandData("help", "How Song of the Day, music games and vinyls work"),
                         new SubcommandData("songdle", "Play today's Songdle: guess the song from its cover"),
                         new SubcommandData("game", "Start a music minigame")
                                 .addOptions(new OptionData(OptionType.STRING, "type", "Which game", true)
@@ -347,9 +348,51 @@ public class MusicListener extends ListenerAdapter {
         hook.editOriginalEmbeds(eb.build()).setContent("").queue();
     }
 
+    static EmbedBuilder helpEmbed(boolean staff) {
+        String daily = MusicService.DAILY_CHANNEL_ID == null ? "the song channel" : "<#" + MusicService.DAILY_CHANNEL_ID + ">";
+        EmbedBuilder eb = new EmbedBuilder()
+                .setColor(MusicService.PINK)
+                .setTitle("✦ AMORA MUSIC GUIDE ✦")
+                .setDescription("A new **Song of the Day** drops in " + daily + " every day. Rate it, listen, chat about it, "
+                        + "and collect Sparks, streaks and vinyls along the way!")
+                .addField("🎶 Song of the Day",
+                        "🔥 🙂 💤 — Rate the song (you can change it until the next drop)\n"
+                                + "🎧 **Listened** — `+1 Spark`, keeps your daily streak (`+10` every 7 days) and gives you the song's vinyl\n"
+                                + "💬 **Thread** — first " + MusicService.THREAD_REWARD_SLOTS + " thoughtful replies earn `+"
+                                + MusicService.THREAD_REWARD_SPARKS + " Sparks`\n"
+                                + "🫶 If **your** song is picked, you earn Sparks + Curator Points from the votes", false)
+                .addField("➕ Share Songs",
+                        "`/song add` — Add a Spotify/YouTube song (up to " + MEMBER_ADDS_PER_DAY + " a day)\n"
+                                + "`/song tag` — Tag your song: " + String.join(", ", SongMetadata.TAG_VOCABULARY) + "\n"
+                                + "`/song remove` — Remove a song you added\n"
+                                + "`/song suggest` — Get a random song from the pool\n"
+                                + "-# Themed days: Mon chill · Wed underrated · Thu throwback · Fri hype · Sun acoustic", false)
+                .addField("🎮 Games",
+                        "`/music songdle` — Daily puzzle: guess the song from its cover in 6 tries\n"
+                                + "`/music game` 🕵️ **Who Added It?** — guess which member added the song\n"
+                                + "`/music game` 🖼️ **Blurred Cover** — type the title in chat as the cover sharpens\n"
+                                + "`/music game` 📈 **Higher or Lower** — compare YouTube view counts\n"
+                                + "-# Who Added It? and Blurred Cover also pop up in the lounge!", false)
+                .addField("💿 Collect & Spend",
+                        "`/music vinyls` — Your vinyl shelf (rarity follows community ratings)\n"
+                                + "`/music crate` — Random vinyl for `" + MusicService.CRATE_COST + " Sparks`\n"
+                                + "`/music sponsor` — Make a song an upcoming Song of the Day for `" + MusicService.SPONSOR_COST + " Sparks`", false)
+                .addField("📊 Stats & Events",
+                        "`/music stats` — Your music stats · `/music match` — Find your music twin\n"
+                                + "`/music battle` — Weekly Song Battle (new bracket every Monday)\n"
+                                + "`/leaderboard` → 🎵 Top Music Curators", false)
+                .setFooter("AMORA Music • Song IDs are shown on every song card", null);
+        if (staff) {
+            eb.addField("🛠️ Staff",
+                    "`/song postnow` · `/song importplaylist` · `/song list` · `/music battle start:True` · `/music recap`", false);
+        }
+        return eb;
+    }
+
     private void handleMusic(SlashCommandInteractionEvent event, String sub) {
         String userId = event.getUser().getId();
         switch (sub) {
+            case "help" -> event.replyEmbeds(helpEmbed(isStaff(event)).build()).setEphemeral(true).queue();
             case "songdle" -> MusicGames.startSongdle(event);
             case "game" -> {
                 String type = event.getOption("type").getAsString();
