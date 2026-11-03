@@ -93,7 +93,7 @@ D:/Discord/amora-bot/
   12. `creator_prompts`: Tracks prompt messages in shop forum showcase threads.
   13. `task_bank`: Pool of monthly tasks divided by rank (`rank_target`, `content`).
   14. `event_sync`: Maps event schedule message IDs to thread IDs, RSVP emojis, and audiences.
-  15. `staff_schedule`: Day of week (1–7) mapped to duty task names and assigned user IDs.
+  15. `staff_schedule`: Day of week (1-7) mapped to duty task names and assigned user IDs.
 
 ### 3.3 `CommandListener.java` (Commands, Interactions, Economy, Modals)
 - Handles `onSlashCommandInteraction`, `onModalInteraction`, `onStringSelectInteraction`, `onEntitySelectInteraction`, `onButtonInteraction`, and `onMessageReceived`.
@@ -205,7 +205,7 @@ D:/Discord/amora-bot/
 | `DATABASE_URL` | PostgreSQL connection URI (Neon PostgreSQL) | `DatabaseManager.java` |
 | `PORT` | Port for embedded HTTP server (default 8080) | `App.java`, `InternalApiServer.java` |
 | `DAILY_SONG_CHANNEL_ID` | Channel where daily songs, recaps (and battles by default) are posted | `MusicService.java`, `MusicBattle.java` |
-| `DAILY_SONG_POST_HOUR_UTC` | UTC hour (0–23) to trigger the daily song post, weekly battle and monthly recap | `MusicService.java` |
+| `DAILY_SONG_POST_HOUR_UTC` | UTC hour (0-23) to trigger the daily song post, weekly battle and monthly recap | `MusicService.java` |
 | `LOUNGE_CHANNEL_ID` | Main community lounge channel (quotes & music pings) | `MusicService.java`, `LoungeManager.java`, `AnnouncementListener.java` |
 | `TASK_CHANNEL_ID` | Channel for mid-month and final rank task reminders | `ActivityMonitor.java` |
 | `STAFF_SCHEDULE_CHANNEL_ID` | Channel where daily staff duties are announced | `ActivityMonitor.java` |
@@ -340,7 +340,7 @@ sequenceDiagram
 1. **Pick** (`MusicService.postDaily`): first a pending `song_sponsors` entry, else a themed pick (Mon `chill`, Wed `underrated`, Thu `throwback`, Fri `hype`, Sun `acoustic` tags), else any song. Picks are weighted among the 25 least recently featured songs: rated songs weigh `2 + average vote`, never-featured songs ×1.5.
 2. **Post**: embed + 🔥/🙂/💤 vote buttons (`music:vote:<key>:<2|1|-1>`), 🎧 Listened (`music:listen:<key>`), a link button, and a discussion thread. Row stored in `song_features` (key = UTC date; staff bonus drops use `<date>-bonus-<epoch>`).
 3. **Listen**: once per drop: +1 Spark, streak update (+10 Sparks every 7 days), that song's vinyl, and the `MUSIC_STREAK_ROLE_ID` (7+) / `MUSIC_STREAK_ELITE_ROLE_ID` (30+) roles. Each listen refreshes their 2-day timer, so `RoleManager` removes them after a missed day.
-4. **Thread**: replies earn nothing by themselves. M.IKU (separate AI bot) reads the thread and reacts with `MIKU_MUSIC_APPROVE_EMOJI` to replies that are a real opinion about the song. AMORA only accepts that reaction from the `MIKU_BOT_ID` account, then pays +2 Sparks (first 5 approved people per drop, `song_thread_rewards`) and adds 👍. No reaction from M.IKU (rejected, or she is offline) means no reward, and nobody is notified. Approvals after voting closes are ignored. The thread name is `Title - Artist` and the starter message is the song embed, which gives M.IKU the song context.
+4. **Thread**: replies earn nothing by themselves. M.IKU (separate AI bot) reads the thread and reacts with `MIKU_MUSIC_APPROVE_EMOJI` to replies that are a real opinion about the song. AMORA only accepts that reaction from the `MIKU_BOT_ID` account, then pays +2 Sparks (first 5 approved people per drop, `song_thread_rewards`) and adds 👍. No reaction from M.IKU (rejected, or she is offline) means no reward, and nobody is notified. Approvals after voting closes are ignored. The thread name is `Title - Artist` and the starter message is the song embed, which gives M.IKU the song context. Full M.IKU-side spec: `docs/MIKU_MUSIC_THREAD_BRIDGE.md`.
 5. **Settle** (next drop or after 26h): voting closes and the buttons are disabled. For member picks, the submitter gets `min(40, 5 + 2·🔥 + 🙂)` Sparks and `max(0, score) + 3` Curator Points; their own votes don't count. Playlist imports (`origin = 'import'`) earn nobody rewards.
 6. **Weekly battle** (`MusicBattle`, Mondays): a 16/8/4-song bracket seeded from the best-rated songs of the last 30 days, one 24h round per day. Ties go to the better-rated song. The champion's curator gets +50 Sparks, +20 Curator Points and `MUSIC_CURATOR_ROLE_ID` for 7 days.
 7. **Monthly recap** (day 1): rendered card + embed for the previous month in `DAILY_SONG_CHANNEL_ID`, once per month (`bot_state.music_recap_<YYYY-MM>`).
