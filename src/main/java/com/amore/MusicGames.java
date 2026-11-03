@@ -108,10 +108,10 @@ public final class MusicGames {
             WhoGame game = new WhoGame(channel.getId(), song, options, names);
             EmbedBuilder eb = new EmbedBuilder()
                     .setColor(GAME_COLOR)
-                    .setTitle("🕵️ WHO ADDED IT?")
-                    .setDescription("🎶 **" + song.displayTitle() + "**\nby **" + song.displayArtist() + "**\n\n"
-                            + "Which member added this song to the AMORA pool?\n"
-                            + "-# One guess each · first correct guess wins `+" + WHO_REWARD + " Sparks` · ends <t:"
+                    .setTitle("Who added this song?")
+                    .setDescription("**" + song.displayTitle() + "** by " + song.displayArtist() + "\n\n"
+                            + "One of these people put it in the pool. Pick who you think it was.\n"
+                            + "-# One guess each. First right answer gets " + WHO_REWARD + " Sparks. Ends <t:"
                             + (System.currentTimeMillis() + WHO_DURATION_MS) / 1000 + ":R>")
                     .setFooter("AMORA Music Arcade", null);
             String art = MusicArt.artworkUrl(song.link());
@@ -159,7 +159,7 @@ public final class MusicGames {
                 return;
             }
             if (userId.equals(game.song.addedBy())) {
-                event.reply("  You added this one, no fair 😉").setEphemeral(true).queue();
+                event.reply("You added this one, so you can't guess.").setEphemeral(true).queue();
                 return;
             }
             if (!game.guessed.add(userId)) {
@@ -167,7 +167,7 @@ public final class MusicGames {
                 return;
             }
             if (option < 0 || option >= game.optionIds.size() || !game.optionIds.get(option).equals(game.song.addedBy())) {
-                event.reply("❌ Not them! Better luck next round.").setEphemeral(true).queue();
+                event.reply("Nope, not them.").setEphemeral(true).queue();
                 return;
             }
             game.over = true;
@@ -188,14 +188,14 @@ public final class MusicGames {
         if (winnerId != null) {
             db().addSparks(winnerId, WHO_REWARD);
             repo().addGameWin(winnerId);
-            result = "🎉 <@" + winnerId + "> got it! It was added by <@" + game.song.addedBy() + ">. `+" + WHO_REWARD + " Sparks`";
+            result = "<@" + winnerId + "> got it, it was <@" + game.song.addedBy() + ">. (+" + WHO_REWARD + " Sparks)";
         } else {
-            result = "⌛ Time's up! It was added by <@" + game.song.addedBy() + ">.";
+            result = "Time's up. It was <@" + game.song.addedBy() + ">.";
         }
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(winnerId != null ? new Color(80, 200, 120) : Color.GRAY)
-                .setTitle("🕵️ WHO ADDED IT? — SOLVED")
-                .setDescription("🎶 **" + game.song.displayTitle() + "** by **" + game.song.displayArtist() + "**\n\n" + result)
+                .setTitle("Who added this song?")
+                .setDescription("**" + game.song.displayTitle() + "** by " + game.song.displayArtist() + "\n\n" + result)
                 .setFooter("AMORA Music Arcade", null);
         channel.editMessageEmbedsById(game.messageId, eb.build()).setComponents(whoRows(game, game.song.addedBy()))
                 .queue(s -> {}, e -> {});
@@ -260,15 +260,15 @@ public final class MusicGames {
     }
 
     private static EmbedBuilder coverEmbed(CoverGame game) {
-        StringBuilder desc = new StringBuilder("**Type the song title in chat!**\nThe cover gets sharper every "
-                + COVER_STAGE_MS / 1000 + "s, and the prize shrinks.\n\n");
-        desc.append("🖼️ Stage **").append(game.stage + 1).append("/").append(COVER_BLOCKS.length)
-                .append("** · prize `+").append(COVER_REWARDS[game.stage]).append(" Sparks`\n");
-        if (game.stage >= 2) desc.append("💡 Artist: `").append(SongMetadata.initials(game.song.displayArtist())).append("`\n");
-        if (game.stage >= 3) desc.append("💡 Title: `").append(SongMetadata.titleShape(game.song.displayTitle())).append("`\n");
+        StringBuilder desc = new StringBuilder("Type the song title in chat. The cover gets clearer every "
+                + COVER_STAGE_MS / 1000 + " seconds, but the prize goes down.\n\n");
+        desc.append("Stage ").append(game.stage + 1).append(" of ").append(COVER_BLOCKS.length)
+                .append(", worth ").append(COVER_REWARDS[game.stage]).append(" Sparks\n");
+        if (game.stage >= 2) desc.append("Hint: the artist's initials are `").append(SongMetadata.initials(game.song.displayArtist())).append("`\n");
+        if (game.stage >= 3) desc.append("Hint: `").append(SongMetadata.titleShape(game.song.displayTitle())).append("`\n");
         return new EmbedBuilder()
                 .setColor(GAME_COLOR)
-                .setTitle("🖼️ BLURRED COVER")
+                .setTitle("Guess the cover")
                 .setDescription(desc.toString())
                 .setImage("attachment://cover.png")
                 .setFooter("AMORA Music Arcade", null);
@@ -302,7 +302,7 @@ public final class MusicGames {
             reward = COVER_REWARDS[game.stage];
             endCover(event.getChannel(), game, event.getAuthor().getId(), reward);
         }
-        event.getMessage().addReaction(Emoji.fromUnicode("🎉")).queue(s -> {}, e -> {});
+        event.getMessage().addReaction(Emoji.fromUnicode("✅")).queue(s -> {}, e -> {});
         return true;
     }
 
@@ -317,15 +317,15 @@ public final class MusicGames {
         if (winnerId != null) {
             db().addSparks(winnerId, reward);
             repo().addGameWin(winnerId);
-            result = "🎉 <@" + winnerId + "> guessed it at stage " + (game.stage + 1) + "! `+" + reward + " Sparks`";
+            result = "<@" + winnerId + "> got it on stage " + (game.stage + 1) + ". (+" + reward + " Sparks)";
         } else {
-            result = "⌛ Nobody got it this time!";
+            result = "Nobody got it this time.";
         }
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(winnerId != null ? new Color(80, 200, 120) : Color.GRAY)
-                .setTitle("🖼️ BLURRED COVER — REVEALED")
-                .setDescription("🎶 **" + game.song.displayTitle() + "** by **" + game.song.displayArtist() + "**\n"
-                        + "🎧 " + game.song.link() + "\n\n" + result)
+                .setTitle("Guess the cover")
+                .setDescription("It was **" + game.song.displayTitle() + "** by " + game.song.displayArtist() + "\n"
+                        + game.song.link() + "\n\n" + result)
                 .setImage("attachment://cover.png")
                 .setFooter("AMORA Music Arcade", null);
         channel.editMessageEmbedsById(game.messageId, eb.build())
@@ -398,33 +398,33 @@ public final class MusicGames {
         if (note != null) desc.append(note).append("\n\n");
 
         if (play.finished()) {
-            desc.append(play.solved() ? "🎉 **Solved in " + used + "/" + SONGDLE_MAX + "!**\n" : "💔 **Out of guesses!**\n");
-            desc.append("🎶 **").append(s.displayTitle()).append("** by **").append(s.displayArtist()).append("**\n")
-                    .append("🎧 ").append(s.link()).append("\n\n").append(songdleGrid(play.history()))
-                    .append("\n-# A new Songdle unlocks at 00:00 UTC.");
+            desc.append(play.solved() ? "You got it in " + used + "/" + SONGDLE_MAX + ".\n" : "Out of guesses.\n");
+            desc.append("It was **").append(s.displayTitle()).append("** by ").append(s.displayArtist()).append("\n")
+                    .append(s.link()).append("\n\n").append(songdleGrid(play.history()))
+                    .append("\n-# New one tomorrow (resets at 00:00 UTC).");
         } else {
-            desc.append("Guess today's song from the cover. Every guess or skip reveals more.\n\n");
-            desc.append("🎯 Guesses: **").append(used).append("/").append(SONGDLE_MAX).append("**  ")
+            desc.append("Guess today's song from the cover. Each guess or skip gives you another hint.\n\n");
+            desc.append("Guesses: ").append(used).append("/").append(SONGDLE_MAX).append("  ")
                     .append(songdleGrid(play.history())).append("\n\n");
-            if (used >= 1) desc.append("💡 Title: `").append(SongMetadata.titleShape(s.displayTitle())).append("`\n");
-            if (used >= 2) desc.append("💡 Artist initials: `").append(SongMetadata.initials(s.displayArtist())).append("`\n");
-            if (used >= 3) desc.append("💡 Added by: ").append(s.creditLine()).append(" · ").append(s.source()).append("\n");
-            if (used >= 4) desc.append("💡 Artist: **").append(s.displayArtist()).append("**\n");
-            if (used >= 5) desc.append("💡 Title starts: `").append(firstLetters(s.displayTitle())).append("`\n");
+            if (used >= 1) desc.append("Title: `").append(SongMetadata.titleShape(s.displayTitle())).append("`\n");
+            if (used >= 2) desc.append("Artist initials: `").append(SongMetadata.initials(s.displayArtist())).append("`\n");
+            if (used >= 3) desc.append("Added by: ").append(s.creditLine()).append(" (").append(s.source()).append(")\n");
+            if (used >= 4) desc.append("Artist: **").append(s.displayArtist()).append("**\n");
+            if (used >= 5) desc.append("Title starts with: `").append(firstLetters(s.displayTitle())).append("`\n");
         }
         int block = play.finished() ? 1 : SONGDLE_BLOCKS[Math.min(used, SONGDLE_BLOCKS.length - 1)];
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(play.finished() && play.solved() ? new Color(80, 200, 120) : GAME_COLOR)
-                .setTitle("🎵 AMORA SONGDLE · " + day.date())
+                .setTitle("Songdle, " + day.date())
                 .setDescription(desc.toString())
                 .setImage("attachment://songdle.png")
                 .setFooter("Solve it in fewer guesses for more Sparks", null);
 
         ActionRow row = play.finished()
-                ? ActionRow.of(Button.primary("music:sd:share", "Share result").withEmoji(Emoji.fromUnicode("📣")))
+                ? ActionRow.of(Button.primary("music:sd:share", "Share result"))
                 : ActionRow.of(
-                        Button.success("music:sd:guess", "Guess").withEmoji(Emoji.fromUnicode("✍️")),
-                        Button.secondary("music:sd:skip", "Skip / next clue").withEmoji(Emoji.fromUnicode("⏭️")));
+                        Button.success("music:sd:guess", "Guess"),
+                        Button.secondary("music:sd:skip", "Skip"));
         hook.editOriginalEmbeds(eb.build())
                 .setContent("")
                 .setFiles(FileUpload.fromData(MusicArt.pixelatedPng(day.art(), 320, block), "songdle.png"))
@@ -459,7 +459,7 @@ public final class MusicGames {
         }
         if (action.equals("skip")) {
             event.deferEdit().queue();
-            MusicService.WORKERS.execute(() -> applySongdleGuess(event.getHook(), event.getUser().getId(), 's', "⏭️ Skipped. Here's another clue."));
+            MusicService.WORKERS.execute(() -> applySongdleGuess(event.getHook(), event.getUser().getId(), 's', "Skipped. Here's another hint."));
             return;
         }
         if (action.equals("share")) {
@@ -470,8 +470,8 @@ public final class MusicGames {
                 MusicRepository.SongdlePlay play = repo().songdlePlay(day.date(), event.getUser().getId());
                 if (play == null || !play.finished()) return;
                 String score = play.solved() ? play.history().length() + "/" + SONGDLE_MAX : "X/" + SONGDLE_MAX;
-                event.getChannel().sendMessage("🎵 " + event.getUser().getAsMention() + " played **AMORA Songdle " + day.date()
-                        + "** · " + score + "\n" + songdleGrid(play.history()) + "\n-# Play with `/music songdle`").queue(s -> {}, e -> {});
+                event.getChannel().sendMessage(event.getUser().getAsMention() + " played Songdle " + day.date()
+                        + ": " + score + "\n" + songdleGrid(play.history()) + "\n-# /music songdle").queue(s -> {}, e -> {});
             });
         }
     }
@@ -484,7 +484,7 @@ public final class MusicGames {
             if (day == null) return;
             boolean correct = SongMetadata.isCorrectGuess(guess, day.song().displayTitle());
             applySongdleGuess(event.getHook(), event.getUser().getId(), correct ? 'o' : 'x',
-                    correct ? null : "❌ **" + SongMetadata.truncate(guess, 60) + "** is not it.");
+                    correct ? null : "\"" + SongMetadata.truncate(guess, 60) + "\" isn't it.");
         });
     }
 
@@ -501,7 +501,7 @@ public final class MusicGames {
             int reward = (SONGDLE_MAX + 1 - play.history().length()) * 3;
             db().addSparks(userId, reward);
             repo().addGameWin(userId);
-            note = "✨ Correct! `+" + reward + " Sparks`";
+            note = "That's it! +" + reward + " Sparks.";
         }
         renderSongdle(hook, day, play, note);
     }
@@ -602,8 +602,8 @@ public final class MusicGames {
                 return;
             }
             HL_SESSIONS.put(session.id, session);
-            String note = rewarded ? "Each correct answer is worth `+" + HL_SPARKS_PER_POINT + " Sparks` (max " + HL_MAX_REWARD + ")."
-                    : "Practice run: you've used today's " + HL_RUNS_PER_DAY + " rewarded runs.";
+            String note = rewarded ? "You get " + HL_SPARKS_PER_POINT + " Sparks per correct answer (up to " + HL_MAX_REWARD + ")."
+                    : "Just for fun this time, you've used your " + HL_RUNS_PER_DAY + " paid runs for today.";
             hook.editOriginalEmbeds(hlEmbed(session, note).build()).setComponents(hlRow(session, false)).queue();
         }));
     }
@@ -616,12 +616,12 @@ public final class MusicGames {
         String vid = SongMetadata.youTubeVideoId(s.b.link());
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(GAME_COLOR)
-                .setTitle("📈 HIGHER OR LOWER · YouTube views")
+                .setTitle("Higher or lower?")
                 .setDescription((note == null ? "" : note + "\n\n")
-                        + "🅰️ **" + SongMetadata.truncate(s.a.displayTitle(), 60) + "** — " + SongMetadata.truncate(s.a.displayArtist(), 30)
-                        + "\n👁️ `" + views(s.a.viewCount()) + "` views\n\n"
-                        + "🅱️ **" + SongMetadata.truncate(s.b.displayTitle(), 60) + "** — " + SongMetadata.truncate(s.b.displayArtist(), 30)
-                        + "\n👁️ `???`\n\nDoes 🅱️ have **more** or **fewer** views than 🅰️?")
+                        + "**A:** " + SongMetadata.truncate(s.a.displayTitle(), 60) + " — " + SongMetadata.truncate(s.a.displayArtist(), 30)
+                        + "\n" + views(s.a.viewCount()) + " views on YouTube\n\n"
+                        + "**B:** " + SongMetadata.truncate(s.b.displayTitle(), 60) + " — " + SongMetadata.truncate(s.b.displayArtist(), 30)
+                        + "\n? views\n\nDoes B have more or fewer views than A?")
                 .addField("Streak", "`" + s.streak + "`", true)
                 .setFooter("AMORA Music Arcade", null);
         if (vid != null) eb.setThumbnail("https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg");
@@ -630,8 +630,8 @@ public final class MusicGames {
 
     private static ActionRow hlRow(HlSession s, boolean disabled) {
         return ActionRow.of(
-                Button.success("music:hl:" + s.id + ":hi", "Higher").withEmoji(Emoji.fromUnicode("⬆️")).withDisabled(disabled),
-                Button.danger("music:hl:" + s.id + ":lo", "Lower").withEmoji(Emoji.fromUnicode("⬇️")).withDisabled(disabled));
+                Button.success("music:hl:" + s.id + ":hi", "Higher").withDisabled(disabled),
+                Button.danger("music:hl:" + s.id + ":lo", "Lower").withDisabled(disabled));
     }
 
     public static void handleHigherLower(ButtonInteractionEvent event, String sessionId, boolean higher) {
@@ -647,7 +647,7 @@ public final class MusicGames {
                 long a = session.a.viewCount();
                 long b = session.b.viewCount();
                 boolean correct = b == a || (higher == (b > a));
-                String reveal = "🅱️ **" + SongMetadata.truncate(session.b.displayTitle(), 50) + "** had `" + views(b) + "` views.";
+                String reveal = "**" + SongMetadata.truncate(session.b.displayTitle(), 50) + "** has " + views(b) + " views.";
                 if (correct) {
                     session.streak++;
                     session.a = session.b;
@@ -657,14 +657,14 @@ public final class MusicGames {
                         session.b = null;
                     }
                     if (session.b != null) {
-                        event.getHook().editOriginalEmbeds(hlEmbed(session, "✅ Correct! " + reveal).build())
+                        event.getHook().editOriginalEmbeds(hlEmbed(session, "Correct. " + reveal).build())
                                 .setComponents(hlRow(session, false)).queue();
                         return;
                     }
-                    endHigherLower(event.getHook(), session, "🏁 You ran through every song I had! " + reveal);
+                    endHigherLower(event.getHook(), session, "You went through every song I had. " + reveal);
                     return;
                 }
-                endHigherLower(event.getHook(), session, "❌ Wrong! " + reveal);
+                endHigherLower(event.getHook(), session, "Wrong. " + reveal);
             }
         });
     }
@@ -678,10 +678,10 @@ public final class MusicGames {
         if (record) repo().saveHigherLower(session.userId, session.streak, stats.hlRunsDate(), stats.hlRuns());
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(session.streak > 0 ? new Color(80, 200, 120) : Color.GRAY)
-                .setTitle("📈 HIGHER OR LOWER · GAME OVER")
-                .setDescription(reveal + "\n\nFinal streak: **" + session.streak + "**"
-                        + (record ? " 🏆 **New personal best!**" : " (best " + stats.hlBest() + ")")
-                        + (reward > 0 ? "\n`+" + reward + " Sparks`" : ""))
+                .setTitle("Higher or lower? Game over")
+                .setDescription(reveal + "\n\nYou got " + session.streak + " in a row"
+                        + (record ? ", your best so far." : " (your best is " + stats.hlBest() + ").")
+                        + (reward > 0 ? "\n+" + reward + " Sparks" : ""))
                 .setFooter("AMORA Music Arcade", null);
         hook.editOriginalEmbeds(eb.build()).setComponents(hlRow(session, true)).queue();
     }

@@ -62,9 +62,9 @@ public class MusicListener extends ListenerAdapter {
                         new SubcommandData("songdle", "Play today's Songdle: guess the song from its cover"),
                         new SubcommandData("game", "Start a music minigame")
                                 .addOptions(new OptionData(OptionType.STRING, "type", "Which game", true)
-                                        .addChoice("🕵️ Who Added It?", "whoadded")
-                                        .addChoice("🖼️ Blurred Cover", "cover")
-                                        .addChoice("📈 Higher or Lower (views)", "higherlower")),
+                                        .addChoice("Who Added It?", "whoadded")
+                                        .addChoice("Blurred Cover", "cover")
+                                        .addChoice("Higher or Lower", "higherlower")),
                         new SubcommandData("vinyls", "View a vinyl collection")
                                 .addOption(OptionType.USER, "user", "Whose shelf to view", false),
                         new SubcommandData("crate", "Open a vinyl crate (" + MusicService.CRATE_COST + " Sparks)"),
@@ -118,8 +118,8 @@ public class MusicListener extends ListenerAdapter {
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(MusicService.PINK)
                 .setTitle(title)
-                .setDescription("🎵 **" + song.displayTitle() + "**\nby **" + song.displayArtist() + "**\n\n"
-                        + "🎧 **Listen here:**\n" + song.link() + "\n\n🫶 **Suggested by:** " + song.creditLine())
+                .setDescription("**" + song.displayTitle() + "**\nby " + song.displayArtist() + "\n\n"
+                        + song.link() + "\n\nSuggested by " + song.creditLine())
                 .addField("Source", song.source(), true)
                 .addField("Song ID", "#" + song.songId(), true)
                 .setFooter(footer, null);
@@ -182,7 +182,7 @@ public class MusicListener extends ListenerAdapter {
                         hook.editOriginal("  Failed to save the song suggestion.").queue();
                         return;
                     }
-                    hook.editOriginalEmbeds(songEmbed(created, "✦ SONG ADDED TO THE AMORA POOL ✦", "AMORA Daily Music Pool").build()).queue();
+                    hook.editOriginalEmbeds(songEmbed(created, "Song added", "Thanks for adding to the pool!").build()).queue();
                 });
             }
             case "importplaylist" -> {
@@ -240,7 +240,7 @@ public class MusicListener extends ListenerAdapter {
                     }
                     repo().setTags(songId, tags);
                     List<String> list = SongMetadata.tagList(tags);
-                    hook.editOriginal("🏷️ **" + song.displayTitle() + "** tags: "
+                    hook.editOriginal("Tags for **" + song.displayTitle() + "**: "
                             + (list.isEmpty() ? "_none_" : "`" + String.join("` `", list) + "`")).queue();
                 });
             }
@@ -255,7 +255,7 @@ public class MusicListener extends ListenerAdapter {
                         hook.editOriginal("  The AMORA song pool is empty right now. Add one with `/song add`.").queue();
                         return;
                     }
-                    StringBuilder file = new StringBuilder("✦ AMORA COMPLETE SONG POOL DIRECTORY ✦\nTotal Active Songs: ")
+                    StringBuilder file = new StringBuilder("AMORA song pool\nActive songs: ")
                             .append(songs.size()).append("\n=========================================\n\n");
                     for (MusicRepository.Song s : songs) {
                         file.append("[ ID: #").append(s.songId()).append(" ]\n")
@@ -267,8 +267,7 @@ public class MusicListener extends ListenerAdapter {
                         if (!s.tags().isBlank()) file.append("Tags    : ").append(String.join(", ", SongMetadata.tagList(s.tags()))).append("\n");
                         file.append("-----------------------------------------\n");
                     }
-                    hook.editOriginal("📂 **AMORA Song Directory**: " + songs.size() + " active songs.\n"
-                                    + "*Tip: use `Ctrl+F` to find the song ID you need.*")
+                    hook.editOriginal("Here's the full song pool (" + songs.size() + " songs). Use Ctrl+F to find a song ID.")
                             .setFiles(FileUpload.fromData(file.toString().getBytes(StandardCharsets.UTF_8), "AMORA_Song_Directory.txt"))
                             .queue();
                 });
@@ -279,7 +278,7 @@ public class MusicListener extends ListenerAdapter {
                     hook.editOriginal("  There are no active song suggestions yet.").queue();
                     return;
                 }
-                hook.editOriginalEmbeds(songEmbed(song, "✦ RANDOM AMORA SONG PICK ✦", "AMORA Music Recommendation").build()).queue();
+                hook.editOriginalEmbeds(songEmbed(song, "Random pick from the pool", "AMORA Music").build()).queue();
             });
             case "postnow" -> {
                 if (!isStaff(event)) {
@@ -333,16 +332,16 @@ public class MusicListener extends ListenerAdapter {
             }
             toAdd.add(new YouTubePlaylistImporter.ImportedSong(item.title(), item.artist(), link));
             if (preview.length() < 900) {
-                preview.append("✦ **").append(SongMetadata.truncate(meta.title(), 40)).append("** — ")
+                preview.append("**").append(SongMetadata.truncate(meta.title(), 40)).append("** — ")
                         .append(SongMetadata.truncate(meta.artist(), 30)).append("\n");
             }
         }
         int added = repo().addImportedSongs(userId, toAdd);
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(MusicService.PINK)
-                .setTitle("✦ PLAYLIST IMPORT COMPLETE ✦")
-                .setDescription("🎵 Playlist scan finished.\n\n Added: `" + added + "`\n♻️ Already in pool: `" + skippedExisting
-                        + "`\n⚠️ Skipped/invalid: `" + skippedInvalid + "`\n\n-# Imported songs are credited to the staff playlist, not to you.")
+                .setTitle("Playlist imported")
+                .setDescription("Added: " + added + "\nAlready in the pool: " + skippedExisting
+                        + "\nSkipped: " + skippedInvalid + "\n\n-# Imported songs are credited to the staff playlist, not to you.")
                 .setFooter("AMORA Music Importer", null);
         if (preview.length() > 0) eb.addField("Imported Songs Preview", preview.toString(), false);
         hook.editOriginalEmbeds(eb.build()).setContent("").queue();
@@ -352,39 +351,43 @@ public class MusicListener extends ListenerAdapter {
         String daily = MusicService.DAILY_CHANNEL_ID == null ? "the song channel" : "<#" + MusicService.DAILY_CHANNEL_ID + ">";
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(MusicService.PINK)
-                .setTitle("✦ AMORA MUSIC GUIDE ✦")
-                .setDescription("A new **Song of the Day** drops in " + daily + " every day. Rate it, listen, chat about it, "
-                        + "and collect Sparks, streaks and vinyls along the way!")
-                .addField("🎶 Song of the Day",
-                        "🔥 🙂 💤 — Rate the song (you can change it until the next drop)\n"
-                                + "🎧 **Listened** — `+1 Spark`, keeps your daily streak (`+10` every 7 days) and gives you the song's vinyl\n"
-                                + "💬 **Thread** — first " + MusicService.THREAD_REWARD_SLOTS + " thoughtful replies earn `+"
-                                + MusicService.THREAD_REWARD_SPARKS + " Sparks`\n"
-                                + "🫶 If **your** song is picked, you earn Sparks + Curator Points from the votes", false)
-                .addField("➕ Share Songs",
-                        "`/song add` — Add a Spotify/YouTube song (up to " + MEMBER_ADDS_PER_DAY + " a day)\n"
-                                + "`/song tag` — Tag your song: " + String.join(", ", SongMetadata.TAG_VOCABULARY) + "\n"
-                                + "`/song remove` — Remove a song you added\n"
-                                + "`/song suggest` — Get a random song from the pool\n"
-                                + "-# Themed days: Mon chill · Wed underrated · Thu throwback · Fri hype · Sun acoustic", false)
-                .addField("🎮 Games",
-                        "`/music songdle` — Daily puzzle: guess the song from its cover in 6 tries\n"
-                                + "`/music game` 🕵️ **Who Added It?** — guess which member added the song\n"
-                                + "`/music game` 🖼️ **Blurred Cover** — type the title in chat as the cover sharpens\n"
-                                + "`/music game` 📈 **Higher or Lower** — compare YouTube view counts\n"
-                                + "-# Who Added It? and Blurred Cover also pop up in the lounge!", false)
-                .addField("💿 Collect & Spend",
-                        "`/music vinyls` — Your vinyl shelf (rarity follows community ratings)\n"
-                                + "`/music crate` — Random vinyl for `" + MusicService.CRATE_COST + " Sparks`\n"
-                                + "`/music sponsor` — Make a song an upcoming Song of the Day for `" + MusicService.SPONSOR_COST + " Sparks`", false)
-                .addField("📊 Stats & Events",
-                        "`/music stats` — Your music stats · `/music match` — Find your music twin\n"
-                                + "`/music battle` — Weekly Song Battle (new bracket every Monday)\n"
-                                + "`/leaderboard` → 🎵 Top Music Curators", false)
-                .setFooter("AMORA Music • Song IDs are shown on every song card", null);
+                .setTitle("Music commands")
+                .setDescription("Every day the bot posts a song in " + daily + ". Vote on it, listen, and talk about it in the thread. "
+                        + "You earn Sparks for joining in.")
+                .addField("Song of the Day",
+                        "Vote with 🔥, 🙂 or 💤. You can change your vote until the next song.\n"
+                                + "Hit **Listened** once a day for 1 Spark. It keeps your streak going (10 bonus Sparks every 7 days) "
+                                + "and adds the song to your vinyls.\n"
+                                + "The first " + MusicService.THREAD_REWARD_SLOTS + " people to post a real opinion in the thread get "
+                                + MusicService.THREAD_REWARD_SPARKS + " Sparks each.\n"
+                                + "If a song you added gets picked, you earn Sparks and Curator Points based on the votes.", false)
+                .addField("Adding songs",
+                        "`/song add`: add a Spotify or YouTube song (" + MEMBER_ADDS_PER_DAY + " a day)\n"
+                                + "`/song tag`: tag your song (" + String.join(", ", SongMetadata.TAG_VOCABULARY) + ")\n"
+                                + "`/song remove`: remove a song you added\n"
+                                + "`/song suggest`: get a random song from the pool\n"
+                                + "-# Some days have themes: chill on Monday, underrated on Wednesday, throwback on Thursday, "
+                                + "hype on Friday, acoustic on Sunday.", false)
+                .addField("Games",
+                        "`/music songdle`: guess the day's song from its cover, 6 tries\n"
+                                + "`/music game`, then pick one:\n"
+                                + "- **Who Added It?**: guess which member added a song\n"
+                                + "- **Blurred Cover**: type the title in chat while the cover gets clearer\n"
+                                + "- **Higher or Lower**: guess which song has more YouTube views\n"
+                                + "-# Who Added It? and Blurred Cover sometimes show up in the lounge on their own too.", false)
+                .addField("Vinyls",
+                        "`/music vinyls`: see your collection. Rarity depends on how people rated each song.\n"
+                                + "`/music crate`: get a random vinyl for " + MusicService.CRATE_COST + " Sparks\n"
+                                + "`/music sponsor`: pay " + MusicService.SPONSOR_COST + " Sparks to get a song picked as an upcoming Song of the Day", false)
+                .addField("Stats and events",
+                        "`/music stats`: your music stats\n"
+                                + "`/music match`: see how similar your taste is to someone else's\n"
+                                + "`/music battle`: the weekly Song Battle (starts every Monday)\n"
+                                + "`/leaderboard`: pick Top Music Curators", false)
+                .setFooter("Song IDs are on every song post", null);
         if (staff) {
-            eb.addField("🛠️ Staff",
-                    "`/song postnow` · `/song importplaylist` · `/song list` · `/music battle start:True` · `/music recap`", false);
+            eb.addField("Staff",
+                    "`/song postnow`, `/song importplaylist`, `/song list`, `/music battle start:True`, `/music recap`", false);
         }
         return eb;
     }
@@ -402,7 +405,7 @@ public class MusicListener extends ListenerAdapter {
                 }
                 deferred(event, true, hook -> {
                     String err = type.equals("whoadded") ? MusicGames.startWhoAdded(event.getChannel()) : MusicGames.startCover(event.getChannel());
-                    hook.editOriginal(err == null ? "🎮 Game started! Good luck." : "  " + err).queue();
+                    hook.editOriginal(err == null ? "Started! It's in this channel." : "  " + err).queue();
                 });
             }
             case "vinyls" -> {
@@ -421,7 +424,7 @@ public class MusicListener extends ListenerAdapter {
             case "match" -> {
                 User other = event.getOption("user") == null ? null : event.getOption("user").getAsUser();
                 if (other != null && other.getId().equals(userId)) {
-                    event.reply("  You are always a 100% match with yourself 😌").setEphemeral(true).queue();
+                    event.reply("Pick someone other than yourself.").setEphemeral(true).queue();
                     return;
                 }
                 deferred(event, false, hook -> hook.editOriginal(MusicService.twin(userId, other == null ? null : other.getId())).queue());
@@ -435,7 +438,7 @@ public class MusicListener extends ListenerAdapter {
                 deferred(event, true, hook -> {
                     if (start) {
                         String err = MusicBattle.start(event.getJDA());
-                        hook.editOriginal(err == null ? "⚔️ Song battle started! " + MusicBattle.status() : "  " + err).queue();
+                        hook.editOriginal(err == null ? "Battle started. " + MusicBattle.status() : "  " + err).queue();
                     } else {
                         hook.editOriginal(MusicBattle.status()).queue();
                     }
@@ -455,7 +458,7 @@ public class MusicListener extends ListenerAdapter {
                     return;
                 }
                 deferred(event, true, hook -> hook.editOriginal(MusicService.postRecap(event.getJDA(), month)
-                        ? "📊 Recap posted in <#" + MusicService.DAILY_CHANNEL_ID + ">."
+                        ? "Recap posted in <#" + MusicService.DAILY_CHANNEL_ID + ">."
                         : "  Could not post the recap. Check DAILY_SONG_CHANNEL_ID.").queue());
             }
             default -> event.reply("  Unknown music subcommand.").setEphemeral(true).queue();

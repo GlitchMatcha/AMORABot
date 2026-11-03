@@ -61,7 +61,7 @@ public final class MusicBattle {
         MusicRepository.Battle latest = repo().latestBattle();
         if (latest != null && now - latest.startedAt() < TimeUnit.DAYS.toMillis(6)) return;
         String err = start(jda);
-        if (err != null) System.out.println("✦ Weekly song battle skipped: " + err);
+        if (err != null) System.out.println("Weekly song battle skipped: " + err);
     }
 
     /** Starts a new battle. Returns an error message, or null on success. */
@@ -127,7 +127,7 @@ public final class MusicBattle {
         Message msg = channel.sendMessageEmbeds(roundEmbed(matches, endsAt, false).build())
                 .setComponents(roundRows(matches, false)).complete();
         repo().updateBattleRound(battleId, round, endsAt, msg.getId());
-        channel.sendMessage("⚔️ **Song Battle · " + roundName(matches.size()) + "** is live! Vote for your favourites above. 🎧")
+        channel.sendMessage("The Song Battle " + roundName(matches.size()).toLowerCase() + " is open. Vote above!")
                 .queue(s -> {}, e -> {});
     }
 
@@ -141,12 +141,12 @@ public final class MusicBattle {
             MusicRepository.Song b = repo().songById(m.songB());
             int[] v = repo().matchVotes(m.matchId());
             desc.append("**Match ").append(n++).append("**\n")
-                    .append(m.winner() == m.songA() ? "🏆 " : "🅰️ ").append(label(a)).append(" · `").append(v[0]).append("`\n")
-                    .append(m.winner() == m.songB() ? "🏆 " : "🅱️ ").append(label(b)).append(" · `").append(v[1]).append("`\n\n");
+                    .append(m.winner() == m.songA() ? "**Winner:** " : "A: ").append(label(a)).append(" (").append(v[0]).append(")\n")
+                    .append(m.winner() == m.songB() ? "**Winner:** " : "B: ").append(label(b)).append(" (").append(v[1]).append(")\n\n");
         }
         return new EmbedBuilder()
                 .setColor(BATTLE_COLOR)
-                .setTitle("⚔️ WEEKLY SONG BATTLE · " + roundName(matches.size()).toUpperCase())
+                .setTitle("Song Battle: " + roundName(matches.size()))
                 .setDescription(desc.toString())
                 .setFooter("Ties go to the better-rated song", null);
     }
@@ -190,7 +190,7 @@ public final class MusicBattle {
         List<MusicRepository.Match> matches = repo().matches(battle.battleId(), battle.round());
         event.getMessage().editMessageEmbeds(roundEmbed(matches, battle.roundEndsAt(), false).build()).queue(s -> {}, e -> {});
         MusicRepository.Song picked = repo().songById(choice == 0 ? match.songA() : match.songB());
-        event.getHook().sendMessage("⚔️ Vote saved for **" + (picked == null ? "that song" : picked.displayTitle())
+        event.getHook().sendMessage("Voted for **" + (picked == null ? "that song" : picked.displayTitle())
                 + "**. You can switch sides until the round ends.").queue();
     }
 
@@ -246,22 +246,22 @@ public final class MusicBattle {
         MusicRepository.Song song = repo().songById(songId);
         if (song == null || channel == null) return;
 
-        StringBuilder desc = new StringBuilder("🏆 **" + song.displayTitle() + "** by **" + song.displayArtist()
-                + "** is this week's champion!\n🎧 " + song.link() + "\n\n");
+        StringBuilder desc = new StringBuilder("**" + song.displayTitle() + "** by " + song.displayArtist()
+                + " won this week's battle.\n" + song.link() + "\n\n");
         if (song.isMemberPick()) {
             DatabaseManager.getInstance().addSparks(song.addedBy(), CHAMPION_SPARKS);
             repo().addCuratorPoints(song.addedBy(), CHAMPION_CURATOR_POINTS, 0);
             MusicService.grantTimedRole(channel.getGuild(), song.addedBy(), CURATOR_ROLE_ID,
                     System.currentTimeMillis() + TimeUnit.DAYS.toMillis(7));
-            desc.append("🫶 Curator <@").append(song.addedBy()).append("> earns `+").append(CHAMPION_SPARKS)
-                    .append(" Sparks`, `+").append(CHAMPION_CURATOR_POINTS).append(" Curator Points`")
-                    .append(CURATOR_ROLE_ID != null ? " and **Curator of the Week** for 7 days!" : "!");
+            desc.append("<@").append(song.addedBy()).append("> added it and gets ").append(CHAMPION_SPARKS)
+                    .append(" Sparks and ").append(CHAMPION_CURATOR_POINTS).append(" Curator Points")
+                    .append(CURATOR_ROLE_ID != null ? ", plus Curator of the Week for 7 days." : ".");
         } else {
             desc.append("_From the AMORA staff playlist._");
         }
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(new Color(255, 215, 0))
-                .setTitle("👑 SONG BATTLE CHAMPION 👑")
+                .setTitle("Song Battle winner")
                 .setDescription(desc.toString())
                 .setFooter("A new battle starts every Monday", null);
         String art = MusicArt.artworkUrl(song.link());
@@ -273,6 +273,6 @@ public final class MusicBattle {
         MusicRepository.Battle battle = repo().activeBattle();
         if (battle == null) return "No song battle is running. A new one starts every Monday.";
         List<MusicRepository.Match> matches = repo().matches(battle.battleId(), battle.round());
-        return "⚔️ **" + roundName(matches.size()) + "** is live in <#" + battle.channelId() + ">, ends <t:" + battle.roundEndsAt() / 1000 + ":R>.";
+        return "The " + roundName(matches.size()).toLowerCase() + " is happening in <#" + battle.channelId() + ">, ends <t:" + battle.roundEndsAt() / 1000 + ":R>.";
     }
 }

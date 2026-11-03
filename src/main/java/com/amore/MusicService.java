@@ -99,11 +99,11 @@ public final class MusicService {
     // ================================================================ themes
 
     public enum Theme {
-        MELLOW_MONDAY(DayOfWeek.MONDAY, "chill", "🌙 Mellow Monday"),
-        UNDERRATED_WEDNESDAY(DayOfWeek.WEDNESDAY, "underrated", "💎 Underrated Wednesday"),
-        THROWBACK_THURSDAY(DayOfWeek.THURSDAY, "throwback", "📼 Throwback Thursday"),
-        HYPE_FRIDAY(DayOfWeek.FRIDAY, "hype", "⚡ Hype Friday"),
-        SOFT_SUNDAY(DayOfWeek.SUNDAY, "acoustic", "☁️ Soft Sunday");
+        MELLOW_MONDAY(DayOfWeek.MONDAY, "chill", "Mellow Monday"),
+        UNDERRATED_WEDNESDAY(DayOfWeek.WEDNESDAY, "underrated", "Underrated Wednesday"),
+        THROWBACK_THURSDAY(DayOfWeek.THURSDAY, "throwback", "Throwback Thursday"),
+        HYPE_FRIDAY(DayOfWeek.FRIDAY, "hype", "Hype Friday"),
+        SOFT_SUNDAY(DayOfWeek.SUNDAY, "acoustic", "Soft Sunday");
 
         final DayOfWeek day;
         final String tag;
@@ -218,20 +218,19 @@ public final class MusicService {
         if (lockForToday) db().setBotState("daily_song_last_post_date", today.toString());
 
         final MusicRepository.Song posted = song;
-        message.createThreadChannel(SongMetadata.truncate("🎧 " + song.displayTitle() + " — " + song.displayArtist(), 95))
+        message.createThreadChannel(SongMetadata.truncate(song.displayTitle() + " — " + song.displayArtist(), 95))
                 .queue(thread -> {
                     repo().setFeatureThread(key, thread.getId());
                     rememberThread(thread.getId(), key);
-                    thread.sendMessage("💬 **What do you think of this one?**\nThe first **" + THREAD_REWARD_SLOTS
-                            + "** thoughtful replies here earn `+" + THREAD_REWARD_SPARKS + " Sparks` each.").queue();
+                    thread.sendMessage("What do you think of this one? The first " + THREAD_REWARD_SLOTS
+                            + " people to share a real opinion here get " + THREAD_REWARD_SPARKS + " Sparks.").queue();
                 }, err -> System.err.println("Could not open song thread: " + err.getMessage()));
 
         if (LOUNGE_CHANNEL_ID != null) {
             TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
             if (lounge != null) {
-                lounge.sendMessage("🎶 ✦ **A new Song of the Day just dropped!** ✦\nHead over to <#" + DAILY_CHANNEL_ID
-                        + "> to rate **" + posted.displayTitle() + "** by **" + posted.displayArtist()
-                        + "** and keep your 🎧 listening streak alive! ✨").queue();
+                lounge.sendMessage("Today's song is up in <#" + DAILY_CHANNEL_ID + ">: **" + posted.displayTitle()
+                        + "** by " + posted.displayArtist() + ". Go give it a listen!").queue();
             }
         }
         return true;
@@ -241,15 +240,15 @@ public final class MusicService {
                                            boolean scheduled) {
         StringBuilder desc = new StringBuilder();
         if (themeLabel != null) desc.append("**").append(themeLabel).append("**\n\n");
-        desc.append("🎶 **").append(song.displayTitle()).append("**\n")
-                .append("by **").append(song.displayArtist()).append("**\n\n")
-                .append("🫶 **Suggested by:** ").append(song.creditLine()).append("\n");
-        if (sponsor != null) desc.append("💸 **Sponsored by:** <@").append(sponsor.userId()).append(">\n");
-        desc.append("\nRate it below, then tap **🎧 Listened** to keep your streak and collect today's vinyl.");
+        desc.append("**").append(song.displayTitle()).append("**\n")
+                .append("by ").append(song.displayArtist()).append("\n\n")
+                .append("Suggested by ").append(song.creditLine()).append("\n");
+        if (sponsor != null) desc.append("Sponsored by <@").append(sponsor.userId()).append(">\n");
+        desc.append("\nVote below, and hit **Listened** once you've heard it to keep your streak going.");
 
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(PINK)
-                .setTitle(scheduled ? "✦ AMORA SONG OF THE DAY ✦" : "✦ AMORA BONUS SONG DROP ✦")
+                .setTitle(scheduled ? "Song of the Day" : "Bonus Song")
                 .setDescription(desc.toString())
                 .addField("Source", song.source(), true)
                 .addField("Song ID", "#" + song.songId(), true)
@@ -269,7 +268,7 @@ public final class MusicService {
                         .withEmoji(Emoji.fromUnicode("💤")).withDisabled(closed));
         ActionRow actions = ActionRow.of(
                 Button.success("music:listen:" + key, "Listened").withEmoji(Emoji.fromUnicode("🎧")).withDisabled(closed),
-                Button.link(song.link(), "Open song").withEmoji(Emoji.fromUnicode("▶️")));
+                Button.link(song.link(), "Open song"));
         return List.of(votes, actions);
     }
 
@@ -316,14 +315,14 @@ public final class MusicService {
         }
         String userId = event.getUser().getId();
         if (song.isMemberPick() && song.addedBy().equals(userId)) {
-            event.getHook().sendMessage("  You suggested this one, so your vote stays out of it 😉").queue();
+            event.getHook().sendMessage("You added this one, so you can't vote on it.").queue();
             return;
         }
         repo().upsertVote(key, userId, song.songId(), vote);
         MusicRepository.Tally tally = repo().featureTally(key);
         event.getMessage().editMessageComponents(dailyRows(key, song, tally, false)).queue(s -> {}, e -> {});
-        String label = vote == MusicRepository.VOTE_FIRE ? "🔥 Banger" : vote == MusicRepository.VOTE_LIKE ? "🙂 Nice" : "💤 Not for me";
-        event.getHook().sendMessage("Vote saved: **" + label + "**. You can change it until the next drop.").queue();
+        String label = vote == MusicRepository.VOTE_FIRE ? "loved it" : vote == MusicRepository.VOTE_LIKE ? "liked it" : "not for you";
+        event.getHook().sendMessage("Got it, " + label + ". You can change your vote until the next song.").queue();
     }
 
     public static void handleListen(ButtonInteractionEvent event, String key) {
@@ -336,7 +335,7 @@ public final class MusicService {
         String userId = event.getUser().getId();
         LocalDate today = todayUtc();
         if (!repo().recordListen(key, userId, today.toString())) {
-            event.getHook().sendMessage("🎧 You already logged this one. Come back for the next drop!").queue();
+            event.getHook().sendMessage("You've already marked this one as listened.").queue();
             return;
         }
 
@@ -362,14 +361,14 @@ public final class MusicService {
 
         if (newDay && event.getGuild() != null) grantStreakRoles(event.getGuild(), userId, streak);
 
-        StringBuilder msg = new StringBuilder("🎧 **Listen logged!** `+" + sparks + " Spark" + (sparks == 1 ? "" : "s") + "`\n");
-        msg.append("🔥 Streak: **").append(streak).append(" day").append(streak == 1 ? "" : "s").append("** (best ").append(best).append(")\n");
-        if (newDay && streak % 7 == 0) msg.append("🏅 **").append(streak).append("-day milestone bonus!**\n");
+        StringBuilder msg = new StringBuilder("Marked as listened (+" + sparks + " Spark" + (sparks == 1 ? "" : "s") + ").\n");
+        msg.append("Streak: ").append(streak).append(" day").append(streak == 1 ? "" : "s").append(" (best ").append(best).append(")\n");
+        if (newDay && streak % 7 == 0) msg.append(streak).append(" days in a row, nice. That's a 10 Spark bonus.\n");
         if (song != null) {
-            msg.append("💿 Vinyl: **").append(song.displayTitle()).append("** · ").append(rarity)
-                    .append(copies > 1 ? " (copy x" + copies + ")" : " **NEW!**").append("\n");
+            msg.append(copies > 1 ? "You already had this vinyl, now you've got " + copies + " copies."
+                    : "Added **" + song.displayTitle() + "** (" + rarity + ") to your vinyls.").append("\n");
         }
-        msg.append("-# See your collection with `/music vinyls`.");
+        msg.append("-# /music vinyls to see your collection");
         event.getHook().sendMessage(msg.toString()).queue();
     }
 
@@ -391,12 +390,12 @@ public final class MusicService {
     }
 
     static String rarityOf(MusicRepository.Tally t) {
-        if (t.total() < 3) return "⚪ Common";
+        if (t.total() < 3) return "Common";
         double avg = t.average();
-        if (avg >= 1.5) return "🌟 Legendary";
-        if (avg >= 1.0) return "💜 Epic";
-        if (avg >= 0.5) return "💙 Rare";
-        return "⚪ Common";
+        if (avg >= 1.5) return "Legendary";
+        if (avg >= 1.0) return "Epic";
+        if (avg >= 0.5) return "Rare";
+        return "Common";
     }
 
     private static int rarityRank(String rarity) {
@@ -423,8 +422,8 @@ public final class MusicService {
         if (song == null) return;
 
         MusicRepository.Tally all = repo().featureTally(feature.featureKey());
-        StringBuilder result = new StringBuilder("📊 **Final results for " + song.displayTitle() + "**\n🔥 `" + all.fire()
-                + "`  🙂 `" + all.like() + "`  💤 `" + all.meh() + "`");
+        StringBuilder result = new StringBuilder("Voting's closed for **" + song.displayTitle() + "**: "
+                + all.fire() + " 🔥, " + all.like() + " 🙂, " + all.meh() + " 💤");
 
         if (song.isMemberPick()) {
             MusicRepository.Tally counted = repo().featureTallyExcluding(feature.featureKey(), song.addedBy());
@@ -432,8 +431,8 @@ public final class MusicService {
             int points = Math.max(0, counted.score()) + 3;
             db().addSparks(song.addedBy(), reward);
             repo().addCuratorPoints(song.addedBy(), points, 1);
-            result.append("\n🫶 <@").append(song.addedBy()).append("> earned `+").append(reward)
-                    .append(" Sparks` and `+").append(points).append(" Curator Points` for this pick!");
+            result.append("\n<@").append(song.addedBy()).append("> gets ").append(reward)
+                    .append(" Sparks and ").append(points).append(" Curator Points for picking it.");
         }
 
         if (feature.channelId() != null && feature.messageId() != null) {
@@ -478,7 +477,7 @@ public final class MusicService {
         if (!repo().claimThreadReward(key, event.getAuthor().getId())) return;
 
         db().addSparks(event.getAuthor().getId(), THREAD_REWARD_SPARKS);
-        event.getMessage().addReaction(Emoji.fromUnicode("✨")).queue(s -> {}, e -> {});
+        event.getMessage().addReaction(Emoji.fromUnicode("👍")).queue(s -> {}, e -> {});
     }
 
     // ================================================================ sponsorship
@@ -509,8 +508,8 @@ public final class MusicService {
             position++;
             if (s.id() == created.id()) break;
         }
-        return "💸 **Sponsored!** **" + song.displayTitle() + "** by **" + song.displayArtist() + "** is #" + position
-                + " in the queue and will be a coming Song of the Day. `-" + SPONSOR_COST + " Sparks`";
+        return "Done! **" + song.displayTitle() + "** by " + song.displayArtist() + " is #" + position
+                + " in line for Song of the Day. (-" + SPONSOR_COST + " Sparks)";
     }
 
     /** Refunds pending sponsorships of a song that is leaving the pool. */
@@ -534,10 +533,10 @@ public final class MusicService {
         String rarity = rarityOf(repo().songTally(song.songId()));
         if (copies > 1) {
             db().addSparks(userId, CRATE_DUPLICATE_REFUND);
-            return "📦 You opened a crate: 💿 **" + song.displayTitle() + "** · " + rarity + " (duplicate x" + copies
-                    + ", `+" + CRATE_DUPLICATE_REFUND + " Sparks` back)";
+            return "You got **" + song.displayTitle() + "** (" + rarity + "), but you already had it, so here's "
+                    + CRATE_DUPLICATE_REFUND + " Sparks back.";
         }
-        return "📦 You opened a crate: 💿 **" + song.displayTitle() + "** by " + song.displayArtist() + " · " + rarity + " **NEW!**";
+        return "You got **" + song.displayTitle() + "** by " + song.displayArtist() + " (" + rarity + ").";
     }
 
     public static EmbedBuilder vinylCollection(User user) {
@@ -559,7 +558,7 @@ public final class MusicService {
 
         StringBuilder desc = new StringBuilder();
         if (entries.isEmpty()) {
-            desc.append("_No vinyls yet._ Tap **🎧 Listened** on the Song of the Day, or open a `/music crate`.");
+            desc.append("Nothing here yet. Hit **Listened** on the Song of the Day, or try `/music crate`.");
         } else {
             int shown = 0;
             for (Entry e : entries) {
@@ -573,7 +572,7 @@ public final class MusicService {
         }
         return new EmbedBuilder()
                 .setColor(PINK)
-                .setTitle("💿 " + user.getEffectiveName() + "'s Vinyl Shelf")
+                .setTitle(user.getEffectiveName() + "'s vinyls")
                 .setDescription(desc.toString())
                 .addField("Collection", "`" + entries.size() + " / " + featured + "` featured songs", true)
                 .setThumbnail(user.getEffectiveAvatarUrl())
@@ -608,7 +607,7 @@ public final class MusicService {
         }
         EmbedBuilder eb = new EmbedBuilder()
                 .setColor(PINK)
-                .setTitle("🎵 " + user.getEffectiveName() + "'s Music Stats")
+                .setTitle(user.getEffectiveName() + "'s music stats")
                 .setDescription(profileField(user.getId()))
                 .addField("Higher or Lower best", "`" + s.hlBest() + "` in a row", true)
                 .setThumbnail(user.getEffectiveAvatarUrl());
@@ -658,8 +657,8 @@ public final class MusicService {
         if (otherId != null) {
             Map<Integer, Double> theirs = profiles.get(otherId);
             int sim = theirs == null ? -1 : similarity(mine, theirs);
-            if (sim < 0) return "  You two need at least **3** rated songs in common. Keep voting!";
-            return "💞 <@" + userId + "> × <@" + otherId + ">: **" + sim + "% music match** " + matchFlavor(sim);
+            if (sim < 0) return "You two need at least 3 rated songs in common first.";
+            return "<@" + userId + "> and <@" + otherId + "> have a **" + sim + "%** music match. " + matchFlavor(sim);
         }
         String bestUser = null;
         int best = -1;
@@ -671,15 +670,15 @@ public final class MusicService {
                 bestUser = e.getKey();
             }
         }
-        if (bestUser == null || best < 0) return "  Nobody shares 3+ rated songs with you yet. Keep voting!";
-        return "👯 Your music twin is <@" + bestUser + "> with a **" + best + "% match** " + matchFlavor(best);
+        if (bestUser == null || best < 0) return "Nobody has rated 3 of the same songs as you yet.";
+        return "Your closest music match is <@" + bestUser + "> at **" + best + "%**. " + matchFlavor(best);
     }
 
     private static String matchFlavor(int sim) {
-        if (sim >= 90) return "— basically the same playlist 🫶";
-        if (sim >= 75) return "— great taste in common ✨";
-        if (sim >= 50) return "— some overlap, some debates 🎧";
-        return "— opposites attract? 😅";
+        if (sim >= 90) return "Basically the same playlist.";
+        if (sim >= 75) return "Pretty similar taste.";
+        if (sim >= 50) return "Some overlap, some arguments.";
+        return "Not much in common, honestly.";
     }
 
     // ================================================================ monthly recap
@@ -775,11 +774,11 @@ public final class MusicService {
 
         EmbedBuilder embed = new EmbedBuilder()
                 .setColor(PINK)
-                .setTitle("✦ AMORA MUSIC RECAP · " + period.toUpperCase() + " ✦")
+                .setTitle("Music recap: " + period)
                 .setDescription(topText.length() == 0 ? "_No rated songs this month._" : topText.toString())
-                .addField("🫶 Top Curator", topCurator == null ? "—" : "<@" + topCurator + ">", true)
-                .addField("🔥 Longest Streak", streakUser == null ? "—" : "<@" + streakUser + "> · " + streakLen + " days", true)
-                .addField("📊 Activity", "`" + features.size() + "` drops · `" + votes + "` votes · `" + listens + "` listens", false)
+                .addField("Top curator", topCurator == null ? "—" : "<@" + topCurator + ">", true)
+                .addField("Longest streak", streakUser == null ? "—" : "<@" + streakUser + ">, " + streakLen + " days", true)
+                .addField("This month", features.size() + " songs, " + votes + " votes, " + listens + " listens", false)
                 .setImage("attachment://music_recap.png")
                 .setFooter("AMORA Music • " + Instant.ofEpochMilli(to - 1).atZone(ZoneOffset.UTC).toLocalDate(), null);
         return new Recap(embed, card);

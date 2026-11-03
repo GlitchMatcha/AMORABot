@@ -193,7 +193,7 @@ public final class MusicArt {
 
         g.setColor(new Color(255, 255, 255, 150));
         g.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        g.drawString("AMORA ✦ Music Recap", artX, h - 28);
+        g.drawString("AMORA Music Recap", artX, h - 28);
         g.dispose();
         return png(img);
     }
