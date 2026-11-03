@@ -261,6 +261,8 @@ D:/Discord/amora-bot/
 | `MUSIC_STREAK_ELITE_ROLE_ID` | Optional role held while a member has a 30+ day listening streak | `MusicService.java` |
 | `MUSIC_CURATOR_ROLE_ID` | Optional 7-day "Curator of the Week" role for the Song Battle champion's submitter | `MusicBattle.java` |
 | `MUSIC_BATTLE_CHANNEL_ID` | Optional channel for the weekly Song Battle (defaults to `DAILY_SONG_CHANNEL_ID`) | `MusicBattle.java` |
+| `MIKU_BOT_ID` | User ID of the M.IKU bot. Only its approval reactions pay Song of the Day thread rewards. Unset = thread replies never pay | `MusicService.java` |
+| `MIKU_MUSIC_APPROVE_EMOJI` | Reaction M.IKU uses to approve a thread reply (default `✅`). A unicode emoji, a custom emoji name, its ID, or `<:name:id>` | `MusicService.java` |
 
 ---
 
@@ -338,7 +340,7 @@ sequenceDiagram
 1. **Pick** (`MusicService.postDaily`): first a pending `song_sponsors` entry, else a themed pick (Mon `chill`, Wed `underrated`, Thu `throwback`, Fri `hype`, Sun `acoustic` tags), else any song. Picks are weighted among the 25 least recently featured songs: rated songs weigh `2 + average vote`, never-featured songs ×1.5.
 2. **Post**: embed + 🔥/🙂/💤 vote buttons (`music:vote:<key>:<2|1|-1>`), 🎧 Listened (`music:listen:<key>`), a link button, and a discussion thread. Row stored in `song_features` (key = UTC date; staff bonus drops use `<date>-bonus-<epoch>`).
 3. **Listen**: once per drop: +1 Spark, streak update (+10 Sparks every 7 days), that song's vinyl, and the `MUSIC_STREAK_ROLE_ID` (7+) / `MUSIC_STREAK_ELITE_ROLE_ID` (30+) roles. Each listen refreshes their 2-day timer, so `RoleManager` removes them after a missed day.
-4. **Thread**: the first 5 replies with at least 3 words / 12 characters earn +2 Sparks (`song_thread_rewards`).
+4. **Thread**: replies earn nothing by themselves. M.IKU (separate AI bot) reads the thread and reacts with `MIKU_MUSIC_APPROVE_EMOJI` to replies that are a real opinion about the song. AMORA only accepts that reaction from the `MIKU_BOT_ID` account, then pays +2 Sparks (first 5 approved people per drop, `song_thread_rewards`) and adds 👍. No reaction from M.IKU (rejected, or she is offline) means no reward, and nobody is notified. Approvals after voting closes are ignored. The thread name is `Title - Artist` and the starter message is the song embed, which gives M.IKU the song context.
 5. **Settle** (next drop or after 26h): voting closes and the buttons are disabled. For member picks, the submitter gets `min(40, 5 + 2·🔥 + 🙂)` Sparks and `max(0, score) + 3` Curator Points; their own votes don't count. Playlist imports (`origin = 'import'`) earn nobody rewards.
 6. **Weekly battle** (`MusicBattle`, Mondays): a 16/8/4-song bracket seeded from the best-rated songs of the last 30 days, one 24h round per day. Ties go to the better-rated song. The champion's curator gets +50 Sparks, +20 Curator Points and `MUSIC_CURATOR_ROLE_ID` for 7 days.
 7. **Monthly recap** (day 1): rendered card + embed for the previous month in `DAILY_SONG_CHANNEL_ID`, once per month (`bot_state.music_recap_<YYYY-MM>`).

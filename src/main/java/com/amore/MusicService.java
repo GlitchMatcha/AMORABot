@@ -32,8 +32,9 @@ import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
+import net.dv8tion.jda.api.entities.emoji.EmojiUnion;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
-import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.utils.FileUpload;
@@ -125,6 +126,9 @@ public final class MusicService {
 
     public static void start(JDA jda) {
         MusicRepository.get(); // run schema migration at boot, not on first interaction
+        if (MIKU_BOT_ID == null) {
+            System.out.println("MIKU_BOT_ID is not set: Song of the Day thread replies will not earn Sparks.");
+        }
         SCHEDULER.scheduleAtFixedRate(() -> {
             try {
                 tick(jda);
@@ -455,11 +459,30 @@ public final class MusicService {
         THREAD_FEATURES.put(threadId, key);
     }
 
-    /** Rewards the first thoughtful replies in a Song of the Day thread. Cheap no-op for every other channel. */
-    public static void onThreadMessage(MessageReceivedEvent event) {
-        if (!(event.getChannel() instanceof ThreadChannel thread)) return;
+    static final String MIKU_BOT_ID = env("MIKU_BOT_ID");
+    /** Reaction M.IKU adds to approve a reply: a unicode emoji, a custom emoji name, its ID, or "<:name:id>". */
+    static final String MIKU_APPROVE_EMOJI = env("MIKU_MUSIC_APPROVE_EMOJI") == null ? "✅" : env("MIKU_MUSIC_APPROVE_EMOJI");
+
+    private static boolean isApprovalEmoji(EmojiUnion emoji) {
+        if (MIKU_APPROVE_EMOJI.equals(emoji.getFormatted()) || MIKU_APPROVE_EMOJI.equals(emoji.getName())) return true;
+        return emoji.getType() == Emoji.Type.CUSTOM && MIKU_APPROVE_EMOJI.equals(emoji.asCustom().getId());
+    }
+
+    /**
+     * Thread rewards are paid only when M.IKU approves a reply by reacting with {@link #MIKU_APPROVE_EMOJI}.
+     * Reactions from anyone else, or on messages outside a Song of the Day thread, are ignored.
+     */
+    public static void onReaction(MessageReactionAddEvent event) {
+        if (MIKU_BOT_ID == null || !MIKU_BOT_ID.equals(event.getUserId())) return;
+        if (!isApprovalEmoji(event.getEmoji()) || !event.getChannelType().isThread()) return;
+        ThreadChannel thread = event.getChannel().asThreadChannel();
         if (DAILY_CHANNEL_ID == null || !DAILY_CHANNEL_ID.equals(thread.getParentChannel().getId())) return;
 
+        event.retrieveMessage().queue(message -> WORKERS.execute(() -> rewardApprovedReply(thread, message)), err -> {});
+    }
+
+    private static synchronized void rewardApprovedReply(ThreadChannel thread, Message message) {
+        if (message.getAuthor().isBot()) return;
         String key = THREAD_FEATURES.get(thread.getId());
         if (key == null) {
             MusicRepository.Feature f = repo().featureByThread(thread.getId());
@@ -468,16 +491,14 @@ public final class MusicService {
         }
         if (key.isEmpty()) return;
 
-        String content = event.getMessage().getContentRaw().trim();
-        if (content.length() < 12 || content.split("\\s+").length < 3 || !content.matches("(?s).*\\p{L}.*")) return;
-
         MusicRepository.Feature feature = repo().feature(key);
         if (feature == null || feature.settled()) return;
         if (repo().countThreadRewards(key) >= THREAD_REWARD_SLOTS) return;
-        if (!repo().claimThreadReward(key, event.getAuthor().getId())) return;
+        String authorId = message.getAuthor().getId();
+        if (!repo().claimThreadReward(key, authorId)) return;
 
-        db().addSparks(event.getAuthor().getId(), THREAD_REWARD_SPARKS);
-        event.getMessage().addReaction(Emoji.fromUnicode("👍")).queue(s -> {}, e -> {});
+        db().addSparks(authorId, THREAD_REWARD_SPARKS);
+        message.addReaction(Emoji.fromUnicode("👍")).queue(s -> {}, e -> {});
     }
 
     // ================================================================ sponsorship
