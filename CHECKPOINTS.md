@@ -38,6 +38,7 @@ D:/Discord/amora-bot/
     │       ├── AnnouncementListener.java # Event sync, reaction-based RSVP party roster, reminder schedulers
     │       ├── ActivityMonitor.java      # 12h scheduler: monthly rank tasks, 30-day activity sweeps, daily duties
     │       ├── LoungeManager.java        # 2h periodic quote drop in lounge, auto-deletes prior quote message
+    │       ├── ProfileCard.java          # Active Check shoutout card renderer (PNG)
     │       ├── StatusRotator.java        # 5m periodic rich presence rotator
     │       ├── RoleManager.java          # 5m periodic expired temporary role revocation sweep
     │       ├── InternalApiServer.java    # Embedded HTTP server: /health, /internal/age/*
