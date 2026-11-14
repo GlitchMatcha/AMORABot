@@ -31,13 +31,14 @@ public class App {
             JDA jda = JDABuilder.createDefault(token)
                     .enableIntents(net.dv8tion.jda.api.requests.GatewayIntent.MESSAGE_CONTENT)
                     .setActivity(Activity.playing("AMORA ✦: Matcha Says to Type /pull"))
-                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener(), new MusicListener())
+                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener(), new MusicListener(), new GameSpotlight())
                     .build();
 
             jda.awaitReady();
             System.out.println("✦ AMORA Bot is officially ONLINE 24/7!");
             StatusRotator.start(jda);
             LoungeManager.start(jda);
+            GameSpotlight.start(jda);
             RoleManager.start(jda);
             ActivityMonitor.start(jda);
             int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
@@ -170,6 +171,7 @@ public class App {
                         .addOption(OptionType.USER, "user", "Whose profile to view", false)
                 )
                 .addCommands(MusicListener.commands())
+                .addCommands(GameSpotlight.command())
                 .queue();
 
             System.out.println("✦ Slash commands registered successfully.");

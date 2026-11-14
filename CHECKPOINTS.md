@@ -38,6 +38,7 @@ D:/Discord/amora-bot/
     │       ├── AnnouncementListener.java # Event sync, reaction-based RSVP party roster, reminder schedulers
     │       ├── ActivityMonitor.java      # 12h scheduler: monthly rank tasks, 30-day activity sweeps, daily duties
     │       ├── LoungeManager.java        # 2h periodic quote drop in lounge, auto-deletes prior quote message
+    │       ├── GameSpotlight.java        # BubbleGum Dance Studio promo: 6h self-replacing lounge drop, /game
     │       ├── ProfileCard.java          # Active Check shoutout card renderer (PNG)
     │       ├── StatusRotator.java        # 5m periodic rich presence rotator
     │       ├── RoleManager.java          # 5m periodic expired temporary role revocation sweep
@@ -60,14 +61,16 @@ D:/Discord/amora-bot/
 ### 3.1 `App.java` (Application Bootstrap & Command Registry)
 - **Entry point**: `App.main(String[] args)`.
 - Validates `DISCORD_TOKEN`, initializes `DatabaseManager` and runs `db.cleanupExpiredSessions()`.
-- Builds JDA instance with `GatewayIntent.MESSAGE_CONTENT`, attaches 4 primary event listeners:
+- Builds JDA instance with `GatewayIntent.MESSAGE_CONTENT`, attaches 5 primary event listeners:
   - `new CommandListener()`
   - `new ChatListener()`
   - `new AnnouncementListener()`
   - `new MusicListener()`
+  - `new GameSpotlight()`
 - Awaits JDA ready state, then starts background services:
   - `StatusRotator.start(jda)` (5-minute status rotation)
   - `LoungeManager.start(jda)` (2-hour lounge quote cycle)
+  - `GameSpotlight.start(jda)` (6-hour game spotlight cycle, offset +1h from quotes)
   - `RoleManager.start(jda)` (5-minute role expiration sweep)
   - `ActivityMonitor.start(jda)` (12-hour activity and rank scheduler)
   - `InternalApiServer.startServer(webPort, jda)` (HTTP server for the verifier callbacks)
@@ -87,7 +90,7 @@ D:/Discord/amora-bot/
   5. `active_trades`: Proposed trades waiting for recipient action.
   6. `pending_forges`: Staged items for craft/recycle synthesis.
   7. `song_suggestions`: Pool of songs: raw title/artist/link/source, `display_title`/`display_artist`, `dedupe_key`, `tags` (`,a,b,`), `origin` (`member`/`import`), cached YouTube `view_count`, active flag, timestamps. Music tables (owned by `MusicRepository`): `song_features`, `song_votes`, `song_listens`, `song_thread_rewards`, `user_music_stats`, `song_sponsors`, `user_vinyls`, `songdle_plays`, `song_battles`, `battle_matches`, `battle_votes`.
-  8. `bot_state`: Key-value state store for timestamps (e.g. `last_task_drop`, `last_activity_sweep`, `last_quote_msg_id`, `daily_song_last_post_date`, `global_commands_used`).
+  8. `bot_state`: Key-value state store for timestamps (e.g. `last_task_drop`, `last_activity_sweep`, `last_quote_msg_id`, `last_game_spotlight_msg_id`, `daily_song_last_post_date`, `global_commands_used`).
   9. `role_timers`: Temporary roles scheduled for removal `(user_id, role_id, expires_at)`.
   10. `creator_stats`: Monthly and all-time shop sales, items listed, total ratings, and total stars.
   11. `staff_stats`: Metrics for staff members (tickets, events hosted, payouts).
@@ -170,6 +173,7 @@ D:/Discord/amora-bot/
 ### 3.9 `LoungeManager.java` (Lounge Automations)
 - Runs every 2 hours.
 - Selects a quote from `QUOTES`, deletes the previous quote message (using message ID saved in `bot_state.last_quote_msg_id`), and posts the new quote embed in `LOUNGE_CHANNEL_ID`.
+- `GameSpotlight` (same pattern, promotes BubbleGum Dance Studio, a Roblox BETA by Owl `162989003405131776`): every 6h starting +1h after boot (quotes land on even hours, spotlights on odd). Skips the drop unless 15+ member messages arrived since the previous one (`bot_state.last_game_spotlight_msg_id`), then deletes it and posts a fresh embed with Roblox/Discord link buttons. `/game` posts the same embed on demand. The Roblox icon URL expires, so it is re-resolved from the thumbnails API every 12h. The status rotator also includes a line for the game.
 
 ### 3.10 `InternalApiServer.java` (Internal Endpoints)
 - Starts embedded `HttpServer` on port `PORT` (`Executors.newFixedThreadPool(4)`):

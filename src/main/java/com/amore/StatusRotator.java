@@ -20,7 +20,8 @@ public class StatusRotator {
             "AMORA ✦: Spread Kindness to everyone! 💖",
             "AMORA ✦: Everyone here is working hard to bring safe place ! 🫂",
             "AMORA ✦: Matcha is always here to help you! 🫶",
-            "AMORA ✦: Look MUSIC RECOMMENDATION! WOOOO "
+            "AMORA ✦: Look MUSIC RECOMMENDATION! WOOOO ",
+            "AMORA ✦: Go play BubbleGum Dance Studio (BETA)! 🫧"
     );
 
     public static void start(JDA jda) {

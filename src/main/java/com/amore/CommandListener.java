@@ -1939,7 +1939,8 @@ public class CommandListener extends ListenerAdapter {
                         "`/pull` - Spend 50 Sparks to pull a random Gacha reward!\n" +
                         "`/forge` - Open the Synthesis Forge to craft or recycle items.\n" +
                         "`/trade` - Safely exchange your duplicate assets with another member.\n" +
-                        "`/gift` - Buy a comforting treat for M.IKU to lower her stress level!", false)
+                        "`/gift` - Buy a comforting treat for M.IKU to lower her stress level!\n" +
+                        "`/game` - Check out BubbleGum Dance Studio, our friend's Roblox game (BETA)!", false)
                         
                 .addField("🎵 Music",
                         "`/music help` - Full guide to Song of the Day, music games and vinyls.\n" +
