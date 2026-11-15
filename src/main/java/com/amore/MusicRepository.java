@@ -1,5 +1,9 @@
 package com.amore;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,6 +19,9 @@ public final class MusicRepository {
 
     public static final String ORIGIN_MEMBER = "member";
     public static final String ORIGIN_IMPORT = "import";
+    /** {@code added_by} for songs seeded from a bundled pack (credited to the staff playlist like imports). */
+    static final String SEED_CURATOR = "AMORA";
+    private static final String KPOP_PACK = "/music/kpop_starter_pack.tsv";
 
     public static final int VOTE_FIRE = 2;
     public static final int VOTE_LIKE = 1;
@@ -33,6 +40,10 @@ public final class MusicRepository {
         public String creditLine() {
             return isMemberPick() ? "<@" + addedBy + ">" : "AMORA staff playlist";
         }
+    }
+
+    /** A song to bulk-insert as an import: raw title/artist as fetched, plus the cleaned display metadata. */
+    public record ImportRow(String title, String artist, String link, SongMetadata.DisplayMeta meta, String tags) {
     }
 
     public record Feature(String featureKey, String featureDate, int songId, String channelId, String messageId,
@@ -148,6 +159,44 @@ public final class MusicRepository {
         }
         backfillOrigins();
         backfillDisplayMetadata();
+        seedPack("music_seed_kpop_v1", KPOP_PACK);
+    }
+
+    /**
+     * One-time insert of a bundled pack (tab-separated: YouTube video ID, artist, title, tags).
+     * Songs already in the pool (same link or same artist+title) are skipped; the state flag is set only on success.
+     */
+    private void seedPack(String stateKey, String resource) {
+        if ("done".equals(db.getBotState(stateKey))) return;
+        List<ImportRow> rows = new ArrayList<>();
+        int skipped = 0;
+        try (InputStream in = MusicRepository.class.getResourceAsStream(resource)) {
+            if (in == null) throw new IllegalStateException("missing resource " + resource);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank() || line.startsWith("#")) continue;
+                String[] f = line.split("\t");
+                String tags = f.length == 4 ? SongMetadata.parseTags(f[3]) : null;
+                if (tags == null) throw new IllegalStateException("bad line in " + resource + ": " + line);
+                String link = "https://www.youtube.com/watch?v=" + f[0].trim();
+                SongMetadata.DisplayMeta meta = new SongMetadata.DisplayMeta(f[2].trim(), f[1].trim());
+                if (activeSongByLink(link) != null
+                        || activeSongByDedupeKey(SongMetadata.dedupeKey(meta.title(), meta.artist())) != null) {
+                    skipped++;
+                    continue;
+                }
+                rows.add(new ImportRow(meta.title(), meta.artist(), link, meta, tags));
+            }
+        } catch (Exception e) {
+            System.out.println("❌ Failed to read song pack " + resource);
+            e.printStackTrace();
+            return;
+        }
+        int added = addImportedSongs(SEED_CURATOR, rows);
+        if (added != rows.size()) return; // insert failed and was rolled back: retry on next boot
+        db.setBotState(stateKey, "done");
+        System.out.println("✦ Seeded " + resource + ": " + added + " songs added, " + skipped + " already in the pool.");
     }
 
     /** Rows bulk-inserted by a playlist import share (added_by, created_at); mark them as imports once. */
@@ -278,32 +327,32 @@ public final class MusicRepository {
                 meta.title(), meta.artist(), SongMetadata.dedupeKey(meta.title(), meta.artist()), tags);
     }
 
-    /** Inserts playlist items (raw YouTube title/channel); returns the number inserted. */
-    public int addImportedSongs(String importedBy, List<YouTubePlaylistImporter.ImportedSong> items) {
-        if (items.isEmpty()) return 0;
+    /** Inserts imported songs in one transaction; returns the number inserted (0 if it was rolled back). */
+    public int addImportedSongs(String importedBy, List<ImportRow> rows) {
+        if (rows.isEmpty()) return 0;
         Connection conn = db.ensureConnected();
         String sql = "INSERT INTO song_suggestions (added_by, title, artist, link, source, is_active, created_at, "
                 + "last_featured_at, display_title, display_artist, dedupe_key, tags, origin) "
-                + "VALUES (?, ?, ?, ?, 'YouTube', 1, ?, 0, ?, ?, ?, '', 'import')";
+                + "VALUES (?, ?, ?, ?, 'YouTube', 1, ?, 0, ?, ?, ?, ?, 'import')";
         try {
             conn.setAutoCommit(false);
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 long now = System.currentTimeMillis();
-                for (YouTubePlaylistImporter.ImportedSong item : items) {
-                    SongMetadata.DisplayMeta meta = SongMetadata.fromYouTube(item.title(), item.artist());
+                for (ImportRow row : rows) {
                     ps.setString(1, importedBy);
-                    ps.setString(2, item.title());
-                    ps.setString(3, item.artist());
-                    ps.setString(4, item.link());
+                    ps.setString(2, row.title());
+                    ps.setString(3, row.artist());
+                    ps.setString(4, row.link());
                     ps.setLong(5, now);
-                    ps.setString(6, meta.title());
-                    ps.setString(7, meta.artist());
-                    ps.setString(8, SongMetadata.dedupeKey(meta.title(), meta.artist()));
+                    ps.setString(6, row.meta().title());
+                    ps.setString(7, row.meta().artist());
+                    ps.setString(8, SongMetadata.dedupeKey(row.meta().title(), row.meta().artist()));
+                    ps.setString(9, row.tags());
                     ps.addBatch();
                 }
                 ps.executeBatch();
                 conn.commit();
-                return items.size();
+                return rows.size();
             } catch (SQLException e) {
                 conn.rollback();
                 e.printStackTrace();

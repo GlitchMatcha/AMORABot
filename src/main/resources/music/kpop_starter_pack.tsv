@@ -1,0 +1,120 @@
+# K-pop pack: classics plus recent hits, seeded once into the Song of the Day pool (bot_state.music_seed_kpop_v1).
+# Columns (tab-separated): YouTube video ID, artist, title, tags (comma-separated, from SongMetadata.TAG_VOCABULARY).
+# Every ID is an official upload (MV, or special/live video or audio where no MV exists) on the label, artist or studio channel, checked via YouTube oEmbed.
+9bZkp7q19f0	PSY	Gangnam Style	kpop,throwback,hype
+AAbokV76tkU	BIGBANG	Fantastic Baby	kpop,throwback,hype
+2ips2mM7Zqw	BIGBANG	BANG BANG BANG	kpop,throwback,hype
+U7mPqycQ0tQ	Girls' Generation	Gee	kpop,throwback
+QZBn1e9pr2Q	Wonder Girls	Nobody	kpop,throwback
+j7_lSP8Vc3o	2NE1	I Am The Best	kpop,throwback,hype
+roughtzsCDI	SHINee	Ring Ding Dong	kpop,throwback
+x6QA3m58DQw	Super Junior	Sorry, Sorry	kpop,throwback
+I3dezFzsNss	EXO	Growl	kpop,throwback
+pSudEWBAYRE	EXO	Love Shot	kpop
+jeqdYqsrsA0	IU	Good Day	kpop,throwback
+0-q1KafFCLU	IU	Celebrity	kpop
+BzYnNdJhZQw	IU	Through the Night	kpop,chill
+8TeeJvcBdLA	miss A	Bad Girl Good Girl	kpop,throwback
+gdZLi9oWNZg	BTS	Dynamite	kpop,hype
+WMweEpGlu_U	BTS	Butter	kpop
+xEeFrLSkMm8	BTS	Spring Day	kpop,sad
+MBdVXkSdhwU	BTS	DNA	kpop
+XsX3ATc3FbA	BTS	Boy With Luv (feat. Halsey)	kpop
+IHNzOHi8sJs	BLACKPINK	DDU-DU DDU-DU	kpop,hype
+2S24-y0Ij3Y	BLACKPINK	Kill This Love	kpop,hype
+ioNng23DkIM	BLACKPINK	How You Like That	kpop,hype
+gQlMMD8auMs	BLACKPINK	Pink Venom	kpop,hype
+Amq-qlqbjYA	BLACKPINK	As If It's Your Last	kpop,love
+ePpPVE-GGJw	TWICE	TT	kpop
+c7rCyll5AeY	TWICE	Cheer Up	kpop
+kOHB85vDuow	TWICE	Fancy	kpop
+i0p1bmr0EmE	TWICE	What is Love?	kpop,love
+uR8Mrt1IpXg	Red Velvet	Psycho	kpop
+WyiIGEHQP8o	Red Velvet	Red Flavor	kpop
+J_CFBjAyPWE	Red Velvet	Bad Boy	kpop
+KhTeiaCezwM	MAMAMOO	HIP	kpop,hype
+J-wFp43XOrA	SEVENTEEN	Very Nice	kpop,hype
+zSQ48zyWZrY	SEVENTEEN	God of Music	kpop
+TQTlCHxyuu8	Stray Kids	God's Menu	kpop,hype
+OvioeS1ZZ7o	Stray Kids	MANIAC	kpop,hype
+Jh4QFaPmdss	(G)I-DLE	TOMBOY	kpop
+7HDeem-JaSY	(G)I-DLE	Queencard	kpop
+pNfTK39k55U	ITZY	DALLA DALLA	kpop
+fE2h3lGlOsk	ITZY	WANNABE	kpop
+ur0hCdne2-s	SUNMI	Gashina	kpop
+HlN2BXNJzxA	CHUNG HA	Gotta Go	kpop
+NHXUM-6a3dU	TAEYEON	Fine	kpop,sad
+11cta61wi0g	NewJeans	Hype Boy	kpop
+pSUydWEqKwE	NewJeans	Ditto	kpop,chill
+_ZAgIHmHLdc	NewJeans	OMG	kpop
+ArmDp-zijuc	NewJeans	Super Shy	kpop
+Y8JFxS1HlDo	IVE	LOVE DIVE	kpop
+6ZUIwj3FgUY	IVE	I AM	kpop
+F0B7HDiY-10	IVE	After LIKE	kpop
+pyf8cbqyfPs	LE SSERAFIM	ANTIFRAGILE	kpop,hype
+hLvWy2b857I	LE SSERAFIM	Perfect Night	kpop
+4TWR90KJl84	aespa	Next Level	kpop,hype
+phuiiNCxRMg	aespa	Supernova	kpop,hype
+jWQx2f-CErU	aespa	Whiplash	kpop
+P9tKTxbgdkk	TOMORROW X TOGETHER	Sugar Rush Ride	kpop
+2OvyA2__Eas	NCT 127	Kick It	kpop,hype
+QU9c0053UAU	Jung Kook	Seven (feat. Latto)	kpop
+nOI67IDlNMQ	Jimin	Like Crazy	kpop
+ekr2nIex040	ROSÉ & Bruno Mars	APT.	kpop,hype
+b73BI9eUkjM	JENNIE	SOLO	kpop
+awkkyBH2zEo	LISA	LALISA	kpop
+Vk5-c_v4gMU	ILLIT	Magnetic	kpop
+yebNIHKAC4A	HUNTR/X	Golden	kpop
+W0cs6ciCt_k	Crush	Beautiful	kpop,love,chill
+EIz09kLzN9k	AKMU	Love Lee	kpop,chill
+# Recent hits (2023 to 2026)
+b4iVv91Z6lY	BTS	SWIM	kpop
+2GJfWMYCWY0	BLACKPINK	GO	kpop,hype
+BWfKkqo1Mk8	EXO	Crown	kpop,hype
+83C3TZ4Zm_o	aespa	LEMONADE	kpop,hype
+U6BDbXIah-Y	CORTIS	REDRED	kpop,hype
+WXS-o57VJ5w	CORTIS	GO!	kpop,rap,hype
+rsNhWkC4neE	IVE	Looks Can Kill	kpop
+B1ShLiq3EVc	IVE	XOXZ	kpop
+g36q0ZLvygQ	IVE	REBEL HEART	kpop
+V2V9-9VhYJo	ILLIT	You're Under Arrest	kpop
+D968qfUZMUE	A2O LITE	NEON	kpop
+lQ-w9M447w0	ALLDAY PROJECT	CRASH	kpop,rap,hype
+VjvzYjU1mY0	ALLDAY PROJECT	FAMOUS	kpop,hype
+-q_S27LbNKU	ATEEZ	BAD	kpop,hype
+H4H99b1CjPU	ATEEZ	Lemon Drop	kpop,rnb
+qZlu2j2SiBA	RESCENE	Pretty Girl	kpop
+roHWN9fL2SM	NMIXX	Birthday Wish	kpop
+-SEKt_0pdHM	NMIXX	Crescendo	kpop
+EmeW6li6bbo	NMIXX	Blue Valentine	kpop
+F7sGJVUrkjQ	Hearts2Hearts	RUDE!	kpop
+n7kFRxFIPrI	Hearts2Hearts	STYLE	kpop
+zhHB4dZTChw	KiiiKiii	404 (New Era)	kpop
+hAEfi_SKTEU	KiiiKiii	I DO ME	kpop,chill
+NOiyDlWl534	YENA	Catch Catch	kpop
+-jBJWQYog5I	RIIZE	SOAR	kpop
+D54StAZFUrc	AKMU	Paradise of Rumors	kpop,acoustic
+tiKFuzpX-NA	WOODZ	Drowning	kpop,rock,sad
+7mDDM0eBWR0	SOYEON	I'm gonna TOESA (Narr. Kian84)	kpop,rock
+CgCVZdcKcqY	BLACKPINK	JUMP	kpop,hype,edm
+JSFG-IE8n_c	JENNIE	like JENNIE	kpop,rap,hype
+bB3-CUMERIU	JENNIE	Mantra	kpop
+q9leDzlNEaY	j-hope	Killin' It Girl (feat. GloRilla)	kpop,rap
+o7BcyAd6rqg	Jin	Don't Say You Love Me	kpop,sad
+hAyPTJFgFEs	Saja Boys	Soda Pop	kpop
+M2WTUoy4y6E	aespa	Dirty Work	kpop
+Qe8fa4b5xNU	HWASA	Good Goodbye	kpop,sad
+TvVtYaqCni8	LE SSERAFIM	SPAGHETTI (feat. j-hope)	kpop
+0fyZqS0N19o	DAY6	Maybe Tomorrow	kpop,rock
+RowlrvmyFEk	DAY6	Welcome to the Show	kpop,rock
+P7vBoGWoReg	Stray Kids	CEREMONY	kpop,hype
+0P0aQreFs8w	Stray Kids	Chk Chk Boom	kpop,hype
+eHHQaoEW30Q	TWICE	THIS IS FOR	kpop
+Sz_wWzgh-vQ	TWICE	Strategy (feat. Megan Thee Stallion)	kpop
+Av9DvtlJ9_M	Jimin	Who	kpop,rnb
+UNo0TG9LwwI	Jung Kook	Standing Next to You	kpop
+HYzyRHAHJl8	V	Love Me Again	kpop,rnb,chill
+Qc7_zRjH808	FIFTY FIFTY	Cupid	kpop,love
+2wA_b6YHjqQ	BABYMONSTER	SHEESH	kpop,hype
+hbcGx4MGUMg	LISA	ROCKSTAR	kpop,hype
+eA0lHNZ1KCA	ROSÉ	toxic till the end	kpop

@@ -49,7 +49,8 @@ public class MusicListener extends ListenerAdapter {
                                 .addOption(OptionType.STRING, "link", "Spotify or YouTube link", true)
                                 .addOption(OptionType.STRING, "tags", SongMetadata.truncate(tagHelp, 100), false),
                         new SubcommandData("importplaylist", "Staff: import all songs from a public YouTube playlist")
-                                .addOption(OptionType.STRING, "link", "Public YouTube playlist URL", true),
+                                .addOption(OptionType.STRING, "link", "Public YouTube playlist URL", true)
+                                .addOption(OptionType.STRING, "tags", SongMetadata.truncate("Tag every imported song. " + tagHelp, 100), false),
                         new SubcommandData("remove", "Remove a song by ID (owner or staff)")
                                 .addOption(OptionType.INTEGER, "id", "Song ID", true),
                         new SubcommandData("tag", "Set the tags of a song (owner or staff)")
@@ -196,7 +197,13 @@ public class MusicListener extends ListenerAdapter {
                     event.reply("  Please provide a valid public YouTube playlist link or Playlist ID.").setEphemeral(true).queue();
                     return;
                 }
-                deferred(event, true, hook -> importPlaylist(hook, userId, playlistLink));
+                String importTags = SongMetadata.parseTags(event.getOption("tags") == null ? "" : event.getOption("tags").getAsString());
+                if (importTags == null) {
+                    event.reply("  Unknown tag. Use up to 3 of: `" + String.join("` `", SongMetadata.TAG_VOCABULARY) + "`")
+                            .setEphemeral(true).queue();
+                    return;
+                }
+                deferred(event, true, hook -> importPlaylist(hook, userId, playlistLink, importTags));
             }
             case "remove" -> {
                 int songId = event.getOption("id").getAsInt();
@@ -301,7 +308,7 @@ public class MusicListener extends ListenerAdapter {
         }
     }
 
-    private static void importPlaylist(InteractionHook hook, String userId, String playlistLink) {
+    private static void importPlaylist(InteractionHook hook, String userId, String playlistLink, String tags) {
         List<YouTubePlaylistImporter.ImportedSong> imported;
         try {
             imported = YouTubePlaylistImporter.importPlaylist(playlistLink);
@@ -317,7 +324,7 @@ public class MusicListener extends ListenerAdapter {
         int skippedInvalid = 0;
         Set<String> seenLinks = new HashSet<>();
         Set<String> seenKeys = new HashSet<>();
-        List<YouTubePlaylistImporter.ImportedSong> toAdd = new ArrayList<>();
+        List<MusicRepository.ImportRow> toAdd = new ArrayList<>();
         StringBuilder preview = new StringBuilder();
         for (YouTubePlaylistImporter.ImportedSong item : imported) {
             String link = SongMetadata.normalizeLink(item.link());
@@ -331,7 +338,7 @@ public class MusicListener extends ListenerAdapter {
                 skippedExisting++;
                 continue;
             }
-            toAdd.add(new YouTubePlaylistImporter.ImportedSong(item.title(), item.artist(), link));
+            toAdd.add(new MusicRepository.ImportRow(item.title(), item.artist(), link, meta, tags));
             if (preview.length() < 900) {
                 preview.append("**").append(SongMetadata.truncate(meta.title(), 40)).append("** - ")
                         .append(SongMetadata.truncate(meta.artist(), 30)).append("\n");

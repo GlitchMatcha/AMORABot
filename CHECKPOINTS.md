@@ -29,7 +29,7 @@ D:/Discord/amora-bot/
 └── src/
     ├── main/
     │   ├── resources/
-    │   │   └── (empty)
+    │   │   └── music/kpop_starter_pack.tsv  # Curated K-pop classics + recent hits, seeded once into the song pool
     │   └── java/com/amore/
     │       ├── App.java                  # Main entry point, JDA startup, slash command registration
     │       ├── DatabaseManager.java      # Singleton DB manager, Neon Postgres reconnection, schema DDL, CRUD
@@ -199,6 +199,7 @@ D:/Discord/amora-bot/
 - `MusicArt`: cached oEmbed artwork lookup, pixelation, recap-card rendering.
 - `SongMetadata`: link normalization, display-title/artist cleanup ("Artist - Title (Official Video)", "X - Topic", "XVEVO"), cross-source duplicate key, loose answer matching, tag vocabulary.
 - Members may add 5 songs per 24h (staff unlimited); duplicates are rejected by link and by cleaned artist+title key.
+- Bundled packs: `MusicRepository.seedPack` inserts `src/main/resources/music/kpop_starter_pack.tsv` (116 official K-pop uploads, classics plus 2023-2026 hits, tagged `kpop` plus mood/genre tags) once on boot as staff-playlist imports (`added_by = AMORA`), skipping songs already in the pool; guarded by `bot_state.music_seed_kpop_v1`. A new pack needs its own state key. `/song importplaylist` takes an optional `tags` option applied to every imported song.
 
 ---
 
