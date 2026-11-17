@@ -142,49 +142,19 @@ public class MusicListener extends ListenerAdapter {
                 OptionMapping tagsOpt = event.getOption("tags");
                 String tags = SongMetadata.parseTags(tagsOpt == null ? null : tagsOpt.getAsString());
 
-                if (title.isBlank() || artist.isBlank() || link.isBlank()) {
-                    event.reply("  Title, artist, and link are required.").setEphemeral(true).queue();
-                    return;
-                }
-                if (title.length() > 120 || artist.length() > 120 || link.length() > 500) {
-                    event.reply("  One or more fields are too long.").setEphemeral(true).queue();
-                    return;
-                }
-                if (!SongMetadata.isSupportedLink(link)) {
-                    event.reply("  Please submit a valid Spotify track or YouTube song link.").setEphemeral(true).queue();
-                    return;
-                }
-                if (tags == null) {
-                    event.reply("  Unknown tag. Use up to 3 of: `" + String.join("` `", SongMetadata.TAG_VOCABULARY) + "`")
-                            .setEphemeral(true).queue();
+                String error = songInputError(title, artist, link, tags);
+                if (error != null) {
+                    event.reply("  " + error).setEphemeral(true).queue();
                     return;
                 }
                 boolean staff = isStaff(event);
                 deferred(event, true, hook -> {
-                    if (!staff) {
-                        long since = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1);
-                        if (repo().countMemberAddsSince(userId, since) >= MEMBER_ADDS_PER_DAY) {
-                            hook.editOriginal("  You can add up to **" + MEMBER_ADDS_PER_DAY + "** songs per 24 hours. Try again later!").queue();
-                            return;
-                        }
-                    }
-                    if (repo().activeSongByLink(link) != null) {
-                        hook.editOriginal("  That exact song link is already in the AMORA pool.").queue();
+                    SongAdd added = addSong(userId, title, artist, link, tags, staff);
+                    if (added.error() != null) {
+                        hook.editOriginal("  " + added.error()).queue();
                         return;
                     }
-                    SongMetadata.DisplayMeta meta = SongMetadata.fromMember(title, artist);
-                    MusicRepository.Song dupe = repo().activeSongByDedupeKey(SongMetadata.dedupeKey(meta.title(), meta.artist()));
-                    if (dupe != null) {
-                        hook.editOriginal("  **" + dupe.displayTitle() + "** by **" + dupe.displayArtist()
-                                + "** is already in the pool (song #" + dupe.songId() + ", " + dupe.source() + ").").queue();
-                        return;
-                    }
-                    MusicRepository.Song created = repo().addMemberSong(userId, title, artist, link, SongMetadata.detectSource(link), tags);
-                    if (created == null) {
-                        hook.editOriginal("  Failed to save the song suggestion.").queue();
-                        return;
-                    }
-                    hook.editOriginalEmbeds(songEmbed(created, "Song added", "Thanks for adding to the pool!").build()).queue();
+                    hook.editOriginalEmbeds(songEmbed(added.song(), "Song added", "Thanks for adding to the pool!").build()).queue();
                 });
             }
             case "importplaylist" -> {
@@ -309,17 +279,71 @@ public class MusicListener extends ListenerAdapter {
     }
 
     private static void importPlaylist(InteractionHook hook, String userId, String playlistLink, String tags) {
-        List<YouTubePlaylistImporter.ImportedSong> imported;
+        PlaylistImport result;
         try {
-            imported = YouTubePlaylistImporter.importPlaylist(playlistLink);
+            result = importSongs(userId, playlistLink, tags);
         } catch (Exception e) {
             hook.editOriginal("  Failed to import playlist: " + e.getMessage()).queue();
             return;
         }
-        if (imported.isEmpty()) {
+        if (result.found() == 0) {
             hook.editOriginal("  No usable songs were found in that playlist.").queue();
             return;
         }
+        EmbedBuilder eb = new EmbedBuilder()
+                .setColor(MusicService.PINK)
+                .setTitle("Playlist imported")
+                .setDescription("Added: " + result.added() + "\nAlready in the pool: " + result.existing()
+                        + "\nSkipped: " + result.skipped() + "\n\n-# Imported songs are credited to the staff playlist, not to you.")
+                .setFooter("AMORA Music Importer", null);
+        if (!result.preview().isEmpty()) eb.addField("Imported Songs Preview", result.preview(), false);
+        hook.editOriginalEmbeds(eb.build()).setContent("").queue();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Shared by /song add, /song importplaylist and the web dashboard (DashboardQueue)
+    // ---------------------------------------------------------------------------------------------
+
+    /** A song added to the pool, or why it wasn't (shown to the user as-is). */
+    record SongAdd(MusicRepository.Song song, String error) { }
+
+    /** What a playlist import did; found = songs in the playlist. */
+    record PlaylistImport(int found, int added, int existing, int skipped, String preview) { }
+
+    /** Checks /song add input (link already normalized, tags already parsed); null when it's fine. */
+    static String songInputError(String title, String artist, String link, String tags) {
+        if (title.isBlank() || artist.isBlank() || link.isBlank()) return "Title, artist, and link are required.";
+        if (title.length() > 120 || artist.length() > 120 || link.length() > 500) return "One or more fields are too long.";
+        if (!SongMetadata.isSupportedLink(link)) return "Please submit a valid Spotify track or YouTube song link.";
+        if (tags == null) return "Unknown tag. Use up to 3 of: `" + String.join("` `", SongMetadata.TAG_VOCABULARY) + "`";
+        return null;
+    }
+
+    /** Saves a checked song unless the pool already has it; members may add MEMBER_ADDS_PER_DAY songs a day. */
+    static SongAdd addSong(String userId, String title, String artist, String link, String tags, boolean staff) {
+        if (!staff) {
+            long since = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1);
+            if (repo().countMemberAddsSince(userId, since) >= MEMBER_ADDS_PER_DAY) {
+                return new SongAdd(null, "You can add up to **" + MEMBER_ADDS_PER_DAY + "** songs per 24 hours. Try again later!");
+            }
+        }
+        if (repo().activeSongByLink(link) != null) {
+            return new SongAdd(null, "That exact song link is already in the AMORA pool.");
+        }
+        SongMetadata.DisplayMeta meta = SongMetadata.fromMember(title, artist);
+        MusicRepository.Song dupe = repo().activeSongByDedupeKey(SongMetadata.dedupeKey(meta.title(), meta.artist()));
+        if (dupe != null) {
+            return new SongAdd(null, "**" + dupe.displayTitle() + "** by **" + dupe.displayArtist()
+                    + "** is already in the pool (song #" + dupe.songId() + ", " + dupe.source() + ").");
+        }
+        MusicRepository.Song created = repo().addMemberSong(userId, title, artist, link, SongMetadata.detectSource(link), tags);
+        return created == null ? new SongAdd(null, "Failed to save the song suggestion.") : new SongAdd(created, null);
+    }
+
+    /** Imports every new song of a public YouTube playlist (credited to the staff playlist). */
+    static PlaylistImport importSongs(String userId, String playlistLink, String tags) throws Exception {
+        List<YouTubePlaylistImporter.ImportedSong> imported = YouTubePlaylistImporter.importPlaylist(playlistLink);
+        if (imported.isEmpty()) return new PlaylistImport(0, 0, 0, 0, "");
         int skippedExisting = 0;
         int skippedInvalid = 0;
         Set<String> seenLinks = new HashSet<>();
@@ -345,14 +369,7 @@ public class MusicListener extends ListenerAdapter {
             }
         }
         int added = repo().addImportedSongs(userId, toAdd);
-        EmbedBuilder eb = new EmbedBuilder()
-                .setColor(MusicService.PINK)
-                .setTitle("Playlist imported")
-                .setDescription("Added: " + added + "\nAlready in the pool: " + skippedExisting
-                        + "\nSkipped: " + skippedInvalid + "\n\n-# Imported songs are credited to the staff playlist, not to you.")
-                .setFooter("AMORA Music Importer", null);
-        if (preview.length() > 0) eb.addField("Imported Songs Preview", preview.toString(), false);
-        hook.editOriginalEmbeds(eb.build()).setContent("").queue();
+        return new PlaylistImport(imported.size(), added, skippedExisting, skippedInvalid, preview.toString());
     }
 
     static EmbedBuilder helpEmbed(boolean staff) {

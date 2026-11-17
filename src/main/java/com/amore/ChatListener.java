@@ -1936,18 +1936,19 @@ public class ChatListener extends ListenerAdapter {
 
         userCooldowns.put(userId, now);
 
-        if (maybeDropSpark(event, now)) {
+        // Each random chat drop can be switched off on the web dashboard (AM0RA › Settings)
+        if (BotSettings.enabled(BotSettings.CHAT_SPARKS_ON) && maybeDropSpark(event, now)) {
             return;
         }
 
-        if (maybePostQuestion(event, now)) {
+        if (BotSettings.enabled(BotSettings.CHAT_QUESTIONS_ON) && maybePostQuestion(event, now)) {
             return;
         }
-        if (maybePostReminder(event, now)) {
+        if (BotSettings.enabled(BotSettings.CHAT_REMINDERS_ON) && maybePostReminder(event, now)) {
             return;
         }
 
-        maybeSpawnGame(event, now);
+        if (BotSettings.enabled(BotSettings.CHAT_GAMES_ON)) maybeSpawnGame(event, now);
     }
 
     @Override
@@ -2314,7 +2315,8 @@ public class ChatListener extends ListenerAdapter {
         spawnRandomLoungeGame(event.getChannel());
         return true;
     }
-    private void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
+    /** One random lounge mini-game (also the dashboard's "Start a lounge game" button, via DashboardQueue). */
+    void spawnRandomLoungeGame(net.dv8tion.jda.api.entities.channel.middleman.MessageChannel channel) {
         int gameChoice = java.util.concurrent.ThreadLocalRandom.current().nextInt(4);
 
         switch (gameChoice) {

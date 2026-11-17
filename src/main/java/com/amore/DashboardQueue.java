@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel;
@@ -62,7 +63,7 @@ public final class DashboardQueue {
             } catch (Throwable t) {
                 System.out.println("❌ Dashboard queue tick failed: " + t);
             }
-        }, 5, 3, TimeUnit.SECONDS);
+        }, 5, 1, TimeUnit.SECONDS);
         EXECUTOR.scheduleWithFixedDelay(() -> {
             try {
                 publishStatus();
@@ -88,7 +89,8 @@ public final class DashboardQueue {
         Connection conn = DatabaseManager.getInstance().ensureConnected();
         if (conn == null) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE dashboard_queue SET status = 'expired', finished_at = now(), result = ? "
+                "UPDATE dashboard_queue SET status = 'expired', finished_at = now(), result = ?, "
+                + "params = CASE WHEN action = 'amora_shop_publish' THEN (params::jsonb - 'delivery')::text ELSE params END "
                 + "WHERE status = 'pending' AND created_at < now() - make_interval(secs => ?)")) {
             ps.setString(1, result(false, "Expired: AM0RA didn't get to it within 2 minutes (offline or restarting).", null).toString());
             ps.setInt(2, EXPIRE_SECONDS);
@@ -145,7 +147,7 @@ public final class DashboardQueue {
 
     private static void publishStatus() throws Exception {
         JSONObject status = new JSONObject()
-                .put("version", 1)
+                .put("version", 2)  // 2: song add / playlist import, event edit / party, shop publish, lounge settings
                 .put("heartbeat_ms", System.currentTimeMillis())
                 .put("started_ms", STARTED_AT)
                 .put("guild_id", GUILD_ID)
@@ -153,7 +155,11 @@ public final class DashboardQueue {
                 .put("member_schedule_channel_id", envOr("MEMBER_SCHEDULE_CHANNEL_ID", ""))
                 .put("daily_song_channel_id", MusicService.DAILY_CHANNEL_ID == null ? "" : MusicService.DAILY_CHANNEL_ID)
                 .put("battle_channel_id", MusicBattle.BATTLE_CHANNEL_ID == null ? "" : MusicBattle.BATTLE_CHANNEL_ID)
-                .put("event_types", new JSONArray(AnnouncementListener.EVENT_TYPES));
+                .put("event_types", new JSONArray(AnnouncementListener.EVENT_TYPES))
+                .put("lounge_channel_id", envOr("LOUNGE_CHANNEL_ID", ""))
+                .put("shop_forum_configured", !envOr("SHOP_FORUM_CHANNEL_ID", "").isEmpty())
+                .put("default_lounge_quotes", new JSONArray(LoungeManager.QUOTES))
+                .put("default_status_messages", new JSONArray(StatusRotator.STATUSES));
         Connection conn = DatabaseManager.getInstance().ensureConnected();
         if (conn == null) return;
         try (PreparedStatement ps = conn.prepareStatement(
@@ -180,6 +186,34 @@ public final class DashboardQueue {
         String value = text(p, key, 20, true);
         if (!SNOWFLAKE.matcher(value).matches()) throw new UserError(key.replace('_', ' ') + " is not a Discord id.");
         return value;
+    }
+
+    private static int number(JSONObject p, String key, int min, int max, String label) {
+        try {
+            int value = Integer.parseInt(text(p, key, 10, true));
+            if (value >= min && value <= max) return value;
+        } catch (NumberFormatException ignored) {
+            // reported below
+        }
+        throw new UserError(label + " must be a whole number from " + min + " to " + max + ".");
+    }
+
+    private static String imageLink(JSONObject p, String key) {
+        String value = text(p, key, 500, false);
+        if (!value.isEmpty() && !value.startsWith("https://")) throw new UserError("Image links must start with https://.");
+        return value.isEmpty() ? null : value;
+    }
+
+    /** Drops a secret (the shop delivery link) from a queued row's stored parameters once it has been read. */
+    private static void forgetParam(long jobId, JSONObject params, String key) throws Exception {
+        params.remove(key);
+        Connection conn = DatabaseManager.getInstance().ensureConnected();
+        if (conn == null) return;
+        try (PreparedStatement ps = conn.prepareStatement("UPDATE dashboard_queue SET params = ? WHERE id = ?")) {
+            ps.setString(1, params.toString());
+            ps.setLong(2, jobId);
+            ps.executeUpdate();
+        }
     }
 
     private static Guild guild(JDA jda) {
@@ -361,6 +395,84 @@ public final class DashboardQueue {
                 List<String> flagged = DatabaseManager.getInstance().generateCompensationReport(true);
                 CommandListener.sendShopLog(guild, "Shop Counters Reset", by(job) + " performed a global shop counter wipe.", Color.RED);
                 return result(true, "Shop counters reset to 0 for the new cycle.", new JSONObject().put("no_sales", new JSONArray(flagged)));
+            }
+            case "amora_event_edit": {
+                Message msg = eventMessage(jda, snowflake(p, "message_id"));
+                if (!isOpen(msg.getEmbeds().get(0))) throw new UserError("That event is already completed or closed.");
+                String rawTime = text(p, "time", 100, true);
+                String error = announcements.editEvent(msg, text(p, "host", 100, true), text(p, "slots", 50, true), rawTime,
+                        text(p, "extra", 200, false), number(p, "reward", 0, 100000, "Reward"));
+                if (error != null) throw new UserError(error);
+                CommandListener.sendAuditLog(guild, "Event Edited", "[" + msg.getEmbeds().get(0).getTitle() + "](" + msg.getJumpUrl()
+                        + ") edited by " + by(job) + ".", new Color(255, 182, 193));
+                return result(true, "Updated the event details." + (AnnouncementListener.parseEventEpoch(rawTime) > 0 ? ""
+                        : " AM0RA couldn't read the time, so it shows it as text and sends no reminders."),
+                        new JSONObject().put("jump_url", msg.getJumpUrl()));
+            }
+            case "amora_event_party": {
+                Message msg = eventMessage(jda, snowflake(p, "message_id"));
+                if (!isOpen(msg.getEmbeds().get(0))) throw new UserError("That event is already completed or closed.");
+                String op = text(p, "op", 6, true);
+                if (!op.equals("add") && !op.equals("remove")) throw new UserError("Choose add or remove.");
+                boolean add = op.equals("add");
+                User user;
+                try {
+                    user = jda.retrieveUserById(snowflake(p, "user_id")).complete();
+                } catch (ErrorResponseException e) {
+                    throw new UserError("There's no Discord user with that id.");
+                }
+                int changed = AnnouncementListener.changeParty(msg, List.of(user), add);
+                if (changed < 0) throw new UserError("Could not read the party on that post.");
+                if (changed == 0) throw new UserError(user.getName() + (add ? " is already in the party, or it's full." : " isn't in the party."));
+                return result(true, (add ? "Added " : "Removed ") + user.getName() + (add ? " to" : " from") + " the party.", null);
+            }
+            case "amora_song_add": {
+                String title = text(p, "title", 120, true);
+                String artist = text(p, "artist", 120, true);
+                String link = SongMetadata.normalizeLink(text(p, "link", 500, true));
+                String tags = SongMetadata.parseTags(text(p, "tags", 200, false));
+                String error = MusicListener.songInputError(title, artist, link, tags);
+                if (error != null) throw new UserError(error);
+                MusicListener.SongAdd added = MusicListener.addSong(job.userId(), title, artist, link, tags, true);
+                if (added.error() != null) throw new UserError(added.error().replace("**", ""));
+                MusicRepository.Song song = added.song();
+                return result(true, "Added song #" + song.songId() + ": " + song.displayTitle() + " by " + song.displayArtist() + ".",
+                        new JSONObject().put("song_id", song.songId()));
+            }
+            case "amora_playlist_import": {
+                String link = text(p, "link", 500, true);
+                if (!SongMetadata.isYouTubePlaylistLink(link)) throw new UserError("That isn't a public YouTube playlist link or playlist id.");
+                String tags = SongMetadata.parseTags(text(p, "tags", 200, false));
+                if (tags == null) throw new UserError("Unknown tag. Use up to 3 of: " + String.join(", ", SongMetadata.TAG_VOCABULARY) + ".");
+                MusicListener.PlaylistImport imported;
+                try {
+                    imported = MusicListener.importSongs(job.userId(), link, tags);
+                } catch (Exception e) {
+                    throw new UserError("Failed to import the playlist: " + e.getMessage());
+                }
+                if (imported.found() == 0) throw new UserError("No usable songs were found in that playlist.");
+                return result(true, "Imported " + imported.added() + " song(s); " + imported.existing() + " were already in the pool, "
+                        + imported.skipped() + " skipped.", new JSONObject().put("added", imported.added())
+                        .put("existing", imported.existing()).put("skipped", imported.skipped()));
+            }
+            case "amora_shop_publish": {
+                String delivery = p.optString("delivery", "").trim();
+                forgetParam(job.id(), p, "delivery");  // the delivery link never stays in the queue table
+                if (delivery.isEmpty() || delivery.length() > 1900) throw new UserError("Fill in the delivery (max 1900 characters).");
+                String name = text(p, "name", 100, true);
+                int price = number(p, "price", 0, 1_000_000, "Price");
+                Message msg = CommandListener.publishShopItem(guild, name, price, text(p, "description", 3500, false), delivery,
+                        imageLink(p, "image1"), imageLink(p, "image2"), by(job));
+                return result(true, "Published " + name + " in the shop for " + price + " Points.",
+                        new JSONObject().put("jump_url", msg.getJumpUrl()));
+            }
+            case "amora_game_spawn": {
+                GuildMessageChannel channel = ScheduledMessages.channel(jda, snowflake(p, "channel_id"));
+                ChatListener chat = jda.getRegisteredListeners().stream().filter(ChatListener.class::isInstance)
+                        .map(ChatListener.class::cast).findFirst()
+                        .orElseThrow(() -> new UserError("AM0RA's chat module isn't running."));
+                chat.spawnRandomLoungeGame(channel);
+                return result(true, "Started a lounge game in #" + channel.getName() + ".", null);
             }
             default:
                 throw new UserError("Unknown action " + job.action() + ".");

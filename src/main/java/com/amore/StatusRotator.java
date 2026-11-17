@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 
 public class StatusRotator {
 
-    private static final List<String> STATUSES = Arrays.asList(
+    static final List<String> STATUSES = Arrays.asList(  // built-in; staff can replace them on the dashboard
             "AMORA ✦: Matcha Says to Type /pull",
             "AMORA ✦: Everyday's AM0RA is a place to be called Home! 🪩",
             "AMORA ✦: Matcha forgot to sleep again... ",
@@ -33,11 +33,13 @@ public class StatusRotator {
             @Override
             public void run() {
                 try {
-                    String currentStatus = STATUSES.get(currentIndex);
+                    List<String> statuses = BotSettings.list(BotSettings.STATUS_MESSAGES, STATUSES);  // dashboard-editable
+                    if (currentIndex >= statuses.size()) currentIndex = 0;
+                    String currentStatus = statuses.get(currentIndex);
                     
                     jda.getPresence().setActivity(Activity.playing(currentStatus));
                     
-                    currentIndex = (currentIndex + 1) % STATUSES.size();
+                    currentIndex = (currentIndex + 1) % statuses.size();
                 } catch (Exception e) {
                     System.err.println("Failed to update status: " + e.getMessage());
                 }

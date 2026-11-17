@@ -16,7 +16,7 @@ public class LoungeManager {
 
     private static final String LOUNGE_CHANNEL_ID = System.getenv("LOUNGE_CHANNEL_ID");
 
-    private static final List<String> QUOTES = Arrays.asList(
+    static final List<String> QUOTES = Arrays.asList(  // built-in; staff can replace them on the dashboard
             "No act of kindness, no matter how small, is ever wasted.",
             "Your potential is endless. Go do what you were created to do.",
             "Spread love everywhere you go. Let no one ever come to you without leaving happier.",
@@ -137,7 +137,7 @@ public class LoungeManager {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 TextChannel lounge = jda.getTextChannelById(LOUNGE_CHANNEL_ID);
-                if (lounge != null) {
+                if (lounge != null && BotSettings.enabled(BotSettings.LOUNGE_QUOTES_ON)) {
                     DatabaseManager db = DatabaseManager.getInstance();
                     
                     String savedQuoteIdStr = db.getBotState("last_quote_msg_id");
@@ -148,7 +148,8 @@ public class LoungeManager {
                         } catch (NumberFormatException ignored) {}
                     }
 
-                    String randomQuote = QUOTES.get(ThreadLocalRandom.current().nextInt(QUOTES.size()));
+                    List<String> quotes = BotSettings.list(BotSettings.LOUNGE_QUOTES, QUOTES);  // dashboard-editable
+                    String randomQuote = quotes.get(ThreadLocalRandom.current().nextInt(quotes.size()));
                     EmbedBuilder embed = new EmbedBuilder()
                             .setColor(new Color(255, 182, 193)) 
                             .setTitle("✦ AMORA QUOTE DROP ✦")

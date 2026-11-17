@@ -801,8 +801,65 @@ public class CommandListener extends ListenerAdapter {
         return description;
     }
 
-    private String encodeItem(String itemName) {
+    private static String encodeItem(String itemName) {
         return Base64.getUrlEncoder().encodeToString(itemName.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** The name a shop item is stored and sold under (forum post titles can be longer). */
+    static String shopItemName(String itemName) {
+        return itemName.length() > 60 ? itemName.substring(0, 60) : itemName;
+    }
+
+    /**
+     * The Points-shop listing /publish posts (and the web dashboard's "Publish an item"): listing embed, optional
+     * second image, Purchase button. Images are links or the attachment:// names of files already on the builder.
+     */
+    static MessageCreateBuilder shopPost(MessageCreateBuilder builder, String itemName, int price, String description,
+                                         String image1, String image2) {
+        if (description == null || description.isBlank() || description.equals("No description provided.")) {
+            description = "An official AM0RA digital asset. _No additional details were provided by the Director._";
+        }
+        String buttonId = "buy_" + price + "_" + encodeItem(shopItemName(itemName));
+        String aestheticDesc = "# ୧ ╰ 𝐀𝐌𝟎𝐑𝐀 POINT 𝐌𝐀𝐑𝐊𝐄𝐓𝐏𝐋𝐀𝐂𝐄 . .ᐟ\n" +
+                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
+                               "**" + description + "**\n\n" +
+                               " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n" +
+                               "` ~ ୨୧ · ` ✦ 𝐏𝐫𝐢𝐜𝐞 : `" + price + " PTS`\n" +
+                               "` ~ ୨୧ · ` ✦ 𝐒𝐭𝐚𝐭𝐮𝐬 : `In Stock`\n\n" +
+                               "*(Click the button below to instantly deduct Points and receive your asset in DMs!)*";
+        EmbedBuilder mainEmbed = new EmbedBuilder()
+                .setColor(new Color(255, 182, 193))
+                .setTitle("🛍️ " + itemName.toUpperCase())
+                .setDescription(aestheticDesc)
+                .setFooter("AM0RA Automated Distribution", null);
+        if (image1 != null) mainEmbed.setImage(image1);
+        List<MessageEmbed> embeds = new ArrayList<>();
+        embeds.add(mainEmbed.build());
+        if (image2 != null) {
+            embeds.add(new EmbedBuilder().setColor(new Color(0, 250, 154)).setImage(image2).build());
+        }
+        builder.addEmbeds(embeds);
+        builder.addActionRow(Button.success(buttonId, "🛒 Purchase • " + price + " PTS"));
+        return builder;
+    }
+
+    /** Publishes a Points-shop item from the web dashboard (image links instead of uploads); returns the post. */
+    static net.dv8tion.jda.api.entities.Message publishShopItem(Guild guild, String itemName, int price, String description, String delivery,
+                                   String image1, String image2, String by) {
+        if (SHOP_FORUM_CHANNEL_ID == null || SHOP_FORUM_CHANNEL_ID.isBlank()) {
+            throw new DashboardQueue.UserError("SHOP_FORUM_CHANNEL_ID is not configured.");
+        }
+        ForumChannel forum = guild.getForumChannelById(SHOP_FORUM_CHANNEL_ID);
+        if (forum == null) throw new DashboardQueue.UserError("AM0RA can't find the shop forum.");
+        String safeName = shopItemName(itemName);
+        DatabaseManager db = DatabaseManager.getInstance();
+        if (db.shopItemExists(safeName)) throw new DashboardQueue.UserError("This item already exists in the shop.");
+        var post = forum.createForumPost(itemName, shopPost(new MessageCreateBuilder(), itemName, price, description,
+                image1, image2).build()).complete();
+        db.addShopItem(safeName, delivery);
+        sendShopLog(guild, "Asset Published", by + " published **" + safeName + "** to the shop for `" + price + " Points`.",
+                new Color(0, 250, 154));
+        return post.getMessage();
     }
 
     private String decodeItem(String encoded) {
@@ -2935,35 +2992,11 @@ public class CommandListener extends ListenerAdapter {
             }
             String secretDelivery = event.getOption("delivery").getAsString();
             String description = readDescription(event);
-            
-            if (description.equals("No description provided.")) {
-                description = "An official AM0RA digital asset. _No additional details were provided by the Director._";
-            }
-            
-            String encodedItem = encodeItem(safeName);
-            String buttonId = "buy_" + price + "_" + encodedItem;
 
             MessageCreateBuilder builder = new MessageCreateBuilder();
-            List<MessageEmbed> embeds = new ArrayList<>();
-
-            String aestheticDesc = "# ୧ ╰ 𝐀𝐌𝟎𝐑𝐀 POINT 𝐌𝐀𝐑𝐊𝐄𝐓𝐏𝐋𝐀𝐂𝐄 . .ᐟ\n" +
-                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n\n" +
-                                   "**" + description + "**\n\n" +
-                                   " _ ⌢ ━━━━━━━━━━⊱♡⊰━━━━━━━━━━━ ⌢ _\n" +
-                                   "` ~ ୨୧ · ` ✦ 𝐏𝐫𝐢𝐜𝐞 : `" + price + " PTS`\n" +
-                                   "` ~ ୨୧ · ` ✦ 𝐒𝐭𝐚𝐭𝐮𝐬 : `In Stock`\n\n" +
-                                   "*(Click the button below to instantly deduct Points and receive your asset in DMs!)*";
-
-            EmbedBuilder mainEmbed = new EmbedBuilder()
-                    .setColor(new Color(255, 182, 193)) 
-                    .setTitle("🛍️ " + itemName.toUpperCase())
-                    .setDescription(aestheticDesc)
-                    .setFooter("AM0RA Automated Distribution", null);
-
+            String image1 = null;
+            String image2 = null;
             try {
-                String image1 = null;
-                String image2 = null;
-
                 if (event.getOption("file1") != null) {
                     image1 = attachImage(builder, event.getOption("file1").getAsAttachment());
                 } else if (event.getOption("url1") != null) {
@@ -2981,26 +3014,11 @@ public class CommandListener extends ListenerAdapter {
                         image2 = url2;
                     }
                 }
-
-                if (image1 != null) {
-                    mainEmbed.setImage(image1);
-                }
-
-                embeds.add(mainEmbed.build());
-
-                if (image2 != null) {
-                    embeds.add(new EmbedBuilder()
-                            .setColor(new Color(0, 250, 154))
-                            .setImage(image2)
-                            .build());
-                }
             } catch (Exception e) {
                 event.getHook().sendMessage("  Failed to process uploaded files: " + e.getMessage()).queue();
                 return;
             }
-
-            builder.addEmbeds(embeds);
-            builder.addActionRow(Button.success(buttonId, "🛒 Purchase • " + price + " PTS"));
+            shopPost(builder, itemName, price, description, image1, image2);
 
             forum.createForumPost(itemName, builder.build()).queue(
                     success -> {

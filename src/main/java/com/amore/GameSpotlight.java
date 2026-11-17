@@ -98,7 +98,7 @@ public final class GameSpotlight extends ListenerAdapter {
     private static void drop(JDA jda, String loungeId) {
         try {
             TextChannel lounge = jda.getTextChannelById(loungeId);
-            if (lounge == null) return;
+            if (lounge == null || !BotSettings.enabled(BotSettings.GAME_SPOTLIGHT_ON)) return;
             DatabaseManager db = DatabaseManager.getInstance();
 
             String lastId = db.getBotState(LAST_DROP_KEY);

@@ -167,60 +167,14 @@ public class AnnouncementListener extends ListenerAdapter {
         if (componentId.startsWith("select_add_")) {
             String msgId = componentId.substring("select_add_".length());
             event.getChannel().retrieveMessageById(msgId).queue(msg -> {
-                MessageEmbed oldEmbed = msg.getEmbeds().get(0);
-                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-                
-                String partyField = "None";
-                int fieldIndex = -1;
-                int current = 0;
-                String maxStr = "Unlimited";
-                
-                for (int i = 0; i < oldEmbed.getFields().size(); i++) {
-                    MessageEmbed.Field field = oldEmbed.getFields().get(i);
-                    if (field.getName() != null && field.getName().startsWith("👥 Party")) {
-                        partyField = field.getValue();
-                        fieldIndex = i;
-                        Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
-                        if (m.find()) {
-                            current = Integer.parseInt(m.group(1));
-                            maxStr = m.group(2);
-                        }
-                        break;
-                    }
-                }
-                
-                if (fieldIndex == -1) {
+                int added = changeParty(msg, event.getMentions().getUsers(), true);
+                if (added < 0) {
                     event.reply("❌ Party data missing!").setEphemeral(true).queue();
-                    return;
-                }
-                
-                int max = maxStr.equalsIgnoreCase("Unlimited") ? Integer.MAX_VALUE : Integer.parseInt(maxStr);
-                List<net.dv8tion.jda.api.entities.User> selectedUsers = event.getMentions().getUsers();
-                int addedCount = 0;
-                
-                if (partyField.equals("None")) partyField = "";
-                
-                for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
-                    String mention = u.getAsMention();
-                    if (!partyField.contains(mention)) {
-                        if (current >= max) break; 
-                        partyField += (partyField.isEmpty() ? "" : "\n") + mention;
-                        current++;
-                        addedCount++;
-                    }
-                }
-                
-                if (addedCount == 0) {
+                } else if (added == 0) {
                     event.reply("⚠️ No new members were added (Party might be full, or they are already in!).").setEphemeral(true).queue();
-                    return;
+                } else {
+                    event.reply("✅ Successfully added " + added + " member(s) to the party!").setEphemeral(true).queue();
                 }
-                
-                newEmbed.getFields().remove(fieldIndex);
-                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
-                if (current >= max) newEmbed.setColor(Color.YELLOW);
-                
-                msg.editMessageEmbeds(newEmbed.build()).queue();
-                event.reply("✅ Successfully added " + addedCount + " member(s) to the party!").setEphemeral(true).queue();
             });
             return;
         }
@@ -228,66 +182,14 @@ public class AnnouncementListener extends ListenerAdapter {
         if (componentId.startsWith("select_kick_")) {
             String msgId = componentId.substring("select_kick_".length());
             event.getChannel().retrieveMessageById(msgId).queue(msg -> {
-                MessageEmbed oldEmbed = msg.getEmbeds().get(0);
-                EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
-                
-                String partyField = "None";
-                int fieldIndex = -1;
-                int current = 0;
-                String maxStr = "Unlimited";
-                
-                for (int i = 0; i < oldEmbed.getFields().size(); i++) {
-                    MessageEmbed.Field field = oldEmbed.getFields().get(i);
-                    if (field.getName() != null && field.getName().startsWith("👥 Party")) {
-                        partyField = field.getValue();
-                        fieldIndex = i;
-                        Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
-                        if (m.find()) {
-                            current = Integer.parseInt(m.group(1));
-                            maxStr = m.group(2);
-                        }
-                        break;
-                    }
-                }
-                
-                if (fieldIndex == -1) {
+                int removed = changeParty(msg, event.getMentions().getUsers(), false);
+                if (removed < 0) {
                     event.reply("❌ Party data missing!").setEphemeral(true).queue();
-                    return;
-                }
-                
-                List<net.dv8tion.jda.api.entities.User> selectedUsers = event.getMentions().getUsers();
-                int removedCount = 0;
-                
-                for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
-                    String mention = u.getAsMention();
-                    if (partyField.contains(mention)) {
-                        partyField = partyField.replace(mention + "\n", "").replace("\n" + mention, "").replace(mention, "");
-                        current--;
-                        removedCount++;
-                    }
-                }
-                
-                if (partyField.trim().isEmpty()) partyField = "None";
-                
-                if (removedCount == 0) {
+                } else if (removed == 0) {
                     event.reply("⚠️ None of the selected users were in the party.").setEphemeral(true).queue();
-                    return;
+                } else {
+                    event.reply("✅ Successfully removed " + removed + " member(s) from the party!").setEphemeral(true).queue();
                 }
-                
-                newEmbed.getFields().remove(fieldIndex);
-                newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
-                
-                msg.editMessageEmbeds(newEmbed.build()).queue();
-
-                // Joining is reaction-driven: clear the kicked users' RSVP reaction so they can re-react later
-                String[] syncData = DatabaseManager.getInstance().getEventSync(msgId);
-                if (syncData != null && syncData[1] != null) {
-                    net.dv8tion.jda.api.entities.emoji.Emoji rsvpEmoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(syncData[1]);
-                    for (net.dv8tion.jda.api.entities.User u : selectedUsers) {
-                        msg.removeReaction(rsvpEmoji, u).queue(s -> {}, e -> {});
-                    }
-                }
-                event.reply("✅ Successfully removed " + removedCount + " member(s) from the party!").setEphemeral(true).queue();
             });
             return;
         }
@@ -469,15 +371,9 @@ public class AnnouncementListener extends ListenerAdapter {
         int currentSlots = 0;
 
         if (isEdit && event.getMessage() != null && !event.getMessage().getEmbeds().isEmpty()) {
-            MessageEmbed oldEmbed = event.getMessage().getEmbeds().get(0);
-            for (MessageEmbed.Field field : oldEmbed.getFields()) {
-                if (field.getName() != null && field.getName().startsWith("👥 Party")) {
-                    partyField = field.getValue();
-                    Matcher m = Pattern.compile("\\[(\\d+)/").matcher(field.getName());
-                    if (m.find()) currentSlots = Integer.parseInt(m.group(1));
-                    break;
-                }
-            }
+            String[] party = currentParty(event.getMessage().getEmbeds().get(0));
+            partyField = party[0];
+            currentSlots = Integer.parseInt(party[1]);
         }
 
         EventPost post = buildEventPost(type, audience, urgency, host, slots, rawTime, unixEpoch, reward, extra, partyField, currentSlots);
@@ -521,6 +417,112 @@ public class AnnouncementListener extends ListenerAdapter {
 
     /** One event post as the /eventsetup modal builds it: message, thread title, start time (0 = unparsed). */
     record EventPost(net.dv8tion.jda.api.utils.messages.MessageCreateData data, String displayTitle, long unixEpoch) { }
+
+    /** The party field's text and head count on an event post ({"None", "0"} when it has none). */
+    static String[] currentParty(MessageEmbed embed) {
+        for (MessageEmbed.Field field : embed.getFields()) {
+            if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                Matcher m = Pattern.compile("\\[(\\d+)/").matcher(field.getName());
+                return new String[]{field.getValue(), m.find() ? m.group(1) : "0"};
+            }
+        }
+        return new String[]{"None", "0"};
+    }
+
+    /**
+     * Edit Details from the web dashboard: rebuilds the post exactly like the Edit button's modal (party kept,
+     * reminders re-armed for the new time). Returns null when done, else why it can't.
+     */
+    String editEvent(Message msg, String host, String slots, String rawTime, String extra, int reward) {
+        String[] kind = null;
+        for (net.dv8tion.jda.api.interactions.components.buttons.Button button : msg.getButtons()) {
+            String id = button.getId();
+            if (id != null && id.startsWith("edit_event:")) {
+                kind = id.substring("edit_event:".length()).split(":");
+                break;
+            }
+        }
+        if (kind == null || kind.length < 3) return "That post has no Edit Details button, so its event type is unknown.";
+        long unixEpoch = parseEventEpoch(rawTime);
+        if (unixEpoch > 0 && unixEpoch < System.currentTimeMillis() / 1000 - 60) return "That time is in the past.";
+        String[] party = currentParty(msg.getEmbeds().get(0));
+        EventPost post = buildEventPost(kind[0], kind[1], kind[2], host, slots, rawTime, unixEpoch, reward, extra,
+                party[0], Integer.parseInt(party[1]));
+        msg.editMessage(MessageEditData.fromCreateData(post.data())).complete();
+        scheduleTimers(msg.getId(), post.unixEpoch(), msg.getJDA());
+        return null;
+    }
+
+    /**
+     * Add Member / Kick Member (the menus on the post, and the web dashboard): returns how many people changed, or
+     * -1 when the post has no party field. Kicked people's RSVP reaction is cleared so they can re-join later.
+     */
+    static int changeParty(Message msg, List<net.dv8tion.jda.api.entities.User> users, boolean add) {
+        MessageEmbed oldEmbed = msg.getEmbeds().get(0);
+        EmbedBuilder newEmbed = new EmbedBuilder(oldEmbed);
+
+        String partyField = "None";
+        int fieldIndex = -1;
+        int current = 0;
+        String maxStr = "Unlimited";
+        for (int i = 0; i < oldEmbed.getFields().size(); i++) {
+            MessageEmbed.Field field = oldEmbed.getFields().get(i);
+            if (field.getName() != null && field.getName().startsWith("👥 Party")) {
+                partyField = field.getValue();
+                fieldIndex = i;
+                Matcher m = Pattern.compile("\\[(\\d+)/([\\dUnlimited]+)\\]").matcher(field.getName());
+                if (m.find()) {
+                    current = Integer.parseInt(m.group(1));
+                    maxStr = m.group(2);
+                }
+                break;
+            }
+        }
+        if (fieldIndex == -1) return -1;
+
+        int max = maxStr.equalsIgnoreCase("Unlimited") ? Integer.MAX_VALUE : Integer.parseInt(maxStr);
+        int changed = 0;
+        if (add) {
+            if (partyField.equals("None")) partyField = "";
+            for (net.dv8tion.jda.api.entities.User u : users) {
+                String mention = u.getAsMention();
+                if (!partyField.contains(mention)) {
+                    if (current >= max) break;
+                    partyField += (partyField.isEmpty() ? "" : "\n") + mention;
+                    current++;
+                    changed++;
+                }
+            }
+        } else {
+            for (net.dv8tion.jda.api.entities.User u : users) {
+                String mention = u.getAsMention();
+                if (partyField.contains(mention)) {
+                    partyField = partyField.replace(mention + "\n", "").replace("\n" + mention, "").replace(mention, "");
+                    current--;
+                    changed++;
+                }
+            }
+            if (partyField.trim().isEmpty()) partyField = "None";
+        }
+        if (changed == 0) return 0;
+
+        newEmbed.getFields().remove(fieldIndex);
+        newEmbed.addField("👥 Party [" + current + "/" + maxStr + "]", partyField, false);
+        if (add && current >= max) newEmbed.setColor(Color.YELLOW);
+        msg.editMessageEmbeds(newEmbed.build()).queue();
+
+        if (!add) {
+            // Joining is reaction-driven: clear the kicked users' RSVP reaction so they can re-react later
+            String[] syncData = DatabaseManager.getInstance().getEventSync(msg.getId());
+            if (syncData != null && syncData[1] != null) {
+                net.dv8tion.jda.api.entities.emoji.Emoji rsvpEmoji = net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted(syncData[1]);
+                for (net.dv8tion.jda.api.entities.User u : users) {
+                    msg.removeReaction(rsvpEmoji, u).queue(s -> {}, e -> {});
+                }
+            }
+        }
+        return changed;
+    }
 
     /** The schedule post stays, but its discussion thread couldn't be created. */
     static final class EventThreadFailed extends RuntimeException {
@@ -691,47 +693,130 @@ public class AnnouncementListener extends ListenerAdapter {
         DatabaseManager.getInstance().recordEventAttendance(eventMsg.getId(), userIds, type, audience, bare, host, reward);
     }
 
+    // ----- 📋 List of Active Events (same rule as the web dashboard, amora_tools.event_phase) -----
+    static final int BOARD_SCAN = 200;                    // newest messages read in the schedules channel
+    static final long LIVE_SECONDS = 3 * 3600;            // an event counts as happening for 3 h after its start
+    static final long UNDATED_SECONDS = 7 * 86400;        // a post without a readable time stops counting after a week
+    private static final Pattern START_STAMP = Pattern.compile("<t:(\\d{9,11}):F>");
+    private static final Pattern FOOTER_TIME = Pattern.compile("Time:\\s*(.+)");
+    private static final Pattern FOOTER_MIN = Pattern.compile("Min:\\s*(\\d+)");
+    private static final Pattern FOOTER_MAX = Pattern.compile("Max:\\s*(\\d+)");
+    private static final Pattern HOST_LINE = Pattern.compile("(?i)(?:𝐓𝐫𝐚𝐢𝐧𝐞𝐫|𝐇𝐨𝐬𝐭)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`");
+
+    /** An open event post on the board. start = 0 when the time couldn't be read. */
+    record BoardEvent(String title, String url, String host, long start, String rawTime, int joined, int min, int max) {}
+
+    /** The exact start AM0RA wrote into the post (also after Edit Details); else the typed footer time; 0 = unknown. */
+    static long eventStart(Message msg, MessageEmbed embed) {
+        Matcher stamp = START_STAMP.matcher(msg.getContentRaw());
+        if (stamp.find()) return Long.parseLong(stamp.group(1));
+        Matcher typed = FOOTER_TIME.matcher(embed.getFooter().getText());
+        return typed.find() ? parseEventEpoch(typed.group(1).trim()) : 0;
+    }
+
+    /** live / upcoming / overdue (start + 3 h passed, never finished or closed) / undated. */
+    static String eventPhase(long start, long posted, long now) {
+        if (start <= 0) return posted > now - UNDATED_SECONDS ? "undated" : "overdue";
+        if (start > now) return "upcoming";
+        return now < start + LIVE_SECONDS ? "live" : "overdue";
+    }
+
+    private static int footerInt(Pattern p, String footer) {
+        Matcher m = p.matcher(footer);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    static MessageEmbed activeBoard(List<Message> messages, String selfId, boolean staff) {
+        long now = System.currentTimeMillis() / 1000;
+        Map<String, List<BoardEvent>> phases = new java.util.LinkedHashMap<>();
+        for (String key : List.of("live", "upcoming", "undated", "overdue")) phases.put(key, new ArrayList<>());
+
+        for (Message msg : messages) {
+            if (!msg.getAuthor().getId().equals(selfId) || msg.getEmbeds().isEmpty()) continue;
+            MessageEmbed em = msg.getEmbeds().get(0);
+            String title = em.getTitle();
+            String footer = em.getFooter() == null ? null : em.getFooter().getText();
+            if (title == null || footer == null || !footer.startsWith("AMORA Event Directive")) continue;
+            if (title.startsWith("✅") || title.startsWith("🔒")) continue;
+
+            Matcher mHost = HOST_LINE.matcher(msg.getContentRaw());
+            String host = mHost.find() ? mHost.group(1).trim() : "Unknown";
+            Matcher mTime = FOOTER_TIME.matcher(footer);
+            String rawTime = mTime.find() ? mTime.group(1).trim() : "";
+            String pings = partyPings(em);
+            int joined = pings == null || pings.isBlank() ? 0
+                    : (int) java.util.Arrays.stream(pings.trim().split("\\s+")).distinct().count();
+            long start = eventStart(msg, em);
+            BoardEvent ev = new BoardEvent(title, msg.getJumpUrl(), host, start, rawTime, joined,
+                    footerInt(FOOTER_MIN, footer), footerInt(FOOTER_MAX, footer));
+            phases.get(eventPhase(start, msg.getTimeCreated().toEpochSecond(), now)).add(ev);
+        }
+        phases.get("live").sort(java.util.Comparator.comparingLong(BoardEvent::start));
+        phases.get("upcoming").sort(java.util.Comparator.comparingLong(BoardEvent::start));
+
+        StringBuilder desc = new StringBuilder();
+        int shown = boardSection(desc, "🔴 **Happening now**", phases.get("live"));
+        shown += boardSection(desc, "📅 **Coming up**", phases.get("upcoming"));
+        shown += boardSection(desc, "❓ **Time not set** _(ask the host!)_", phases.get("undated"));
+        if (shown == 0) desc.append("_There are no events open to join right now. Check back soon!_ 💖\n\n");
+
+        List<BoardEvent> overdue = phases.get("overdue");
+        if (staff && !overdue.isEmpty()) {
+            desc.append("━━━━━━━━━━━━━━━━\n");
+            boardSection(desc, "⚠️ **Past due, still open** _(only staff see this)_\n"
+                    + "-# Started over 3 h ago but never finished or closed. Finish & Payout if it happened, "
+                    + "otherwise Cancel / Close.", overdue);
+        }
+
+        return new EmbedBuilder()
+                .setTitle("✦ AMORA - LIST OF ACTIVE EVENTS ✦")
+                .setColor(new Color(255, 182, 193))
+                .setDescription(desc.toString().trim())
+                .setFooter("Times show in your own timezone • an event stays \"happening now\" for 3 hours after it starts")
+                .build();
+    }
+
+    /** Appends a heading and one entry per event, keeping the embed under Discord's 4096-character limit. */
+    private static int boardSection(StringBuilder desc, String heading, List<BoardEvent> events) {
+        if (events.isEmpty()) return 0;
+        desc.append(heading).append("\n");
+        int added = 0;
+        for (BoardEvent ev : events) {
+            StringBuilder line = new StringBuilder("🔹 **[").append(ev.title()).append("](").append(ev.url()).append(")**\n")
+                    .append("👤 ").append(ev.host()).append(" · 🕒 ");
+            if (ev.start() > 0) line.append("<t:").append(ev.start()).append(":f> (<t:").append(ev.start()).append(":R>)");
+            else line.append(ev.rawTime().isEmpty() ? "no time given" : "`" + ev.rawTime() + "`");
+            line.append(" · 👥 ").append(ev.joined()).append(ev.max() > 0 ? "/" + ev.max() : "").append(" joined");
+            if (ev.max() > 0 && ev.joined() >= ev.max()) line.append(" · **FULL**");
+            else if (ev.min() > ev.joined()) line.append(" · needs ").append(ev.min() - ev.joined()).append(" more");
+            line.append("\n");
+            int left = events.size() - added;
+            if (desc.length() + line.length() > 3900) {
+                desc.append("_…and ").append(left).append(" more_\n");
+                break;
+            }
+            desc.append(line);
+            added++;
+        }
+        desc.append("\n");
+        return added;
+    }
+
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
         String buttonId = event.getComponentId();
 
         if (buttonId.equals("view_board")) {
-            event.deferReply(true).queue(hook -> {
-                event.getChannel().getIterableHistory().takeAsync(50).thenAccept(messages -> {
-                    EmbedBuilder boardEmbed = new EmbedBuilder()
-                        .setTitle("✦ AMORA - LIST OF ACTIVE EVENTS ✦")
-                        .setColor(new Color(255, 182, 193));
-                    
-                    StringBuilder desc = new StringBuilder("Here is a summary of all active events currently open for you to join & check!:\n\n");
-                    int count = 0;
-                    
-                    for (Message msg : messages) {
-                        if (msg.getEmbeds().isEmpty()) continue;
-                        MessageEmbed em = msg.getEmbeds().get(0);
-                        String title = em.getTitle();
-                        
-                        if (title != null && !title.startsWith("✅") && !title.startsWith("🔒") && em.getFooter() != null && em.getFooter().getText().contains("Time:")) {
-                            
-                            String host = "Unknown";
-                            Matcher mHost = Pattern.compile("(?i)(?:𝐓𝐫𝐚𝐢𝐧𝐞𝐫|𝐇𝐨𝐬𝐭)\\s*:`?\\s*\\n+\\s*`\\s*~\\s*୨୧\\s*·\\s*(.*?)\\s*`").matcher(msg.getContentRaw());
-                            if (mHost.find()) host = mHost.group(1).trim();
-
-                            String time = "Unknown Time";
-                            Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(em.getFooter().getText());
-                            if (mTime.find()) time = mTime.group(1).trim();
-                            
-                            desc.append("🔹 **[").append(title).append("](").append(msg.getJumpUrl()).append(")**\n");
-                            desc.append("👤 **Host:** ").append(host).append(" | 🕒 **Time:** ").append(time).append("\n\n");
-                            count++;
-                        }
-                    }
-                    
-                    if (count == 0) desc.append("_There are no active events at the moment!_");
-                    
-                    boardEmbed.setDescription(desc.toString());
-                    hook.sendMessageEmbeds(boardEmbed.build()).queue();
-                });
-            });
+            boolean staff = event.getMember() != null
+                    && event.getMember().hasPermission(net.dv8tion.jda.api.Permission.ADMINISTRATOR);
+            String selfId = event.getJDA().getSelfUser().getId();
+            event.deferReply(true).queue(hook ->
+                event.getChannel().getIterableHistory().takeAsync(BOARD_SCAN)
+                    .thenAccept(messages -> hook.sendMessageEmbeds(activeBoard(messages, selfId, staff)).queue())
+                    .exceptionally(err -> {
+                        hook.sendMessage("⚠️ Couldn't read the events right now. Please try again in a moment.").queue();
+                        return null;
+                    }));
             return;
         }
 
@@ -745,20 +830,11 @@ public class AnnouncementListener extends ListenerAdapter {
             
             if (embed != null && embed.getFooter() != null && embed.getFooter().getText() != null) {
                 String footerText = embed.getFooter().getText();
-                Matcher mTime = Pattern.compile("Time:\\s*(.+)").matcher(footerText);
-                if (mTime.find()) {
-                    try {
-                        String rawTime = mTime.group(1).trim();
-                        String smartTime = rawTime.toUpperCase();
-                        smartTime = smartTime.replaceAll("(GMT|UTC)\\+(\\d)$", "$1+0$2:00").replaceAll("(GMT|UTC)\\-(\\d)$", "$1-0$2:00").replaceAll("(GMT|UTC)\\+(\\d{2})$", "$1+$2:00").replaceAll("(GMT|UTC)\\-(\\d{2})$", "$1-$2:00");
-                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
-                        long eventEpoch = ZonedDateTime.parse(smartTime, formatter).toEpochSecond();
-                        
-                        if ((System.currentTimeMillis() / 1000) < eventEpoch) {
-                            event.reply("⚠️ **The event hasn't started yet!**\nYou cannot complete and payout an event that is still in the future. To cancel or close this event early without payouts, please click the 🔒 **Cancel / Close** button instead.").setEphemeral(true).queue();
-                            return;
-                        }
-                    } catch (Exception ignored) {}
+                // The exact start written into the post (any typed time format), not just "yyyy-MM-dd HH:mm z"
+                long eventEpoch = eventStart(event.getMessage(), embed);
+                if (eventEpoch > 0 && (System.currentTimeMillis() / 1000) < eventEpoch) {
+                    event.reply("⚠️ **The event hasn't started yet!**\nYou cannot complete and payout an event that is still in the future. To cancel or close this event early without payouts, please click the 🔒 **Cancel / Close** button instead.").setEphemeral(true).queue();
+                    return;
                 }
                 // 🚨 Extract Minimum requirement
                 Matcher mMin = Pattern.compile("Min:\\s*(\\d+)").matcher(footerText);
