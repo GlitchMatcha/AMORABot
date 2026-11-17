@@ -28,10 +28,11 @@ public class App {
         db.cleanupExpiredSessions();
 
         try {
+            AnnouncementListener announcements = new AnnouncementListener();
             JDA jda = JDABuilder.createDefault(token)
                     .enableIntents(net.dv8tion.jda.api.requests.GatewayIntent.MESSAGE_CONTENT)
                     .setActivity(Activity.playing("AMORA ✦: Matcha Says to Type /pull"))
-                    .addEventListeners(new CommandListener(), new ChatListener(), new AnnouncementListener(), new MusicListener(), new GameSpotlight())
+                    .addEventListeners(new CommandListener(), new ChatListener(), announcements, new MusicListener(), new GameSpotlight())
                     .build();
 
             jda.awaitReady();
@@ -43,6 +44,8 @@ public class App {
             ActivityMonitor.start(jda);
             int webPort = System.getenv("PORT") != null ? Integer.parseInt(System.getenv("PORT")) : 8080;
             InternalApiServer.startServer(webPort, jda);
+            DashboardQueue.start(jda, announcements);   // web dashboard actions (table dashboard_queue)
+            ScheduledMessages.start(jda);               // web dashboard scheduled messages
             
             
             jda.updateCommands()

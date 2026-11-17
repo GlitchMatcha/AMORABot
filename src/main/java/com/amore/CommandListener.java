@@ -165,7 +165,294 @@ public class CommandListener extends ListenerAdapter {
         edit.queue();
     }
 
-    private void sendAuditLog(Guild guild, String title, String description, Color color) {
+    // ---------------------------------------------------------------------------------------------
+    // Shared with the web dashboard queue (DashboardQueue): same panels, sweeps and age-verification steps
+    // ---------------------------------------------------------------------------------------------
+
+    static final List<String> OFFICIAL_RANKS = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
+
+    /** /forcesweep tasks: one random task_bank task per rank channel, marked [TEST DROP]. Returns channels posted to. */
+    static int dropTestTasks(JDA jda) {
+        DatabaseManager db = DatabaseManager.getInstance();
+        int droppedCount = 0;
+        for (String rank : OFFICIAL_RANKS) {
+            String randomTask = db.getRandomTaskForRank(rank);
+            if (randomTask != null) {
+                String channelEnvName = rank.toUpperCase() + "_CHANNEL_ID";
+                String targetChannelId = System.getenv(channelEnvName);
+                
+                if (targetChannelId != null && !targetChannelId.isBlank()) {
+                    TextChannel rankChannel = jda.getTextChannelById(targetChannelId);
+                    if (rankChannel != null) {
+                        rankChannel.sendMessage("# 🔥 [TEST DROP] ✦ MONTHLY RANK TASK ✦\n" + randomTask).queue();
+                        droppedCount++;
+                    }
+                }
+            }
+        }
+        return droppedCount;
+    }
+
+    /** /forcesweep sweep (dry run, changes nothing): {official members checked, flagged inactive 30+ days}. */
+    static java.util.concurrent.CompletableFuture<int[]> sweepDryRun(Guild guild) {
+        DatabaseManager db = DatabaseManager.getInstance();
+        String hiatusRoleId = System.getenv("HIATUS_ROLE_ID");
+        Role hiatusRole = hiatusRoleId != null ? guild.getRoleById(hiatusRoleId) : null;
+        java.util.concurrent.CompletableFuture<int[]> done = new java.util.concurrent.CompletableFuture<>();
+
+        guild.loadMembers().onSuccess(members -> {
+            int checked = 0;
+            int flagged = 0;
+
+            for (net.dv8tion.jda.api.entities.Member member : members) {
+                if (member.getUser().isBot()) continue;
+
+                boolean isOfficial = member.getRoles().stream()
+                        .anyMatch(r -> OFFICIAL_RANKS.contains(r.getName()));
+
+                if (!isOfficial) continue;
+                checked++;
+
+                if (hiatusRole != null && member.getRoles().contains(hiatusRole)) {
+                    continue; 
+                }
+
+                long lastTask = db.getLastTaskDate(member.getId());
+                long thirtyDaysAgo = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30);
+
+                if (lastTask < thirtyDaysAgo) {
+                    flagged++;
+                }
+            }
+            done.complete(new int[]{checked, flagged});
+        }).onError(done::completeExceptionally);
+        return done;
+    }
+
+    /** /testrelay: sends a self-deleting test message to each hall and reports which ones work. */
+    static String relayReport(JDA jda, Guild guild) {
+        String[][] testHalls = {
+            {"Outfit Hall", ChatListener.DEFAULT_OUTFIT_HALL_ID, "OUTFIT_HALL_ID"},
+            {"Build Hall", ChatListener.DEFAULT_BUILD_HALL_ID, "BUILD_HALL_ID"},
+            {"Lyrics Hall", ChatListener.DEFAULT_LYRICS_HALL_ID, "LYRICS_HALL_ID"},
+            {"Face Hall", ChatListener.DEFAULT_FACE_HALL_ID, "FACE_HALL_ID"},
+            {"Commission Hall", ChatListener.DEFAULT_COMMISSION_HALL_ID, "COMMISSION_HALL_ID"}
+        };
+
+        StringBuilder report = new StringBuilder("**🔍 AMORA RELAY DIAGNOSTIC REPORT**\n\n");
+        int tested = 0;
+        int passed = 0;
+
+        for (String[] hallInfo : testHalls) {
+            String name = hallInfo[0];
+            String defaultId = hallInfo[1];
+            String envKey = hallInfo[2];
+            String activeId = System.getenv(envKey) != null && System.getenv(envKey).matches("\\d{17,20}")
+                    ? System.getenv(envKey)
+                    : defaultId;
+
+            tested++;
+            net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = null;
+            if (guild != null) {
+                ch = guild.getTextChannelById(activeId);
+                if (ch == null) ch = guild.getNewsChannelById(activeId);
+                if (ch == null) ch = guild.getThreadChannelById(activeId);
+            }
+            if (ch == null) {
+                ch = jda.getTextChannelById(activeId);
+                if (ch == null) ch = jda.getNewsChannelById(activeId);
+                if (ch == null) ch = jda.getThreadChannelById(activeId);
+            }
+
+            if (ch == null) {
+                report.append("❌ **").append(name).append("** (`").append(activeId).append("`)\n")
+                      .append("   • **Error:** Channel not found in Bot's Cache!\n")
+                      .append("   • **Fix:** The bot does NOT have access. Add Amora Bot under 'Add members or roles' with View Channel permission.\n\n");
+            } else {
+                final String chMention = ch.getAsMention();
+                final String hName = name;
+                try {
+                    ch.sendMessage("✦ **AMORA Connection Test:** Channel verified for cross-posting! (Auto-deleting)")
+                           .queue(
+                               testMsg -> testMsg.delete().queueAfter(10, TimeUnit.SECONDS, s -> {}, e -> {}),
+                               err -> System.err.println("❌ Send error in " + hName + ": " + err.getMessage())
+                           );
+                    passed++;
+                    report.append("✅ **").append(name).append("** (").append(chMention).append(")\n")
+                          .append("   • **Status:** Connected! Test message sent successfully.\n\n");
+                } catch (Exception e) {
+                    report.append("⚠️ **").append(name).append("** (").append(chMention).append(")\n")
+                          .append("   • **Permission Error:** ").append(e.getMessage()).append("\n\n");
+                }
+            }
+        }
+
+        report.append("📊 **Result:** ").append(passed).append("/").append(tested).append(" halls fully accessible.");
+        return report.toString();
+    }
+
+    /** /amorahub panel. */
+    static net.dv8tion.jda.api.utils.messages.MessageCreateData amoraHubPanel() {
+        String hubText = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n" +
+                         "  ୨ ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐌𝐄𝐌𝐁𝐄𝐑 𝐇𝐔𝐁 ꒱ ୧\n" +
+                         "˚｡౨ *Manage your career and earnings below.* ৎ .﹡\n\n" +
+                         " **Cashout Robux:** Convert your Points into real Robux.\n" +
+                         " **Comp Team:** Apply for the Elite Competition Team.\n" +
+                         " **Hiatus / LOA:** Request an official break to avoid inactivity strikes.\n" +
+                         " **My Status:** Check your Rank Multiplier and Activity Strikes.\n\n" +
+                         "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
+
+        EmbedBuilder hubEmbed = new EmbedBuilder()
+            .setColor(Color.decode("#FF5FA2"))
+            .setDescription(hubText);
+
+        return new MessageCreateBuilder()
+            .setEmbeds(hubEmbed.build())
+            .addActionRow(
+                Button.success("hub_cashout", " Cashout Robux"),
+                Button.primary("hub_comp", " Apply for Comp Team")
+            )
+            .addActionRow(
+                Button.secondary("hub_hiatus", " Request Hiatus"),
+                Button.secondary("hub_status", " Check My Status")
+            ).build();
+    }
+
+    /** /agepanel panel. */
+    static net.dv8tion.jda.api.utils.messages.MessageCreateData agePanel() {
+        String agePanelDesc = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n\n" +
+                              "  ୨ ꒰ **A𝑴𝟎𝑹𝑨 𝑨𝑮𝑬 𝑺𝑬𝑳𝑬𝑪𝑻𝑰𝑶𝑵** ꒱ ୧\n\n" +
+                              "˚｡౨ *Choose your tier below to access your designated safe zone.* ৎ .﹡\n\n" +
+                              "🧸 **Minor Zone (18-)** - *Safe, friendly public spaces.*\n" +
+                              "🥂 **Adult Zone (18+)** - *Protected mature lounge (Automated account-age verification required).* \n\n" +
+                              "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
+
+        EmbedBuilder embed = new EmbedBuilder()
+            .setColor(Color.decode("#FF5FA2"))
+            .setDescription(agePanelDesc);
+
+        return new MessageCreateBuilder()
+            .setEmbeds(embed.build())
+            .addActionRow(
+                Button.secondary("role_minor", "🧸 18- Minor Zone"),
+                Button.secondary("role_adult", "🥂 18+ Adult Zone")
+            ).build();
+    }
+
+    /** /rolepanel panel. */
+    static net.dv8tion.jda.api.utils.messages.MessageCreateData rolePanel() {
+        String aestheticPanel = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n" +
+            "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ\n\n" +
+            "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
+            "  ୨ ꒰ 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 𝐀𝐌𝟎𝐑𝐀 ꒱ ୧\n" +
+            "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
+            "˚｡౨ 𝘊𝘩𝘰𝘰𝘴𝘦 𝘩𝘰𝘸 𝘺𝘰𝘶’𝘥 𝘭𝘪𝘬𝘦 𝘵𝘰 𝘫𝘰𝘪𝘯 ৎ .﹡\n\n" +
+            "<a:00325:1514919121941168139> ﹕<@&1516061152843665549>﹕<a:00325:1514919121941168139>\n" +
+            "-# ꒰ 𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥 𝐌𝐞𝐦𝐛𝐞𝐫 - 𝑱𝒐𝒊𝒏 𝒂𝒔 𝑪𝒐𝒎𝒑 𝒐𝒓 𝑮𝒆𝒏𝒆𝒓𝒂𝒍 ꒱\n\n" +
+            "<a:pink_flowerrr:1514920298472800286> ﹕<@&1516061302701817986>﹕<a:pink_flowerrr:1514920298472800286>\n" +
+            "-# ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐕𝐢𝐬𝐢𝐭𝐨𝐫 - 𝑺𝒕𝒂𝒚 𝒂𝒔 𝒂 𝑮𝒖𝒆𝒔𝒕 ꒱\n\n\n" +
+            "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
+            "           ˚｡౨ 𝘈𝘱plicat𝘪𝘰𝘯 𝘈𝘤𝘤𝘦𝘴𝘴 ৎ .﹡\n" +
+            "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
+            "♡ ﹕ <@&1529651281105387631>\n" +
+            "-# ꒰ 𝐒𝐞𝐥𝐥𝐞𝐫 - 𝑶𝒑𝒆𝒏 𝒕𝒐 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝒂𝒏𝒅 𝑽𝒊𝒔𝒊𝒕𝒐𝒓𝒔 ꒱\n\n" +
+            "♡ ﹕𝐀𝐌𝟎𝐑𝐀 𝐏𝐨𝐬𝐢𝐭𝐢𝐨𝐧𝐬\n" +
+            "-# ꒰ 𝑶𝒏𝒍𝒚 𝑶𝒇𝒇𝒊𝒄𝒊𝒂𝒍 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝑴𝒂𝒚 𝑨𝒑𝒑𝒍𝒚 ꒱\n\n" +
+            "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
+            "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
+
+        EmbedBuilder panelEmbed = new EmbedBuilder()
+            .setColor(Color.decode("#FF5FA2"))
+            .setDescription(aestheticPanel);
+
+        return new MessageCreateBuilder()
+            .setEmbeds(panelEmbed.build())
+            .addActionRow(
+                Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍ𝐞ᴍ𝐛𝐞𝐫  ִ   ۫  ⟰ ꒱ ")
+                      .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_heart:1514920927178264626>")),
+                Button.secondary("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛ𝐨ʀ  ִ   ۫  ᴥ  ꒱ ")
+                      .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_music:1514920332006264953>"))
+            )
+            .addActionRow(
+                Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀ𝚙𝚙𝚕𝚢 ꜰᴏʀ ꜱᴇ𝚕𝚕𝚎𝚛  ִ   ۫  ര ꒱ ")
+                      .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_sparkle:1514920890264059954>")),
+                Button.secondary("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪ0ɴꜱ  ִ   ۫  ꧞ ꒱") 
+                      .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:5_flower:1514918368346636288>"))
+            ).build();
+    }
+
+    /** /eventsetup panel (the event type picker). */
+    static net.dv8tion.jda.api.utils.messages.MessageCreateData eventSetupPanel() {
+        EmbedBuilder panelEmbed = new EmbedBuilder()
+            .setColor(new Color(255, 182, 193))
+            .setTitle("✦ AMORA HYBRID EVENT CREATOR ✦")
+            .setDescription("Select an event type below.\n\nThe bot will automatically route your event to the correct Forum and drop the ping in the Schedules channel!")
+            .setFooter("AMORA Auto-Routing System", null);
+
+        StringSelectMenu menu = StringSelectMenu.create("menu_fused")
+            .setPlaceholder("📢 Select Event, Audience & Urgency...")
+            .addOption("🌍 Training (Everyone)", "training:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Movie Night (Everyone)", "movie:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Game Night (Everyone)", "game:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Photoshoot (Everyone)", "photo:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🌍 Dance Party (Everyone)", "dance_party:everyone:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Photoshoot (Members)", "photo:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("👑 Dance Party (Members)", "dance_party:member:standard", "Posts in Bounties, Pings Schedules")
+            .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Photoshoot (Members)", "photo:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent, Pings Schedules")
+            .addOption("🚨 URGENT: Dance Party (Members)", "dance_party:member:urgent", "Posts in Urgent, Pings Schedules")
+            .build();
+
+        return new MessageCreateBuilder().setEmbeds(panelEmbed.build()).addActionRow(menu).build();
+    }
+
+    /** /unverify: clears the 18+ verification and removes the 18+ role. */
+    static void unverifyMember(Guild guild, String userId) {
+        DatabaseManager.getInstance().setVerified(userId, false);
+
+        if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && guild != null) {
+            Role adultRole = guild.getRoleById(ADULT_ROLE_ID);
+            if (adultRole != null) {
+                guild.removeRoleFromMember(net.dv8tion.jda.api.entities.UserSnowflake.fromId(userId), adultRole).queue(
+                    success -> System.out.println("✦ Successfully stripped 18+ role from " + userId),
+                    failure -> System.out.println("❌ Could not remove role: " + failure.getMessage())
+                );
+            }
+        }
+    }
+
+    /** /ageban add: ban (records the proof ID fingerprint first), unverify, remove the 18+ role, audit log. */
+    static void ageBanMember(Guild guild, String userId, String reason, String bannedById, String bannedByLabel) {
+        DatabaseManager db = DatabaseManager.getInstance();
+        // Ban first: it records the user's current proof ID fingerprint, which setVerified(false) clears.
+        db.addAgeBan(userId, reason, bannedById);
+        db.setVerified(userId, false);
+        if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && guild != null) {
+            Role adultRole = guild.getRoleById(ADULT_ROLE_ID);
+            if (adultRole != null) {
+                guild.removeRoleFromMember(net.dv8tion.jda.api.entities.UserSnowflake.fromId(userId), adultRole).queue(s -> { }, f -> { });
+            }
+        }
+        sendAuditLog(guild, "Age Verification Ban",
+                "<@" + userId + "> was banned from 18+ verification by " + bannedByLabel + ". Reason: " + reason,
+                Color.decode("#E74C3C"));
+    }
+
+    static void sendAuditLog(Guild guild, String title, String description, Color color) {
         if (guild == null || AUDIT_LOG_CHANNEL_ID == null || AUDIT_LOG_CHANNEL_ID.isBlank()) {
             return;
         }
@@ -181,7 +468,7 @@ public class CommandListener extends ListenerAdapter {
         }
     }
 
-    private void sendShopLog(Guild guild, String title, String description, Color color) {
+    static void sendShopLog(Guild guild, String title, String description, Color color) {
         if (guild == null || SHOP_LOG_CHANNEL_ID == null || SHOP_LOG_CHANNEL_ID.isBlank()) {
             return;
         }
@@ -1464,65 +1751,17 @@ public class CommandListener extends ListenerAdapter {
             String type = event.getOption("type").getAsString().toLowerCase();
             event.deferReply(true).queue();
 
-            JDA jda = event.getJDA();
-            List<String> officialRanks = Arrays.asList("Flare", "Spark", "Neon", "Pulse", "Prism", "Supernova");
-
             if (type.equals("tasks")) {
-                int droppedCount = 0;
-                for (String rank : officialRanks) {
-                    String randomTask = db.getRandomTaskForRank(rank);
-                    if (randomTask != null) {
-                        String channelEnvName = rank.toUpperCase() + "_CHANNEL_ID";
-                        String targetChannelId = System.getenv(channelEnvName);
-                        
-                        if (targetChannelId != null && !targetChannelId.isBlank()) {
-                            TextChannel rankChannel = jda.getTextChannelById(targetChannelId);
-                            if (rankChannel != null) {
-                                rankChannel.sendMessage("# 🔥 [TEST DROP] ✦ MONTHLY RANK TASK ✦\n" + randomTask).queue();
-                                droppedCount++;
-                            }
-                        }
-                    }
-                }
+                int droppedCount = dropTestTasks(event.getJDA());
                 event.getHook().sendMessage(" **Live Fire Task Test Complete!** Successfully dropped random tasks into **" + droppedCount + "** rank channels.").queue();
                 return;
             } 
             
             else if (type.equals("sweep")) {
-                StringBuilder log = new StringBuilder(" **Live Fire Activity Sweep Simulation (Dry Run)**\nScanning server members...\n");
-                
                 Guild guild = event.getGuild();
                 if (guild != null) {
-                    String hiatusRoleId = System.getenv("HIATUS_ROLE_ID");
-                    Role hiatusRole = hiatusRoleId != null ? guild.getRoleById(hiatusRoleId) : null;
-
-                    guild.loadMembers().onSuccess(members -> {
-                        int checked = 0;
-                        int flagged = 0;
-
-                        for (net.dv8tion.jda.api.entities.Member member : members) {
-                            if (member.getUser().isBot()) continue;
-
-                            boolean isOfficial = member.getRoles().stream()
-                                    .anyMatch(r -> officialRanks.contains(r.getName()));
-
-                            if (!isOfficial) continue;
-                            checked++;
-
-                            if (hiatusRole != null && member.getRoles().contains(hiatusRole)) {
-                                continue; 
-                            }
-
-                            long lastTask = db.getLastTaskDate(member.getId());
-                            long thirtyDaysAgo = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30);
-
-                            if (lastTask < thirtyDaysAgo) {
-                                flagged++;
-                            }
-                        }
-                        
-                        System.out.println(" Live Fire Sweep Finished: Checked " + checked + " official members. Flagged " + flagged + " for inactivity.");
-                    });
+                    sweepDryRun(guild).thenAccept(counts ->
+                        System.out.println(" Live Fire Sweep Finished: Checked " + counts[0] + " official members. Flagged " + counts[1] + " for inactivity."));
                 }
                 
                 event.getHook().sendMessage("✅ **Activity Sweep Simulation Executed!** Check your bot's console terminal for the detailed scan results and flagged member counts.").queue();
@@ -1541,65 +1780,7 @@ public class CommandListener extends ListenerAdapter {
             }
 
             event.deferReply(true).queue();
-
-            String[][] testHalls = {
-                {"Outfit Hall", ChatListener.DEFAULT_OUTFIT_HALL_ID, "OUTFIT_HALL_ID"},
-                {"Build Hall", ChatListener.DEFAULT_BUILD_HALL_ID, "BUILD_HALL_ID"},
-                {"Lyrics Hall", ChatListener.DEFAULT_LYRICS_HALL_ID, "LYRICS_HALL_ID"},
-                {"Face Hall", ChatListener.DEFAULT_FACE_HALL_ID, "FACE_HALL_ID"},
-                {"Commission Hall", ChatListener.DEFAULT_COMMISSION_HALL_ID, "COMMISSION_HALL_ID"}
-            };
-
-            StringBuilder report = new StringBuilder("**🔍 AMORA RELAY DIAGNOSTIC REPORT**\n\n");
-            int tested = 0;
-            int passed = 0;
-
-            for (String[] hallInfo : testHalls) {
-                String name = hallInfo[0];
-                String defaultId = hallInfo[1];
-                String envKey = hallInfo[2];
-                String activeId = System.getenv(envKey) != null && System.getenv(envKey).matches("\\d{17,20}")
-                        ? System.getenv(envKey)
-                        : defaultId;
-
-                tested++;
-                net.dv8tion.jda.api.entities.channel.middleman.MessageChannel ch = null;
-                if (event.getGuild() != null) {
-                    ch = event.getGuild().getTextChannelById(activeId);
-                    if (ch == null) ch = event.getGuild().getNewsChannelById(activeId);
-                    if (ch == null) ch = event.getGuild().getThreadChannelById(activeId);
-                }
-                if (ch == null) {
-                    ch = event.getJDA().getTextChannelById(activeId);
-                    if (ch == null) ch = event.getJDA().getNewsChannelById(activeId);
-                    if (ch == null) ch = event.getJDA().getThreadChannelById(activeId);
-                }
-
-                if (ch == null) {
-                    report.append("❌ **").append(name).append("** (`").append(activeId).append("`)\n")
-                          .append("   • **Error:** Channel not found in Bot's Cache!\n")
-                          .append("   • **Fix:** The bot does NOT have access. Add Amora Bot under 'Add members or roles' with View Channel permission.\n\n");
-                } else {
-                    final String chMention = ch.getAsMention();
-                    final String hName = name;
-                    try {
-                        ch.sendMessage("✦ **AMORA Connection Test:** Channel verified for cross-posting! (Auto-deleting)")
-                               .queue(
-                                   testMsg -> testMsg.delete().queueAfter(10, TimeUnit.SECONDS, s -> {}, e -> {}),
-                                   err -> System.err.println("❌ Send error in " + hName + ": " + err.getMessage())
-                               );
-                        passed++;
-                        report.append("✅ **").append(name).append("** (").append(chMention).append(")\n")
-                              .append("   • **Status:** Connected! Test message sent successfully.\n\n");
-                    } catch (Exception e) {
-                        report.append("⚠️ **").append(name).append("** (").append(chMention).append(")\n")
-                              .append("   • **Permission Error:** ").append(e.getMessage()).append("\n\n");
-                    }
-                }
-            }
-
-            report.append("📊 **Result:** ").append(passed).append("/").append(tested).append(" halls fully accessible.");
-            event.getHook().sendMessage(report.toString()).queue();
+            event.getHook().sendMessage(relayReport(event.getJDA(), event.getGuild())).queue();
             return;
         }
 
@@ -1703,29 +1884,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            String hubText = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n" +
-                             "  ୨ ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐌𝐄𝐌𝐁𝐄𝐑 𝐇𝐔𝐁 ꒱ ୧\n" +
-                             "˚｡౨ *Manage your career and earnings below.* ৎ .﹡\n\n" +
-                             " **Cashout Robux:** Convert your Points into real Robux.\n" +
-                             " **Comp Team:** Apply for the Elite Competition Team.\n" +
-                             " **Hiatus / LOA:** Request an official break to avoid inactivity strikes.\n" +
-                             " **My Status:** Check your Rank Multiplier and Activity Strikes.\n\n" +
-                             "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
-
-            EmbedBuilder hubEmbed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2"))
-                .setDescription(hubText);
-
-            event.getChannel().sendMessageEmbeds(hubEmbed.build())
-                .addActionRow(
-                    Button.success("hub_cashout", " Cashout Robux"),
-                    Button.primary("hub_comp", " Apply for Comp Team")
-                )
-                .addActionRow(
-                    Button.secondary("hub_hiatus", " Request Hiatus"),
-                    Button.secondary("hub_status", " Check My Status")
-                ).queue();
-
+            event.getChannel().sendMessage(amoraHubPanel()).queue();
             event.reply(" Hub deployed!").setEphemeral(true).queue();
             return;
         }
@@ -1736,24 +1895,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            String agePanelDesc = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n\n" +
-                                  "  ୨ ꒰ **A𝑴𝟎𝑹𝑨 𝑨𝑮𝑬 𝑺𝑬𝑳𝑬𝑪𝑻𝑰𝑶𝑵** ꒱ ୧\n\n" +
-                                  "˚｡౨ *Choose your tier below to access your designated safe zone.* ৎ .﹡\n\n" +
-                                  "🧸 **Minor Zone (18-)** - *Safe, friendly public spaces.*\n" +
-                                  "🥂 **Adult Zone (18+)** - *Protected mature lounge (Automated account-age verification required).* \n\n" +
-                                  "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
-
-            EmbedBuilder embed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2"))
-                .setDescription(agePanelDesc);
-
-            event.getChannel().sendMessageEmbeds(embed.build())
-                 .addActionRow(
-                     Button.secondary("role_minor", "🧸 18- Minor Zone"),
-                     Button.secondary("role_adult", "🥂 18+ Adult Zone")
-                 )
-                 .queue();
-
+            event.getChannel().sendMessage(agePanel()).queue();
             event.reply(" Age Panel deployed successfully!").setEphemeral(true).queue();
             return;
         }
@@ -1768,17 +1910,7 @@ public class CommandListener extends ListenerAdapter {
                     ? event.getOption("target").getAsUser() 
                     : event.getUser();
 
-            db.setVerified(target.getId(), false);
-
-            if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && event.getGuild() != null) {
-                Role adultRole = event.getGuild().getRoleById(ADULT_ROLE_ID);
-                if (adultRole != null) {
-                    event.getGuild().removeRoleFromMember(target, adultRole).queue(
-                        success -> System.out.println("✦ Successfully stripped 18+ role from " + target.getName()),
-                        failure -> System.out.println("❌ Could not remove role: " + failure.getMessage())
-                    );
-                }
-            }
+            unverifyMember(event.getGuild(), target.getId());
 
             event.reply("**Verification reset:** " + target.getAsMention() + " has been unverified, database cleared, and the 18+ role was removed.").setEphemeral(true).queue();
             return;
@@ -1797,18 +1929,7 @@ public class CommandListener extends ListenerAdapter {
                 if (reason.length() > 200) {
                     reason = reason.substring(0, 200);
                 }
-                // Ban first: it records the user's current proof ID fingerprint, which setVerified(false) clears.
-                db.addAgeBan(target.getId(), reason, event.getUser().getId());
-                db.setVerified(target.getId(), false);
-                if (ADULT_ROLE_ID != null && !ADULT_ROLE_ID.isBlank() && event.getGuild() != null) {
-                    Role adultRole = event.getGuild().getRoleById(ADULT_ROLE_ID);
-                    if (adultRole != null) {
-                        event.getGuild().removeRoleFromMember(target, adultRole).queue(s -> { }, f -> { });
-                    }
-                }
-                sendAuditLog(event.getGuild(), "Age Verification Ban",
-                        target.getAsMention() + " was banned from 18+ verification by " + event.getUser().getAsMention() + ". Reason: " + reason,
-                        Color.decode("#E74C3C"));
+                ageBanMember(event.getGuild(), target.getId(), reason, event.getUser().getId(), event.getUser().getAsMention());
                 event.reply(target.getAsMention() + " is banned from automatic 18+ verification, the 18+ role was removed, "
                         + "and the ID they verified with (if any) can't be used on another account. Reason: " + reason)
                      .setEphemeral(true).queue();
@@ -1962,44 +2083,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            String aestheticPanel = "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣\n" +
-                "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ\n\n" +
-                "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
-                "  ୨ ꒰ 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 𝐀𝐌𝟎𝐑𝐀 ꒱ ୧\n" +
-                "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
-                "˚｡౨ 𝘊𝘩𝘰𝘰𝘴𝘦 𝘩𝘰𝘸 𝘺𝘰𝘶’𝘥 𝘭𝘪𝘬𝘦 𝘵𝘰 𝘫𝘰𝘪𝘯 ৎ .﹡\n\n" +
-                "<a:00325:1514919121941168139> ﹕<@&1516061152843665549>﹕<a:00325:1514919121941168139>\n" +
-                "-# ꒰ 𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥 𝐌𝐞𝐦𝐛𝐞𝐫 - 𝑱𝒐𝒊𝒏 𝒂𝒔 𝑪𝒐𝒎𝒑 𝒐𝒓 𝑮𝒆𝒏𝒆𝒓𝒂𝒍 ꒱\n\n" +
-                "<a:pink_flowerrr:1514920298472800286> ﹕<@&1516061302701817986>﹕<a:pink_flowerrr:1514920298472800286>\n" +
-                "-# ꒰ 𝐀𝐌𝟎𝐑𝐀 𝐕𝐢𝐬𝐢𝐭𝐨𝐫 - 𝑺𝒕𝒂𝒚 𝒂𝒔 𝒂 𝑮𝒖𝒆𝒔𝒕 ꒱\n\n\n" +
-                "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n" +
-                "           ˚｡౨ 𝘈𝘱plicat𝘪𝘰𝘯 𝘈𝘤𝘤𝘦𝘴𝘴 ৎ .﹡\n" +
-                "  ﹉﹉﹉﹉﹉﹉୨♡୧﹉﹉﹉﹉﹉﹉\n\n" +
-                "♡ ﹕ <@&1529651281105387631>\n" +
-                "-# ꒰ 𝐒𝐞𝐥𝐥𝐞𝐫 - 𝑶𝒑𝒆𝒏 𝒕𝒐 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝒂𝒏𝒅 𝑽𝒊𝒔𝒊𝒕𝒐𝒓𝒔 ꒱\n\n" +
-                "♡ ﹕𝐀𝐌𝟎𝐑𝐀 𝐏𝐨𝐬𝐢𝐭𝐢𝐨𝐧𝐬\n" +
-                "-# ꒰ 𝑶𝒏𝒍𝒚 𝑶𝒇𝒇𝒊𝒄𝒊𝒂𝒍 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 𝑴𝒂𝒚 𝑨𝒑𝒑𝒍𝒚 ꒱\n\n" +
-                "۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪   ִ    ۪   ‌   ࣪\n" +
-                "⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣⌣";
-
-            EmbedBuilder panelEmbed = new EmbedBuilder()
-                .setColor(Color.decode("#FF5FA2"))
-                .setDescription(aestheticPanel);
-
-            event.getChannel().sendMessageEmbeds(panelEmbed.build())
-                .addActionRow(
-                    Button.secondary("role_member", "꒰ ⟰  ۫   ִ  ᴏꜰꜰɪᴄɪᴀʟ ᴍ𝐞ᴍ𝐛𝐞𝐫  ִ   ۫  ⟰ ꒱ ")
-                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_heart:1514920927178264626>")),
-                    Button.secondary("role_visitor", "꒰  ᴥ  ۫   ִ  ᴀᴍᴏʀᴀ ᴠɪꜱɪᴛ𝐨ʀ  ִ   ۫  ᴥ  ꒱ ")
-                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_music:1514920332006264953>"))
-                )
-                .addActionRow(
-                    Button.secondary("role_seller", "꒰ ര  ۫   ִ  ᴀ𝚙𝚙𝚕𝚢 ꜰᴏʀ ꜱᴇ𝚕𝚕𝚎𝚛  ִ   ۫  ര ꒱ ")
-                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:8_sparkle:1514920890264059954>")),
-                    Button.secondary("role_positions", "꒰ ꧞  ۫   ִ  ᴀᴍᴏʀᴀ ᴘᴏꜱɪᴛɪ0ɴꜱ  ִ   ۫  ꧞ ꒱") 
-                          .withEmoji(net.dv8tion.jda.api.entities.emoji.Emoji.fromFormatted("<a:5_flower:1514918368346636288>"))
-                ).queue();
-
+            event.getChannel().sendMessage(rolePanel()).queue();
             event.reply("Panel Created!").setEphemeral(true).queue();
             return;
         }
@@ -2009,44 +2093,7 @@ public class CommandListener extends ListenerAdapter {
                 return;
             }
 
-            EmbedBuilder panelEmbed = new EmbedBuilder()
-                .setColor(new Color(255, 182, 193))
-                .setTitle("✦ AMORA HYBRID EVENT CREATOR ✦")
-                .setDescription("Select an event type below.\n\nThe bot will automatically route your event to the correct Forum and drop the ping in the Schedules channel!")
-                .setFooter("AMORA Auto-Routing System", null);
-
-            StringSelectMenu menu = StringSelectMenu.create("menu_fused")
-                .setPlaceholder("📢 Select Event, Audience & Urgency...")
-                .addOption("🌍 Training (Everyone)", "training:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Movie Night (Everyone)", "movie:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Game Night (Everyone)", "game:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Photoshoot (Everyone)", "photo:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Mini Comp (Everyone)", "mini_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Fashion Show (Everyone)", "fashion:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Training Comp (Everyone)", "training_comp:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🌍 Dance Party (Everyone)", "dance_party:everyone:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Training (Members)", "training:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Movie Night (Members)", "movie:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Game Night (Members)", "game:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Photoshoot (Members)", "photo:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Mini Comp (Members)", "mini_comp:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Fashion Show (Members)", "fashion:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Training Comp (Members)", "training_comp:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("👑 Dance Party (Members)", "dance_party:member:standard", "Posts in Bounties, Pings Schedules")
-                .addOption("🚨 URGENT: Training (Members)", "training:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Movie Night (Members)", "movie:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Game Night (Members)", "game:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Photoshoot (Members)", "photo:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Mini Comp (Members)", "mini_comp:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Fashion Show (Members)", "fashion:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Training Comp (Members)", "training_comp:member:urgent", "Posts in Urgent, Pings Schedules")
-                .addOption("🚨 URGENT: Dance Party (Members)", "dance_party:member:urgent", "Posts in Urgent, Pings Schedules")
-                .build();
-                
-            event.getChannel().sendMessageEmbeds(panelEmbed.build())
-                .addActionRow(menu)
-                .queue();
-                
+            event.getChannel().sendMessage(eventSetupPanel()).queue();
             event.reply("✅ Auto-Routing Hybrid Event panel deployed!").setEphemeral(true).queue();
             return;
         }

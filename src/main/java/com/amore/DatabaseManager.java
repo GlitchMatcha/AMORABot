@@ -251,6 +251,16 @@ public class DatabaseManager {
             try { stmt.execute("CREATE TABLE IF NOT EXISTS creator_shop_threads (creator_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL);"); } catch (SQLException ignored) { }
             try { stmt.execute("ALTER TABLE creator_stats ADD COLUMN commissions_enabled INTEGER DEFAULT 1;"); } catch (SQLException ignored) { }
             try { stmt.execute("CREATE TABLE IF NOT EXISTS creator_commission_threads (creator_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, status_msg_id TEXT);"); } catch (SQLException ignored) { }
+            // Web dashboard (AMORA staff dashboard): action queue, message templates / schedules, training sheets.
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS dashboard_queue (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), user_id TEXT NOT NULL, user_name TEXT, user_rank TEXT, action TEXT NOT NULL, params TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'pending', result TEXT, finished_at TIMESTAMPTZ);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS ix_dashboard_queue_status ON dashboard_queue (status, id);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS message_templates (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, message TEXT NOT NULL, created_by TEXT, created_by_name TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS scheduled_messages (id SERIAL PRIMARY KEY, channel_id TEXT NOT NULL, message TEXT NOT NULL, repeat TEXT NOT NULL DEFAULT 'once', time_of_day TEXT NOT NULL, next_run_at TIMESTAMPTZ, enabled BOOLEAN NOT NULL DEFAULT TRUE, created_by TEXT, created_by_name TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_sent_at TIMESTAMPTZ, last_message_id TEXT, last_error TEXT);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS event_attendance (event_msg_id TEXT NOT NULL, user_id TEXT NOT NULL, event_type TEXT, audience TEXT, title TEXT, host TEXT, reward INTEGER, completed_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (event_msg_id, user_id));"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS ix_event_attendance_user ON event_attendance (user_id, completed_at);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS training_notes (id SERIAL PRIMARY KEY, user_id TEXT NOT NULL, note TEXT NOT NULL, author_id TEXT, author_name TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS trainee_checklist_items (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, position INTEGER NOT NULL DEFAULT 0, active BOOLEAN NOT NULL DEFAULT TRUE);"); } catch (SQLException ignored) { }
+            try { stmt.execute("CREATE TABLE IF NOT EXISTS trainee_progress (user_id TEXT NOT NULL, item_id INTEGER NOT NULL, signed_off_by TEXT, signed_off_name TEXT, signed_at TIMESTAMPTZ NOT NULL DEFAULT now(), note TEXT, PRIMARY KEY (user_id, item_id));"); } catch (SQLException ignored) { }
             
             System.out.println("✦ Core tables and Role Timers verified (PostgreSQL).");
         } catch (SQLException e) {
@@ -1548,6 +1558,27 @@ public class DatabaseManager {
         try (PreparedStatement pstmt = prepare(query)) {
             pstmt.setString(1, scheduleMsgId);
             pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    /** One row per paid party member of a completed event (the web dashboard's training sheets read these). */
+    public void recordEventAttendance(String eventMsgId, List<String> userIds, String eventType, String audience,
+                                      String title, String host, int reward) {
+        ensureConnected();
+        String query = "INSERT INTO event_attendance (event_msg_id, user_id, event_type, audience, title, host, reward) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (event_msg_id, user_id) DO NOTHING;";
+        try (PreparedStatement pstmt = prepare(query)) {
+            for (String userId : userIds) {
+                pstmt.setString(1, eventMsgId);
+                pstmt.setString(2, userId);
+                pstmt.setString(3, eventType);
+                pstmt.setString(4, audience);
+                pstmt.setString(5, title);
+                pstmt.setString(6, host);
+                pstmt.setInt(7, reward);
+                pstmt.addBatch();
+            }
+            pstmt.executeBatch();
         } catch (SQLException e) { e.printStackTrace(); }
     }
 }
